@@ -203,6 +203,16 @@ app.post('/admin/settings/webhook-url', async (req, res) => {
 });
 
 // ====================================================
+// Config public for Frontend
+// ====================================================
+app.get('/api/config', (_req, res) => {
+    res.json({
+        supabaseUrl: process.env.SUPABASE_URL,
+        supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    });
+});
+
+// ====================================================
 // Inicialização
 // ====================================================
 async function startServer() {
@@ -222,6 +232,17 @@ async function startServer() {
             logger.info(`📡 Webhook Tintim: http://localhost:${PORT}/webhook/tintim`);
             logger.info(`📊 Dashboard: http://localhost:${PORT}`);
             logger.info(`💾 Fonte de dados: ${stats.dataSource}`);
+        });
+
+        // ============================================
+        // SPA Fallback (frontend routing)
+        // ============================================
+        app.get('*', (req, res) => {
+            // Ignorar chamadas API ou arquivos estáticos que não existem
+            if (req.path.startsWith('/api') || req.path.startsWith('/admin') || req.path.includes('.')) {
+                return res.status(404).send('Not found');
+            }
+            res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
         });
 
         // Auto-reload config every 5 min

@@ -27,7 +27,14 @@ const refs = {
 // ============================================
 // Navigation
 // ============================================
-function navigateTo(section) {
+
+function navigateTo(section, replace = false) {
+    if (!section) section = 'dashboard';
+
+    // Normalize section names
+    const validSections = ['dashboard', 'clients', 'activity', 'settings'];
+    if (!validSections.includes(section)) section = 'dashboard';
+
     state.currentSection = section;
 
     // Update active section
@@ -43,17 +50,39 @@ function navigateTo(section) {
     // Close mobile sidebar
     closeMobileSidebar();
 
+    // Update URL History
+    const url = section === 'dashboard' ? '/' : `/${section}`;
+    if (replace) {
+        history.replaceState({ section }, '', url);
+    } else {
+        history.pushState({ section }, '', url);
+    }
+
     // Refresh section data
     if (section === 'clients') loadClients();
     if (section === 'settings') loadSettings();
     if (section === 'activity') loadDashboardActivity();
 }
 
+// Handle Browser Back/Forward
+window.addEventListener('popstate', (event) => {
+    const section = event.state ? event.state.section : getSectionFromUrl();
+    navigateTo(section, true); // replace=true to avoid duplicate history stack
+});
+
+function getSectionFromUrl() {
+    const path = window.location.pathname.replace('/', '');
+    return path || 'dashboard';
+}
+
 // Sidebar navigation clicks
 $$('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
         e.preventDefault();
-        navigateTo(item.dataset.section);
+        const section = item.dataset.section;
+        if (section !== state.currentSection) {
+            navigateTo(section);
+        }
     });
 });
 
@@ -673,7 +702,28 @@ function escapeHtml(str) {
 // Initialization
 // ============================================
 async function init() {
-    // Load everything
+    // 0. Auth Guard
+    if (window.authService) {
+        const user = await window.authService.checkAuth();
+        if (!user) return; // Will redirect
+    }
+
+    // Setup Logout (Immediately interactive)
+    const btnLogout = document.getElementById('btn-logout');
+    if (btnLogout) {
+        btnLogout.addEventListener('click', async () => {
+            if (confirm('Deseja realmente sair?')) {
+                await window.authService.logout();
+            }
+        });
+    }
+
+    // 1. Initial Navigation (Routing)
+    const initialSection = getSectionFromUrl();
+    // Use replace=true to correctly set the initial history state without pushing a new entry
+    navigateTo(initialSection, true);
+
+    // 2. Load Data
     await loadSettings();
     updateDashboard();
 
