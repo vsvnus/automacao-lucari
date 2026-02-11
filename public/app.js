@@ -163,7 +163,6 @@ async function updateDashboard() {
     if (health) {
         // Stats
         $('#stat-clients').textContent = health.clients || 0;
-        $('#stat-status').textContent = 'Operacional';
         $('#stat-uptime').textContent = formatUptime(health.uptime);
 
         // Usar totalLeads do endpoint de stats, ou manter webhookCount local como fallback
@@ -178,7 +177,7 @@ async function updateDashboard() {
         // Env badge
         const badge = $('#env-badge');
         if (badge) {
-            const isProd = health.uptime > 0; // Simplificação, health não retorna env as vezes
+            const isProd = health.uptime > 0; // Simplificação
             badge.textContent = window.location.hostname === 'localhost' ? 'DEV' : 'PROD';
             badge.style.background = isProd
                 ? 'var(--accent-green-subtle)'
@@ -188,7 +187,7 @@ async function updateDashboard() {
                 : 'var(--accent-orange)';
         }
     } else {
-        $('#stat-status').textContent = 'Offline';
+        // Offline state
         statusIndicator?.classList.remove('online');
         statusIndicator?.classList.add('offline');
         if (statusText) statusText.textContent = 'Offline';
@@ -219,7 +218,7 @@ async function loadDashboardClients() {
         container.innerHTML = `
             <div class="activity-empty">
                 <p>Nenhum cliente cadastrado</p>
-                <small>Clique em "Novo Cliente" para começar</small>
+                <small>Clique em "Gerenciar" para começar</small>
             </div>`;
         return;
     }
@@ -231,19 +230,19 @@ async function loadDashboardClients() {
         const div = document.createElement('div');
         div.className = 'activity-item';
         div.innerHTML = `
-            <div class="client-avatar" style="width:32px;height:32px;font-size:0.7rem;">${escapeHtml(initial)}</div>
-            <div class="activity-text">
-                <span class="message">${escapeHtml(client.name)}</span>
-                <span class="timestamp">${isActive ? '🟢 Ativo' : '🔴 Inativo'} · ${escapeHtml(client.id)}</span>
+            <div class="activity-icon-wrapper" style="background:var(--accent-primary-subtle);color:var(--accent-primary)">
+                ${escapeHtml(initial)}
+            </div>
+            <div class="activity-content">
+                <div class="activity-title">${escapeHtml(client.name)}</div>
+                <div class="activity-subtitle">${isActive ? '🟢 Ativo' : '🔴 Inativo'} · ${escapeHtml(client.id)}</div>
             </div>`;
         container.appendChild(div);
     });
 }
 
 async function loadDashboardActivity() {
-    console.log('Carregando atividades...');
     const logs = await fetchActivity();
-    console.log('Atividades carregadas:', logs);
     state.activityLog = logs;
 
     // 1. Dashboard Preview (Top 5)
@@ -295,26 +294,49 @@ function renderLogItem(log, detailed = false) {
 
     const isUpdate = log.event_type === 'lead.update' || log.event_type === 'status_update';
 
-    // Ícone baseado no tipo
-    let icon = '📩';
-    if (isUpdate) icon = '🔄';
-    if (resultType === 'error') icon = '⚠️';
-
     const timestamp = new Date(log.timestamp);
     const time = timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fullDate = timestamp.toLocaleDateString('pt-BR') + ' ' + time;
 
+    // Ícone e Cor baseados no tipo
+    let icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>';
+    let iconClass = 'stat-icon-webhook'; // Laranja padrão
+    let badge = '<span class="badge-status badge-new">Novo Lead</span>';
+
+    if (isUpdate) {
+        icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>';
+        iconClass = 'stat-icon-clients'; // Roxo/Azul
+        badge = '<span class="badge-status badge-update">Atualização</span>';
+    }
+
+    if (resultType === 'error') {
+        icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
+        iconClass = 'stat-icon-webhook'; // Vermelho (via CSS error)
+        badge = '<span class="badge-status badge-error">Erro</span>';
+    }
+
+    // Status específico se houver
+    if (log.status === 'Venda') {
+        badge = '<span class="badge-status badge-sale">Venda</span>';
+        iconClass = 'stat-icon-status'; // Verde
+    }
+
     div.innerHTML = `
-        <div class="client-avatar" style="font-size:1.2rem; display:flex; align-items:center; justify-content:center; background: ${resultType === 'success' ? 'var(--accent-green-subtle)' : 'var(--accent-orange-subtle)'}; color: ${resultType === 'success' ? 'var(--accent-green)' : 'var(--accent-orange)'}">
+        <div class="activity-icon-wrapper ${iconClass}">
             ${icon}
         </div>
-        <div class="activity-text">
-            <span class="message">
-                <strong>${escapeHtml(log.client)}</strong>
-                <span style="opacity:0.8">${isUpdate ? 'atualizou status' : 'recebeu lead'}</span>
-            </span>
-            <span class="timestamp">${time} · ${escapeHtml(log.name || 'Sem nome')} <span style="opacity:0.6">(${formatPhoneDisplay(log.phone)})</span></span>
-            ${detailed ? `<small style="display:block;margin-top:4px;opacity:0.6;font-size:0.75rem">${fullDate} · Status: ${log.status || '-'}</small>` : ''}
+        <div class="activity-content">
+            <div class="activity-title">
+                ${escapeHtml(log.name || 'Sem nome')}
+                ${badge}
+            </div>
+            <div class="activity-subtitle">
+                ${escapeHtml(log.client)} • ${formatPhoneDisplay(log.phone)}
+            </div>
+        </div>
+        <div class="activity-meta">
+            <span class="activity-time">${time}</span>
+            ${detailed ? `<span style="font-size:0.7rem;color:var(--text-tertiary);">${fullDate}</span>` : ''}
         </div>
     `;
     return div;

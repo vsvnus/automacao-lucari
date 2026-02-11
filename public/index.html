@@ -109,8 +109,8 @@
         <section class="page-section active" id="section-dashboard">
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Dashboard</h2>
-                    <p class="page-subtitle">Visão geral do sistema de automação</p>
+                    <h2 class="page-title">Visão Geral</h2>
+                    <p class="page-subtitle">Monitoramento em tempo real</p>
                 </div>
                 <div class="header-actions">
                     <span class="badge" id="env-badge">DEV</span>
@@ -149,8 +149,21 @@
                 </button>
             </div>
 
-            <!-- Stats -->
-            <div class="stats-row">
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-webhook">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="stat-webhooks">0</span>
+                        <span class="stat-label">Webhooks Hoje</span>
+                    </div>
+                </div>
+
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-clients">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -168,20 +181,6 @@
                 </div>
 
                 <div class="stat-card">
-                    <div class="stat-icon stat-icon-status">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                    </div>
-                    <div class="stat-data">
-                        <span class="stat-value" id="stat-status">—</span>
-                        <span class="stat-label">Status</span>
-                    </div>
-                </div>
-
-                <div class="stat-card">
                     <div class="stat-icon stat-icon-uptime">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -191,81 +190,36 @@
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="stat-uptime">—</span>
-                        <span class="stat-label">Uptime</span>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-icon stat-icon-webhook">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                        </svg>
-                    </div>
-                    <div class="stat-data">
-                        <span class="stat-value" id="stat-webhooks">0</span>
-                        <span class="stat-label">Webhooks Hoje</span>
+                        <span class="stat-label">Time Online</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Quick Cards -->
+            <!-- Dashboard Columns -->
             <div class="dashboard-grid">
-                <!-- Recent Clients -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Clientes Recentes</h3>
-                        <button class="btn-text" onclick="navigateTo('clients')">Ver todos →</button>
-                    </div>
-                    <div class="card-body" id="dashboard-clients-preview">
-                        <p class="empty-state">Carregando...</p>
-                    </div>
-                </div>
-
                 <!-- Activity Feed -->
                 <div class="card">
                     <div class="card-header">
                         <h3>Atividade Recente</h3>
-                        <button class="btn-text" onclick="navigateTo('activity')">Ver tudo →</button>
+                        <button class="btn-text" onclick="navigateTo('activity')">Ver historico →</button>
                     </div>
                     <div class="card-body">
                         <div class="activity-feed" id="dashboard-activity">
                             <div class="activity-empty">
-                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
-                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                                </svg>
-                                <p>Aguardando leads do Tintim...</p>
+                                <p>Aguardando leads...</p>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- How It Works -->
-            <div class="card flow-card">
-                <div class="card-header">
-                    <h3>Como Funciona</h3>
-                </div>
-                <div class="flow-steps">
-                    <div class="flow-step">
-                        <div class="flow-icon">📱</div>
-                        <span>Lead no WhatsApp</span>
+                <!-- Recent Clients -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Clientes</h3>
+                        <button class="btn-text" onclick="navigateTo('clients')">Gerenciar →</button>
                     </div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-step">
-                        <div class="flow-icon">🔗</div>
-                        <span>Tintim Webhook</span>
-                    </div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-step">
-                        <div class="flow-icon">⚙️</div>
-                        <span>Processamento</span>
-                    </div>
-                    <div class="flow-arrow">→</div>
-                    <div class="flow-step">
-                        <div class="flow-icon">📊</div>
-                        <span>Google Sheets</span>
+                    <div class="card-body" id="dashboard-clients-preview">
+                        <p class="empty-state">Carregando...</p>
                     </div>
                 </div>
             </div>
