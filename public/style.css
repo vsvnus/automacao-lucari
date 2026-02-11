@@ -356,7 +356,8 @@ body {
 .page-section {
     display: none;
     padding: 32px 40px;
-    max-width: 1200px;
+    max-width: 100%;
+    /* Permite usar a largura total disponível */
     animation: page-enter 0.4s var(--ease-out);
 }
 
