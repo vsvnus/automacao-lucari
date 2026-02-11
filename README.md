@@ -1,26 +1,35 @@
 # 🚀 WhatsApp Leads Automation
 
-Automação que captura leads de campanhas WhatsApp do Meta Ads e registra automaticamente nas planilhas Google Sheets de cada cliente.
+Automação que captura leads do WhatsApp (via [Tintim](https://tintim.app)) e registra automaticamente nas planilhas Google Sheets de cada cliente, com abas mensais, detecção de produto, atualização de status de venda e tag visual `(Auto)`.
 
 ## 📋 Visão Geral
 
 ```
-Meta WhatsApp Business API
+Lead manda mensagem no WhatsApp
          │
          ▼
-   Webhook (POST /webhook)
+  Tintim detecta a conversa
          │
          ▼
-   Identifica Cliente (multi-tenant)
+  Dispara webhook para o servidor
+  (conversa criada OU conversa alterada)
          │
          ▼
-   Valida Dados do Lead
+  Servidor identifica o cliente (multi-tenant)
          │
          ▼
-   Insere no Google Sheets (com retry)
-         │
-         ▼
-   ✅ Lead registrado na planilha do cliente
+  ┌──────────────────────────────────────┐
+  │  CONVERSA CRIADA (event_type ausente) │
+  │  → Insere nova linha na planilha      │
+  │  → Nome (Auto), Telefone, Data,       │
+  │    Produto, Status = "Lead Gerado"    │
+  └──────────────────────────────────────┘
+  ┌──────────────────────────────────────┐
+  │  CONVERSA ALTERADA (lead.update)     │
+  │  → Busca lead pelo telefone           │
+  │  → Atualiza Status, Data Fechamento,  │
+  │    Valor da Venda                     │
+  └──────────────────────────────────────┘
 ```
 
 ## ⚡ Quick Start
@@ -31,34 +40,28 @@ Meta WhatsApp Business API
 npm install
 ```
 
-### 2. Configurar variáveis de ambiente
-
-```bash
-# Editar o arquivo .env (já criado com valores padrão)
-# Altere os valores de:
-#   META_APP_SECRET → App Secret do seu aplicativo Meta
-#   META_VERIFY_TOKEN → Token customizado para verificação do webhook
-```
-
-### 3. Configurar Google Service Account
+### 2. Configurar Google Service Account
 
 1. Vá ao [Google Cloud Console](https://console.cloud.google.com/)
 2. Crie ou selecione um projeto
-3. Ative as APIs:
-   - **Google Sheets API**
-   - **Google Drive API**
-4. Crie uma **Service Account**:
-   - Vá em **IAM & Admin → Service Accounts**
-   - Clique em **Create Service Account**
-   - Dê um nome (ex: `whatsapp-leads-bot`)
-   - Clique em **Create and Continue** → **Done**
-5. Gere uma chave JSON:
-   - Clique na Service Account criada
-   - Vá em **Keys → Add Key → Create New Key → JSON**
-   - Salve o arquivo como `config/google-credentials.json`
-6. Compartilhe as pastas do Drive com o email da Service Account:
-   - O email terá formato: `nome@projeto.iam.gserviceaccount.com`
-   - Compartilhe **cada pasta de cliente** no Drive com esse email (permissão de **Editor**)
+3. Ative as APIs: **Google Sheets API** e **Google Drive API**
+4. Crie uma **Service Account** (IAM & Admin → Service Accounts)
+5. Gere uma chave JSON e salve como `config/google-credentials.json`
+6. Compartilhe a planilha do cliente com o email da Service Account como **Editor**
+
+### 3. Configurar variáveis de ambiente
+
+```bash
+cp .env.example .env
+```
+
+| Variável | Descrição | Obrigatório |
+|----------|-----------|:-----------:|
+| `GOOGLE_CREDENTIALS_JSON` | JSON da Service Account (para produção/Render) | Em produção |
+| `PORT` | Porta do servidor (padrão: 3000) | Não |
+| `MAX_RETRIES` | Tentativas de retry na API Google (padrão: 3) | Não |
+| `RETRY_DELAY` | Delay entre retries em ms (padrão: 2000) | Não |
+| `NODE_ENV` | `production` ativa HSTS | Não |
 
 ### 4. Configurar clientes
 
@@ -70,25 +73,22 @@ Edite `config/clients.json`:
     {
       "id": "meu-cliente",
       "name": "Nome do Cliente",
-      "whatsapp_business_account_id": "SEU_WABA_ID",
-      "phone_number_id": "SEU_PHONE_NUMBER_ID",
-      "google_drive_folder_id": "ID_DA_PASTA_NO_DRIVE",
-      "spreadsheet_name": "Leads WhatsApp",
-      "sheet_name": "Leads",
-      "products": ["Produto A", "Produto B"],
+      "tintim_instance_id": "UUID-DA-INSTANCIA-TINTIM",
+      "spreadsheet_id": "ID_DA_PLANILHA_GOOGLE",
+      "sheet_name": "auto",
       "active": true
     }
   ]
 }
 ```
 
-#### Como encontrar os IDs:
-
-| ID | Onde encontrar |
-|----|----------------|
-| `whatsapp_business_account_id` | Meta Business Suite → Configurações → WhatsApp → ID da Conta |
-| `phone_number_id` | Meta Business Suite → WhatsApp → Configurações do Telefone |
-| `google_drive_folder_id` | URL da pasta no Google Drive: `drive.google.com/drive/folders/ESTE_É_O_ID` |
+| Campo | Descrição |
+|-------|-----------|
+| `id` | Identificador único do cliente (slug) |
+| `name` | Nome legível do cliente |
+| `tintim_instance_id` | UUID da instância no Tintim (encontra em Configurações → Instância) |
+| `spreadsheet_id` | ID da planilha Google (na URL: `docs.google.com/spreadsheets/d/ESTE_ID/edit`) |
+| `sheet_name` | `"auto"` = cria abas mensais automáticas (Fevereiro-26), ou nome fixo da aba |
 
 ### 5. Iniciar o servidor
 
@@ -100,129 +100,186 @@ npm start
 npm run dev
 ```
 
-### 6. Configurar Webhook no Meta
+### 6. Configurar Webhooks no Tintim
 
-1. Vá ao [Meta for Developers](https://developers.facebook.com/)
-2. Selecione seu App → **WhatsApp → Configuration**
-3. Em **Webhook**:
-   - **Callback URL**: `https://seu-dominio.com/webhook`
-   - **Verify Token**: o mesmo valor do `META_VERIFY_TOKEN` no `.env`
-4. Clique em **Verify and Save**
-5. Em **Webhook Fields**, ative: `messages`
+No painel do Tintim, vá em **Configurações → Webhooks** e configure:
 
-> ⚠️ **Importante**: O Meta exige HTTPS. Use um serviço como [ngrok](https://ngrok.com/) para testes locais:
-> ```bash
-> ngrok http 3000
-> ```
+| Evento | URL |
+|--------|-----|
+| **Conversa criada** | `https://seu-dominio.onrender.com/webhook/tintim` |
+| **Conversa alterada** | `https://seu-dominio.onrender.com/webhook/tintim` |
+
+> Os demais campos (Nova mensagem, Alteração na origem) podem ficar vazios.
 
 ## 📁 Estrutura do Projeto
 
 ```
 whatsapp-leads-automation/
 ├── config/
-│   ├── clients.json              # Configuração dos clientes
-│   └── google-credentials.json   # Credenciais Google (não vai pro git)
+│   ├── clients.json              # Configuração dos clientes (multi-tenant)
+│   └── google-credentials.json   # Credenciais Google (NÃO vai pro Git)
 ├── src/
-│   ├── server.js                 # Servidor Express + endpoints
-│   ├── webhookHandler.js         # Processamento dos webhooks do Meta
-│   ├── sheetsService.js          # Integração Google Sheets + Drive
+│   ├── server.js                 # Servidor Express + endpoints + segurança
+│   ├── webhookHandler.js         # Processamento dos webhooks do Tintim
+│   ├── sheetsService.js          # Integração Google Sheets API v4
 │   ├── clientManager.js          # Gerenciamento multi-tenant
-│   ├── test.js                   # Script de teste
 │   └── utils/
 │       ├── logger.js             # Sistema de logging (Winston)
-│       └── validator.js          # Validação de dados e assinaturas
+│       ├── formatter.js          # Formatação BR (telefone, datas)
+│       └── validator.js          # Validação de payloads
+├── public/
+│   ├── index.html                # Dashboard administrativo
+│   ├── app.js                    # Lógica do dashboard
+│   └── styles.css                # Estilos do dashboard
 ├── logs/                         # Arquivos de log (auto-gerado)
 │   ├── combined.log              # Todos os logs
 │   ├── error.log                 # Apenas erros
-│   └── leads.log                 # Log de auditoria de leads
-├── .env                          # Variáveis de ambiente
+│   └── leads.log                 # Auditoria de leads processados
+├── .env                          # Variáveis de ambiente (local)
 ├── .env.example                  # Exemplo de .env
 ├── .gitignore
 ├── package.json
-└── README.md
+├── README.md
+└── ENTREGA.md                    # Guia de entrega para o cliente
 ```
 
 ## 🔌 Endpoints
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `GET` | `/health` | Health check com uptime, memória e nº de clientes |
-| `GET` | `/webhook` | Verificação do webhook pelo Meta |
-| `POST` | `/webhook` | Recebimento de leads |
-| `POST` | `/admin/reload` | Recarregar `clients.json` sem reiniciar |
+| `GET` | `/` | Dashboard administrativo |
+| `GET` | `/health` | Health check (usado pelo UptimeRobot) |
+| `POST` | `/webhook/tintim` | Recebimento de webhooks do Tintim |
 | `GET` | `/admin/clients` | Listar clientes configurados |
+| `POST` | `/admin/clients` | Adicionar novo cliente |
+| `DELETE` | `/admin/clients/:id` | Remover cliente |
+| `POST` | `/admin/reload` | Recarregar configurações sem reiniciar |
 | `GET` | `/admin/stats` | Estatísticas do sistema |
+
+## 📊 Estrutura da Planilha
+
+A planilha segue o padrão de colunas A-N:
+
+| Coluna | Campo | Preenchido por |
+|:------:|-------|:--------------:|
+| A | Nome do Lead | 🤖 Automação (com tag **(Auto)** em verde) |
+| B | Telefone | 🤖 Automação — formato `(XX)XXXXX-XXXX` |
+| C | Meio de Contato | 🤖 Automação — `"Meta Ads"` |
+| D | Data 1º Contato | 🤖 Automação — `DD/MM/YYYY` |
+| E | Data Fechamento | 🤖 Automação (quando status = venda) |
+| F | Valor Fechamento | 🤖 Automação — `R$ X.XXX,XX` |
+| G | Produto | 🤖 Automação (auto-detectado por keywords) |
+| H | Status Lead | 🤖 Automação — `"Lead Gerado"` → atualizado pelo Tintim |
+| I-M | DIA 1 a DIA 5 | ✍️ Equipe (preenchimento manual) |
+| N | Comentários | 🤖 Automação + ✍️ Equipe |
+
+### Abas Mensais
+
+Quando `sheet_name: "auto"`, o sistema cria abas no formato **Mês-AA** (ex: `Fevereiro-26`), com:
+- Cabeçalho formatado (fundo azul, texto branco, negrito)
+- Colunas auto-dimensionadas
+- Linha do cabeçalho congelada
+
+### Detecção Automática de Produto
+
+O sistema detecta o produto pela mensagem do lead ou dados de campanha UTM:
+
+| Keywords detectadas | Produto atribuído |
+|---------------------|-------------------|
+| bpc, loas, benefício, deficiência, idoso | `BPC/LOAS` |
+| maternidade, gestante, grávida, bebê | `SALÁRIO-MATERNIDADE` |
+| auxílio-doença, doença, afastamento | `AUXÍLIO-DOENÇA` |
+| aposentadoria, aposentar, inss | `APOSENTADORIA` |
+
+### Atualização de Status (Conversa Alterada)
+
+Quando o Tintim envia `event_type: "lead.update"`:
+
+1. O sistema busca o lead na planilha pelo **telefone** (matching flexível pelos últimos 9 dígitos)
+2. Atualiza a coluna **H (Status)** com o novo status
+3. Se for **status de venda** (venda, fechou, ganho, convertido, etc.) ou tiver `sale_amount`:
+   - Preenche **E (Data Fechamento)** com a data atual
+   - Preenche **F (Valor)** com o valor formatado em R$
+4. Atualiza **N (Comentários)** com registro da mudança
+
+## 🔒 Segurança
+
+| Medida | Status |
+|--------|:------:|
+| Credenciais Google via Service Account (não usa senha pessoal) | ✅ |
+| `google-credentials.json` fora do Git (`.gitignore`) | ✅ |
+| Suporte a credenciais via variável de ambiente (produção) | ✅ |
+| Security Headers (X-Content-Type, X-Frame, XSS-Protection, HSTS) | ✅ |
+| Rate Limiting no webhook (60 req/min por IP) | ✅ |
+| Limite de tamanho do payload JSON (1MB) | ✅ |
+| Permissions-Policy (câmera, microfone, geolocalização bloqueados) | ✅ |
+| HTTPS via Render (TLS automático) | ✅ |
+| **Autenticação no dashboard `/admin/*`** | ⚠️ Futuro |
+
+## 🌐 Deploy (Render)
+
+O sistema está configurado para deploy no Render (free tier):
+
+1. Conecte o repositório GitHub ao Render
+2. Configure as variáveis de ambiente:
+   - `GOOGLE_CREDENTIALS_JSON` = conteúdo do JSON da Service Account
+   - `NODE_ENV` = `production`
+3. Build Command: `npm install`
+4. Start Command: `npm start`
+
+### Keep-Alive com UptimeRobot
+
+O Render free tier dorme após 15min de inatividade. Para manter 24/7:
+
+1. Crie uma conta no [UptimeRobot](https://uptimerobot.com)
+2. Adicione um monitor HTTP(s):
+   - **URL**: `https://seu-app.onrender.com/health`
+   - **Intervalo**: 5 minutos
+3. Isso mantém o servidor ativo permanentemente
+
+> ⚠️ O free tier tem 750h/mês. Para garantir 24/7, tenha apenas **1 web service** ativo por conta.
 
 ## ➕ Adicionar Novo Cliente
 
 **Não precisa alterar código!** Apenas:
 
-1. Abra `config/clients.json`
-2. Adicione um novo objeto ao array `clients`:
-   ```json
-   {
-     "id": "novo-cliente",
-     "name": "Novo Cliente",
-     "whatsapp_business_account_id": "ID_WABA_DO_CLIENTE",
-     "phone_number_id": "PHONE_NUMBER_ID_DO_CLIENTE",
-     "google_drive_folder_id": "ID_DA_PASTA_NO_DRIVE",
-     "spreadsheet_name": "Leads WhatsApp",
-     "sheet_name": "Leads",
-     "products": ["Produto X"],
-     "active": true
-   }
-   ```
-3. Compartilhe a pasta do Google Drive com a Service Account
+1. Abra `config/clients.json` ou use o Dashboard
+2. Adicione com os campos: `id`, `name`, `tintim_instance_id`, `spreadsheet_id`, `sheet_name`
+3. Compartilhe a planilha com o email da Service Account
 4. O sistema recarrega automaticamente a cada 5 minutos, ou force:
    ```bash
-   curl -X POST http://localhost:3000/admin/reload
+   curl -X POST https://seu-app.onrender.com/admin/reload
    ```
 
-## 📊 Estrutura da Planilha
+## 📈 Escalabilidade
 
-A planilha é criada automaticamente com o seguinte formato:
-
-| Data/Hora | Nome | Telefone | Produto | Status | Origem | ID Lead | ID Mensagem Meta |
-|-----------|------|----------|---------|--------|--------|---------|------------------|
-| 10/02/2026 17:30:00 | João da Silva | 5511988887777 | Produto A | Novo Lead | WhatsApp Meta | uuid-xxx | wamid.xxx |
-
-## 🧪 Testar
-
-Com o servidor rodando:
-
-```bash
-npm test
-```
-
-Isso envia um webhook simulado para `http://localhost:3000/webhook`.
-
-## 🔒 Segurança
-
-- ✅ Credenciais do Google via Service Account (não usa senha pessoal)
-- ✅ Validação HMAC-SHA256 dos webhooks do Meta
-- ✅ Verify Token customizável
-- ✅ Credenciais fora do código (`.env` + `.gitignore`)
-- ✅ Raw body preservado para validação de assinatura
-- ⚠️ Em produção, use HTTPS (obrigatório pelo Meta)
-- ⚠️ Considere adicionar autenticação nos endpoints `/admin/*`
+- **Multi-tenant nativo**: Cada cliente tem sua própria planilha e instância Tintim
+- **Cache de planilhas**: IDs cacheados para evitar buscas repetidas
+- **Indexação O(1)**: Clientes indexados por `tintim_instance_id`
+- **Retry com backoff exponencial**: Falhas temporárias do Google tratadas automaticamente
+- **Abas mensais automáticas**: Sem intervenção manual para criar abas por mês
+- **Hot reload**: Novos clientes carregados sem reiniciar o servidor
+- **Logs rotativos**: Rotação automática (5MB combined, 10MB leads)
 
 ## 🐛 Troubleshooting
 
-### "Nenhum cliente encontrado para este webhook"
-- Verifique se o `whatsapp_business_account_id` ou `phone_number_id` no `clients.json` correspondem aos valores reais no Meta Business Suite
+### "Nenhum cliente para instanceId"
+- Verifique se o `tintim_instance_id` em `clients.json` corresponde ao UUID real no Tintim
 - Use `GET /admin/clients` para verificar os clientes carregados
 
-### "Erro ao buscar planilha no Drive"
-- Verifique se a pasta do Drive está compartilhada com o email da Service Account
-- Confirme que o `google_drive_folder_id` está correto
+### "Lead não encontrado na planilha" (atualização de status)
+- O sistema busca pelo telefone na aba do mês atual
+- Se o lead foi inserido em outro mês, a busca não encontrará (limitação conhecida)
+- Verifique nos logs se o telefone está no formato esperado
 
 ### "Erro ao inicializar Google Sheets Service"
-- Verifique se o arquivo `config/google-credentials.json` existe e é válido
+- Verifique se `GOOGLE_CREDENTIALS_JSON` está configurado no Render
+- Ou se `config/google-credentials.json` existe localmente
 - Confirme que as APIs Sheets e Drive estão ativadas no Google Cloud Console
 
 ### Verificar logs
 ```bash
-# Logs em tempo real
+# Logs em tempo real (local)
 tail -f logs/combined.log
 
 # Apenas erros
@@ -230,17 +287,9 @@ tail -f logs/error.log
 
 # Histórico de leads
 tail -f logs/leads.log
+
+# No Render: vá em Dashboard → seu serviço → Logs
 ```
-
-## 📈 Escalabilidade
-
-O sistema foi projetado para escalar:
-
-- **Cache de planilhas**: IDs de planilhas são cacheados para evitar buscas repetidas no Drive
-- **Indexação de clientes**: Clientes são indexados por WABA ID e Phone Number ID para lookup O(1)
-- **Retry com backoff exponencial**: Falhas temporárias do Google são tratadas automaticamente
-- **Hot reload**: Novos clientes são carregados sem reiniciar o servidor
-- **Logs rotativos**: Arquivos de log têm tamanho máximo e rotação automática
 
 ## 📝 Licença
 
