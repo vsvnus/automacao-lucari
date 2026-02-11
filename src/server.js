@@ -28,10 +28,51 @@ const PORT = process.env.PORT || 3000;
 // ====================================================
 // Middlewares
 // ====================================================
-app.use(express.json());
+
+// Limitar tamanho do payload JSON (previne payload bombs)
+app.use(express.json({ limit: '1mb' }));
+
+// Security Headers
+app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (process.env.NODE_ENV === 'production') {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+});
 
 // Servir Dashboard
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Rate limiter simples para webhook (previne flood)
+const webhookRateLimit = new Map();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minuto
+const RATE_LIMIT_MAX = 60; // máx 60 requests por minuto
+
+function checkWebhookRateLimit(ip) {
+    const now = Date.now();
+    const entry = webhookRateLimit.get(ip);
+    if (!entry || now - entry.start > RATE_LIMIT_WINDOW) {
+        webhookRateLimit.set(ip, { start: now, count: 1 });
+        return true;
+    }
+    entry.count++;
+    return entry.count <= RATE_LIMIT_MAX;
+}
+
+// Limpar rate limit a cada 5 min
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of webhookRateLimit) {
+        if (now - entry.start > RATE_LIMIT_WINDOW) {
+            webhookRateLimit.delete(ip);
+        }
+    }
+}, 5 * 60 * 1000);
 
 app.use((req, _res, next) => {
     logger.debug(`${req.method} ${req.path}`);
@@ -55,6 +96,13 @@ app.get('/health', (_req, res) => {
 // Webhook do Tintim (POST /webhook/tintim)
 // ====================================================
 app.post('/webhook/tintim', async (req, res) => {
+    // Rate limiting
+    const clientIp = req.ip || req.connection.remoteAddress;
+    if (!checkWebhookRateLimit(clientIp)) {
+        logger.warn('Rate limit excedido no webhook', { ip: clientIp });
+        return res.status(429).json({ error: 'Too many requests' });
+    }
+
     // Responder 200 rapidamente para o Tintim não retransmitir
     res.sendStatus(200);
 
