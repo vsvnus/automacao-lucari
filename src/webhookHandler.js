@@ -178,7 +178,7 @@ class WebhookHandler {
         // Formatar dados para a planilha
         const leadId = uuidv4();
         const leadData = {
-            name: payload.chatName || 'Não informado',      // Col A
+            name: (payload.chatName || 'Não informado') + ' (Auto)',  // Col A — tag de automação
             phone: formatPhoneBR(payload.phone),             // Col B
             origin: 'WhatsApp',                              // Col C
             date: formatDateBR(payload.moment),              // Col D

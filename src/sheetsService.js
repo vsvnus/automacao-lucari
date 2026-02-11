@@ -319,6 +319,9 @@ class SheetsService {
                     requestBody: { values: [row] },
                 });
 
+                // Formatar "(Auto)" em verde na célula do nome
+                await this.formatAutoTag(spreadsheetId, sheetName, nextRow, leadData.name);
+
                 logger.info(`Lead inserido em "${sheetName}"`, {
                     client: client.name,
                     phone: leadData.phone,
@@ -505,6 +508,86 @@ class SheetsService {
         });
 
         return { success: false, error: lastError?.message };
+    }
+
+    /**
+     * Retorna o sheetId numérico de uma aba pelo nome.
+     */
+    async getSheetIdByName(spreadsheetId, sheetName) {
+        try {
+            const spreadsheet = await this.sheets.spreadsheets.get({
+                spreadsheetId,
+                fields: 'sheets.properties',
+            });
+            const sheet = spreadsheet.data.sheets.find(
+                s => s.properties.title === sheetName
+            );
+            return sheet ? sheet.properties.sheetId : null;
+        } catch (error) {
+            logger.warn('Erro ao buscar sheetId', { error: error.message });
+            return null;
+        }
+    }
+
+    /**
+     * Formata a tag "(Auto)" em verde e negrito dentro da célula do nome.
+     * Usa textFormatRuns para rich text dentro de uma única célula.
+     */
+    async formatAutoTag(spreadsheetId, sheetName, row, fullName) {
+        try {
+            const autoTag = ' (Auto)';
+            const tagStart = fullName.length - autoTag.length;
+
+            if (tagStart < 0) return;
+
+            const sheetId = await this.getSheetIdByName(spreadsheetId, sheetName);
+            if (sheetId === null) return;
+
+            await this.sheets.spreadsheets.batchUpdate({
+                spreadsheetId,
+                requestBody: {
+                    requests: [{
+                        updateCells: {
+                            rows: [{
+                                values: [{
+                                    textFormatRuns: [
+                                        {
+                                            startIndex: 0,
+                                            format: {},  // Formato padrão para o nome
+                                        },
+                                        {
+                                            startIndex: tagStart,
+                                            format: {
+                                                foregroundColor: {
+                                                    red: 0.18,
+                                                    green: 0.72,
+                                                    blue: 0.30,
+                                                },
+                                                bold: true,
+                                                fontSize: 10,
+                                            },
+                                        },
+                                    ],
+                                }],
+                            }],
+                            fields: 'textFormatRuns',
+                            range: {
+                                sheetId,
+                                startRowIndex: row - 1,
+                                endRowIndex: row,
+                                startColumnIndex: 0,
+                                endColumnIndex: 1,
+                            },
+                        },
+                    }],
+                },
+            });
+
+            logger.debug(`Tag (Auto) formatada em verde na linha ${row}`);
+        } catch (error) {
+            // Não falhar a inserção por causa da formatação
+            logger.warn('Erro ao formatar tag (Auto)', { error: error.message });
+        }
     }
 
     /**
