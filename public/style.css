@@ -1586,3 +1586,59 @@ kbd {
     border-radius: 8px;
     font-weight: 600;
 }
+/* Tooltip Customizado para Erros */
+.error-icon-container {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 6px;
+    cursor: help;
+    color: #ef4444;
+}
+
+.error-icon-container:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    z-index: 100;
+    margin-bottom: 6px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    pointer-events: none;
+    max-width: 250px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.error-icon-container:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 6px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+    margin-bottom: -6px; /* Ajuste fino */
+    z-index: 100;
+}
+
+/* --- Warning Status (Yellow) --- */
+.badge-status.badge-warning {
+    color: var(--accent-orange);
+    background: var(--accent-orange-subtle);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.stat-icon-warning {
+    color: var(--accent-orange);
+    background: var(--accent-orange-subtle);
+}

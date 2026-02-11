@@ -165,6 +165,15 @@ class WebhookHandler {
             moment: payload.moment,
         });
 
+        // 1.5. Filtrar eventos desconhecidos (evitar ruído)
+        // Se event_type existir, DEVE ser um dos conhecidos. Se não existir (legado), passa.
+        const KNOWN_EVENTS = ['lead.create', 'lead.update'];
+        if (payload.event_type && !KNOWN_EVENTS.includes(payload.event_type)) {
+            logger.warn(`Evento ignorado pelo sistema: ${payload.event_type}`);
+            supabaseService.logWebhookEvent(payload, null, 'ignored_type');
+            return { success: true, message: `Evento ${payload.event_type} ignorado` };
+        }
+
         // 2. Identificar cliente pela instanceId (normalizado de account.code)
         const client = clientManager.findByInstanceId(payload.instanceId);
         if (!client) {
@@ -200,48 +209,78 @@ class WebhookHandler {
             eventType: payload.event_type,
         });
 
-        // Detectar produto automaticamente
-        const product = detectProduct(payload);
+        // Etapa 1: Detecção de Produto
+        let product = '';
+        try {
+            product = detectProduct(payload);
+        } catch (err) {
+            logger.warn('Falha na detecção de produto', { error: err.message });
+            supabaseService.logLead(client.id, {
+                eventType: 'new_lead',
+                phone: phone,
+                name: payload.chatName,
+                status: 'Erro',
+                result: 'failed',
+                error: `Falha técnica: Detecção de produto (${err.message})`
+            });
+        }
 
-        // Formatar dados para a planilha
+        // Etapa 2: Preparação de Dados
         const leadId = uuidv4();
         const leadData = {
-            name: (payload.chatName || formatPhoneBR(phone)) + ' (Auto)',  // Col A — tag de automação
-            phone: formatPhoneBR(phone),                     // Col B
-            origin: 'WhatsApp',                              // Col C
-            date: formatDateBR(payload.moment),              // Col D
-            product: product,                                // Col G (auto-detectado)
-            status: extractStatusName(payload) || 'Lead Gerado',  // Col H — status real do Tintim
-            // Extras para log
+            name: (payload.chatName || formatPhoneBR(phone)) + ' (Auto)',
+            phone: formatPhoneBR(phone),
+            origin: 'WhatsApp',
+            date: formatDateBR(payload.moment),
+            product: product,
+            status: extractStatusName(payload) || 'Lead Gerado',
             phoneRaw: phone,
             message: payload.text?.message || '',
             messageId: payload.messageId || '',
             leadId,
         };
 
-        // Inserir na planilha
-        const result = await sheetsService.insertLead(client, leadData);
+        // Etapa 3: Inserção na Planilha
+        let result = { success: false, error: 'Iniciado' };
+        try {
+            result = await sheetsService.insertLead(client, leadData);
+        } catch (err) {
+            // Captura erros de rede/api do Google
+            result = { success: false, error: `Erro de conexão com Google Sheets: ${err.message}` };
+        }
 
+        // Etapa 4: Logging do Resultado
         if (result.success) {
             logLead(leadData, 'SUCCESS', { client: client.name, sheet: result.sheetName });
             logger.info(`✅ Lead inserido: ${leadData.name} → ${client.name} (${result.sheetName})${product ? ` [${product}]` : ''}`);
-        } else {
-            logLead(leadData, 'FAILED', { client: client.name, error: result.error });
-            logger.error(`❌ Falha ao inserir lead`, { error: result.error });
-        }
 
-        // Registrar no Supabase (auditoria)
-        supabaseService.logLead(client.id, {
-            eventType: 'new_lead',
-            phone: payload.phone,
-            name: leadData.name,
-            status: 'Lead Gerado',
-            product: product,
-            origin: 'WhatsApp',
-            sheetName: result.sheetName,
-            result: result.success ? 'success' : 'failed',
-            error: result.error,
-        });
+            supabaseService.logLead(client.id, {
+                eventType: 'new_lead',
+                phone: payload.phone,
+                name: leadData.name,
+                status: 'Lead Gerado',
+                product: product,
+                origin: 'WhatsApp',
+                sheetName: result.sheetName,
+                result: 'success',
+                error: null,
+            });
+        } else {
+            const errorMsg = result.error || 'Erro desconhecido na inserção';
+            logLead(leadData, 'FAILED', { client: client.name, error: errorMsg });
+            logger.error(`❌ Falha ao inserir lead`, { error: errorMsg });
+
+            supabaseService.logLead(client.id, {
+                eventType: 'new_lead',
+                phone: payload.phone,
+                name: leadData.name,
+                status: 'Erro', // Status visual para o painel
+                product: product,
+                origin: 'WhatsApp',
+                result: 'failed',
+                error: `Falha Planilha: ${errorMsg}`, // Erro detalhado para o painel
+            });
+        }
 
         return { success: result.success, leadId, client: client.name, type: 'new_lead' };
     }
@@ -287,29 +326,89 @@ class WebhookHandler {
         }
 
         // Atualizar na planilha
-        const result = await sheetsService.updateLeadStatus(client, updateData);
+        let result = { success: false, error: 'Iniciado' };
+        try {
+            result = await sheetsService.updateLeadStatus(client, updateData);
+        } catch (err) {
+            result = { success: false, error: `Erro conexão Google Sheets: ${err.message}` };
+        }
+
+        // 2. Se falhar porque o lead não existe, TENTAR INSERIR COMO NOVO (Recuperação de Venda)
+        // Check robusto para erro de "não encontrado"
+        const isNotFound = result.error && (
+            result.error.includes('Lead não encontrado') ||
+            result.error.includes('não encontrado na planilha')
+        );
+
+        if (!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
+            logger.warn(`⚠️ Lead não encontrado para atualização de venda. Tentando inserir como novo...`, { phone: payload.phone });
+
+            const recoveryLeadData = {
+                name: (payload.chatName || formatPhoneBR(payload.phone)) + ' (Recuperado)',
+                phone: formatPhoneBR(payload.phone),
+                origin: 'WhatsApp',
+                date: formatDateBR(new Date().toISOString()), // Data atual
+                product: detectProduct(payload) || 'Indefinido',
+                status: `Venda (Cliente não encontrado)`, // Status especial
+                phoneRaw: payload.phone,
+                leadId: uuidv4(),
+                saleAmount: saleAmount ? parseFloat(saleAmount) : 0,
+                closeDate: formatDateBR(new Date().toISOString()),
+            };
+
+            let insertResult = { success: false, error: 'Iniciado recovery' };
+            try {
+                insertResult = await sheetsService.insertLead(client, recoveryLeadData);
+            } catch (err) {
+                insertResult = { success: false, error: `Erro inserção recovery: ${err.message}` };
+            }
+
+            if (insertResult.success) {
+                logger.info(`✅ Venda recuperada! Lead inserido: ${recoveryLeadData.name}`);
+
+                // Sobrescrever resultado para sucesso (com ressalva)
+                result = { success: true, sheetName: insertResult.sheetName, row: insertResult.row, recovered: true };
+
+                // Ajustar status para log
+                // statusName = `Venda (Recuperada)`;
+            } else {
+                logger.error(`❌ Falha ao tentar recuperar venda`, { error: insertResult.error });
+            }
+        }
 
         if (result.success) {
             logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ''} [linha ${result.row}]`);
+
+            supabaseService.logLead(client.id, {
+                eventType: 'status_update',
+                phone: payload.phone,
+                name: leadName,
+                status: statusName,
+                saleAmount: saleAmount ? parseFloat(saleAmount) : null,
+                sheetName: result.sheetName,
+                sheetRow: result.row,
+                result: 'success',
+                error: null,
+                details: result.recovered ? 'Venda inserida pois lead não existia na planilha' : null
+            });
+
         } else {
+            const errorMsg = result.error || 'Erro desconhecido na atualização';
             logger.warn(`⚠️ Não foi possível atualizar status`, {
-                error: result.error,
+                error: errorMsg,
                 phone: payload.phone,
             });
-        }
 
-        // Registrar no Supabase (auditoria)
-        supabaseService.logLead(client.id, {
-            eventType: 'status_update',
-            phone: payload.phone,
-            name: leadName,
-            status: statusName,
-            saleAmount: saleAmount ? parseFloat(saleAmount) : null,
-            sheetName: result.sheetName,
-            sheetRow: result.row,
-            result: result.success ? 'success' : 'failed',
-            error: result.error,
-        });
+            supabaseService.logLead(client.id, {
+                eventType: 'status_update',
+                phone: payload.phone,
+                name: leadName,
+                status: 'Erro Update',
+                saleAmount: saleAmount ? parseFloat(saleAmount) : null,
+                result: 'failed',
+                error: `Falha Planilha: ${errorMsg}`,
+            });
+        }
 
         return {
             success: result.success,
@@ -317,6 +416,7 @@ class WebhookHandler {
             type: 'status_update',
             status: statusName,
             saleAmount,
+            recovered: result.recovered
         };
     }
 }

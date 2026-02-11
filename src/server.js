@@ -94,6 +94,28 @@ app.get('/health', (_req, res) => {
 });
 
 // ====================================================
+// Dashboard & Investigação API
+// ====================================================
+
+app.get('/api/dashboard/stats', async (_req, res) => {
+    const stats = await supabaseService.getDashboardStats();
+    res.json(stats || { received: 0, processed: 0, errors: 0 });
+});
+
+app.get('/api/dashboard/search', async (req, res) => {
+    const { q } = req.query;
+    // Allow empty query for auto-load (returns recent 20)
+    const results = await supabaseService.searchLeads(q || '');
+    res.json(results);
+});
+
+app.get('/api/dashboard/errors', async (_req, res) => {
+    const errors = await supabaseService.getRecentErrors();
+    res.json(errors);
+});
+
+
+// ====================================================
 // Webhook do Tintim (POST /webhook/tintim)
 // ====================================================
 app.post('/webhook/tintim', async (req, res) => {
@@ -117,13 +139,27 @@ app.post('/webhook/tintim', async (req, res) => {
             eventType: payload.event_type,
         });
 
+        // 1. Logar evento RAW antes de qualquer processamento (Segurança/Audit)
+        // Isso garante que temos o registro mesmo que o processamento falhe
+        // Passamos null no clientSlug pois ainda não identificamos o cliente
+        await supabaseService.logWebhookEvent(payload, null, 'pending');
+
+        // 2. Processar
         const result = await webhookHandler.processWebhook(payload);
 
+        // 3. Atualizar status do evento com o resultado real (se sucesso ou erro tratado)
+        // O webhookHandler já faz log do resultado final, então aqui só logamos info
         if (result.success) {
             logger.info(`Lead processado com sucesso → ${result.client}`);
         }
     } catch (error) {
-        logger.error('Erro no processamento do webhook Tintim', { error: error.message });
+        logger.error('Erro CRÍTICO no processamento do webhook Tintim', { error: error.message });
+        // Tentar registrar o erro fatal no Supabase se possível
+        try {
+            await supabaseService.logWebhookEvent(req.body, null, `critical_error: ${error.message}`);
+        } catch (e) {
+            console.error('Falha dupla: não foi possível logar erro crítico', e);
+        }
     }
 });
 
@@ -142,6 +178,18 @@ app.post('/admin/clients', async (req, res) => {
     try {
         const newClient = await clientManager.addClient(req.body);
         res.status(201).json(newClient);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// Atualizar cliente
+app.put('/admin/clients/:id', async (req, res) => {
+    try {
+        const updated = await supabaseService.updateClient(req.params.id, req.body);
+        // Atualizar cache local se necessário
+        await clientManager.reloadClients();
+        res.json(updated);
     } catch (error) {
         res.status(400).json({ error: error.message });
     }
@@ -178,6 +226,12 @@ app.get('/admin/stats', async (_req, res) => {
 app.get('/admin/activity', async (_req, res) => {
     const logs = await supabaseService.getRecentLeads(20);
     res.json({ logs });
+});
+
+// Logs por Cliente
+app.get('/admin/clients/:id/logs', async (req, res) => {
+    const result = await supabaseService.getLeadsByClient(req.params.id, 50);
+    res.json(result);
 });
 
 // Webhook URL — get

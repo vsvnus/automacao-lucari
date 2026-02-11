@@ -61,12 +61,13 @@
                 </svg>
                 <span>Clientes</span>
             </a>
-            <a href="#" class="nav-item" data-section="activity">
+
+            <a href="#" class="nav-item" data-section="logs">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
                 </svg>
-                <span>Atividade</span>
+                <span>Logs do Sistema</span>
             </a>
             <a href="#" class="nav-item" data-section="settings">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -215,12 +216,12 @@
                 <div class="card">
                     <div class="card-header">
                         <h3>Atividade Recente</h3>
-                        <button class="btn-text" onclick="navigateTo('activity')">Ver historico →</button>
+                        <button class="btn-text" onclick="navigateTo('logs')">Ver detalhado →</button>
                     </div>
                     <div class="card-body">
                         <div class="activity-feed" id="dashboard-activity">
                             <div class="activity-empty">
-                                <p>Aguardando leads...</p>
+                                <p>Carregando...</p>
                             </div>
                         </div>
                     </div>
@@ -263,15 +264,27 @@
             </div>
         </section>
 
-        <!-- ===== SECTION: Activity ===== -->
-        <section class="page-section" id="section-activity">
+        <!-- ===== SECTION: Client Details (New) ===== -->
+        <section class="page-section" id="section-client-details">
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Log de Atividade</h2>
-                    <p class="page-subtitle">Acompanhe leads recebidos e eventos do sistema</p>
+                    <button class="btn-text" onclick="navigateTo('clients')"
+                        style="margin-bottom: 8px; padding-left: 0; color: var(--text-secondary);">
+                        ← Voltar para Clientes
+                    </button>
+                    <h2 class="page-title" id="client-details-title">Detalhes do Cliente</h2>
+                    <p class="page-subtitle" id="client-details-subtitle">Histórico de leads e integrações</p>
                 </div>
                 <div class="header-actions">
-                    <button class="btn-secondary" id="btn-refresh-logs">
+                    <button class="btn-primary" id="btn-edit-client">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                        <span>Editar</span>
+                    </button>
+                    <button class="btn-secondary" id="btn-refresh-client-logs">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="23 4 23 10 17 10"></polyline>
@@ -283,14 +296,64 @@
             </div>
 
             <div class="card">
-                <div class="log-stream" id="log-stream">
+                <div class="card-header">
+                    <h3>Últimos Leads</h3>
+                </div>
+                <!-- Reusing log-stream class for consistency -->
+                <div class="log-stream" id="client-logs-stream">
                     <div class="activity-empty">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                        </svg>
-                        <p>Nenhuma atividade registrada ainda.</p>
-                        <small>Leads recebidos aparecerão aqui automaticamente.</small>
+                        <p>Carregando histórico...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECTION: Activity (REMOVED) ===== -->
+
+        <!-- ===== SECTION: System Logs (Formerly Monitoring) ===== -->
+        <section class="page-section" id="section-logs">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Logs do Sistema</h2>
+                    <p class="page-subtitle">Histórico completo de eventos e webhooks</p>
+                </div>
+            </div>
+
+            <div class="dashboard-grid">
+                <!-- Search Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-body">
+                        <div class="search-container" style="display:flex; gap:10px;">
+                            <div style="flex:1; position:relative;">
+                                <input type="text" id="investigation-search" class="setting-input"
+                                    placeholder="Digite telefone (ex: 11999999999) ou nome..."
+                                    style="padding-left: 40px; height: 50px; font-size:1rem;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2"
+                                    style="position:absolute; left:12px; top:15px; color:var(--text-tertiary);">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                            </div>
+                            <button class="btn-primary" id="btn-investigate" style="height: 50px; padding: 0 30px;">
+                                Filtrar
+                            </button>
+                        </div>
+                        <small style="display:block; margin-top:8px; color:var(--text-tertiary);">
+                            Busca em tempo real no histórico dos últimos dias (recebidos e processados).
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <h3>Resultados</h3>
+                    </div>
+                    <div id="investigation-results" class="log-stream">
+                        <div class="activity-empty">
+                            <p>Carregando últimos registros...</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -347,7 +410,7 @@
                     <div class="settings-list">
                         <div class="setting-row">
                             <span class="setting-label">Versão</span>
-                            <span class="setting-value">1.0.0</span>
+                            <span class="setting-value">1.1.0</span>
                         </div>
                         <div class="setting-row">
                             <span class="setting-label">Ambiente</span>
@@ -412,8 +475,9 @@
                         </div>
                         <div class="shortcut-item">
                             <kbd>3</kbd>
-                            <span>Atividade</span>
+                            <span>Logs do Sistema</span>
                         </div>
+
                         <div class="shortcut-item">
                             <kbd>4</kbd>
                             <span>Configurações</span>
