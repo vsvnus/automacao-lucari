@@ -595,7 +595,8 @@ body {
 
 .dashboard-grid {
     display: grid;
-    grid-template-columns: 350px 1fr;
+    /* Aumenta a largura mínima da coluna lateral para dar mais espaço ao widget */
+    grid-template-columns: minmax(380px, 420px) 1fr;
     gap: 24px;
     align-items: start;
     margin-bottom: 40px;
@@ -656,16 +657,23 @@ body {
     font-size: 0.95rem;
     display: flex;
     align-items: center;
-    gap: 12px;
+    flex-wrap: wrap;
+    /* Permite que o badge caia para a próxima linha se apertar */
+    gap: 8px;
     margin-bottom: 4px;
+    line-height: 1.4;
 }
 
 .activity-subtitle {
     font-size: 0.85rem;
     color: var(--text-secondary);
-    white-space: nowrap;
+    /* Removemos white-space: nowrap para permitir quebra suave se necessário, ou mantemos com ellipsis melhor controlado */
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
+    word-break: break-all;
 }
 
 .activity-meta {
@@ -689,12 +697,17 @@ body {
 .badge-status {
     display: inline-flex;
     align-items: center;
-    padding: 2px 8px;
+    padding: 3px 8px;
     border-radius: 6px;
-    font-size: 0.7rem;
+    font-size: 0.65rem;
+    /* Um pouco menor para caber melhor */
+    line-height: 1;
+    font-weight: 700;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    flex-shrink: 0;
+    /* Impede que o badge seja esmagado */
 }
 
 .badge-new {

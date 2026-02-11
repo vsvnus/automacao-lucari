@@ -327,7 +327,7 @@ function renderLogItem(log, detailed = false) {
         </div>
         <div class="activity-content">
             <div class="activity-title">
-                ${escapeHtml(log.name || 'Sem nome')}
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${escapeHtml(log.name || 'Sem nome')}</span>
                 ${badge}
             </div>
             <div class="activity-subtitle">
