@@ -353,6 +353,161 @@ class SheetsService {
     }
 
     /**
+     * Busca um lead na planilha pelo telefone (coluna B).
+     * Usa normalização para comparar números independente da formatação.
+     * Retorna o número da linha (1-indexed) ou null se não encontrar.
+     */
+    async findLeadRowByPhone(spreadsheetId, sheetName, phone) {
+        try {
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!B:B`,
+            });
+
+            const values = response.data.values || [];
+
+            // Normalizar: extrair só dígitos para comparação
+            const normalizePhone = (p) => (p || '').replace(/\D/g, '');
+            const targetDigits = normalizePhone(phone);
+
+            // Pegar os últimos 8-9 dígitos (sem DDI/DDD) para match flexível
+            const targetTail = targetDigits.slice(-9);
+
+            for (let i = 1; i < values.length; i++) { // Pular cabeçalho (i=0)
+                const cellDigits = normalizePhone(values[i][0]);
+                const cellTail = cellDigits.slice(-9);
+
+                if (cellTail === targetTail && targetTail.length >= 8) {
+                    logger.info(`Lead encontrado na linha ${i + 1} pelo telefone ${phone}`);
+                    return i + 1; // Linha 1-indexed
+                }
+            }
+
+            return null; // Não encontrado
+        } catch (error) {
+            logger.warn(`Erro ao buscar lead por telefone em "${sheetName}"`, { error: error.message });
+            return null;
+        }
+    }
+
+    /**
+     * Atualiza o status de um lead existente na planilha.
+     * Atualiza colunas:
+     *   E: Data Fechamento
+     *   F: Valor de Fechamento
+     *   H: Status Lead
+     *   N: Comentários (append)
+     */
+    async updateLeadStatus(client, updateData) {
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const spreadsheetId = client.spreadsheet_id;
+                if (!spreadsheetId) {
+                    throw new Error(`Cliente "${client.name}": spreadsheet_id não configurado`);
+                }
+
+                const sheetName = await this.resolveSheetName(client);
+
+                // Buscar a linha do lead pelo telefone
+                const row = await this.findLeadRowByPhone(spreadsheetId, sheetName, updateData.phone);
+
+                if (!row) {
+                    logger.warn(`Lead não encontrado para atualização`, {
+                        phone: updateData.phone,
+                        client: client.name,
+                    });
+                    return { success: false, error: 'Lead não encontrado na planilha' };
+                }
+
+                // Preparar as atualizações em batch
+                const updates = [];
+
+                // Coluna E: Data Fechamento
+                if (updateData.closeDate) {
+                    updates.push({
+                        range: `'${sheetName}'!E${row}`,
+                        values: [[updateData.closeDate]],
+                    });
+                }
+
+                // Coluna F: Valor de Fechamento
+                if (updateData.saleAmount !== undefined && updateData.saleAmount !== null) {
+                    const formattedValue = typeof updateData.saleAmount === 'number'
+                        ? `R$ ${updateData.saleAmount.toFixed(2).replace('.', ',')}`
+                        : updateData.saleAmount;
+                    updates.push({
+                        range: `'${sheetName}'!F${row}`,
+                        values: [[formattedValue]],
+                    });
+                }
+
+                // Coluna H: Status Lead
+                if (updateData.status) {
+                    updates.push({
+                        range: `'${sheetName}'!H${row}`,
+                        values: [[updateData.status]],
+                    });
+                }
+
+                // Coluna N: Comentários (adicionar nota de atualização)
+                if (updateData.comment) {
+                    updates.push({
+                        range: `'${sheetName}'!N${row}`,
+                        values: [[updateData.comment]],
+                    });
+                }
+
+                if (updates.length === 0) {
+                    return { success: true, message: 'Nenhum campo para atualizar' };
+                }
+
+                // Executar todas as atualizações de uma vez
+                await this.sheets.spreadsheets.values.batchUpdate({
+                    spreadsheetId,
+                    requestBody: {
+                        valueInputOption: 'RAW',
+                        data: updates,
+                    },
+                });
+
+                logger.info(`Lead atualizado na linha ${row} de "${sheetName}"`, {
+                    client: client.name,
+                    phone: updateData.phone,
+                    status: updateData.status,
+                    saleAmount: updateData.saleAmount,
+                    attempt,
+                });
+
+                return { success: true, attempt, sheetName, row };
+            } catch (error) {
+                lastError = error;
+                logger.warn(`Tentativa ${attempt}/${MAX_RETRIES} de atualização falhou`, {
+                    client: client.name,
+                    error: error.message,
+                });
+
+                if (error.code === 404 || error.code === 400) {
+                    this.spreadsheetCache.clear();
+                }
+
+                if (attempt < MAX_RETRIES) {
+                    const delay = RETRY_DELAY * Math.pow(2, attempt - 1);
+                    await this.sleep(delay);
+                }
+            }
+        }
+
+        logger.error(`Falha ao atualizar lead após ${MAX_RETRIES} tentativas`, {
+            client: client.name,
+            error: lastError?.message,
+        });
+
+        return { success: false, error: lastError?.message };
+    }
+
+    /**
      * Encontra a próxima linha vazia na coluna A da aba.
      * Retorna o número da linha (1-indexed).
      */

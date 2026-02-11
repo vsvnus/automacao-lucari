@@ -1,15 +1,21 @@
 /**
  * WebhookHandler — Processa webhooks do Tintim
  * 
+ * Suporta dois tipos de evento:
+ *   1. CONVERSA CRIADA → Insere lead novo na planilha
+ *   2. CONVERSA ALTERADA → Atualiza status do lead existente
+ * 
  * Mapeamento para colunas da planilha:
  *   A: Nome do Lead     ← chatName
  *   B: Telefone          ← phone (formatado)
  *   C: Meio de Contato   ← "WhatsApp"
  *   D: Data 1º Contato   ← moment (formatado DD/MM/YYYY)
- *   E-F: Preenchidos pela equipe
+ *   E: Data Fechamento   ← Preenchido na atualização de status (venda)
+ *   F: Valor Fechamento  ← sale_amount do Tintim
  *   G: Produto           ← Auto-detectado por keywords ou campanha
- *   H: Status Lead       ← "Lead Gerado"
- *   I-N: Preenchidos pela equipe
+ *   H: Status Lead       ← "Lead Gerado" (novo) / Status do Tintim (atualização)
+ *   I-M: DIA 1-5         ← Preenchidos pela equipe
+ *   N: Comentários       ← Registro automático
  */
 
 const { v4: uuidv4 } = require('uuid');
@@ -21,8 +27,6 @@ const sheetsService = require('./sheetsService');
 
 /**
  * Regras de detecção de produto.
- * Verifica a mensagem do lead e dados de campanha/UTM.
- * Retorna o produto mais provável ou vazio se não identificar.
  */
 const PRODUCT_KEYWORDS = [
     { product: 'BPC/LOAS', keywords: ['bpc', 'loas', 'benefício', 'beneficio', 'deficiência', 'deficiencia', 'idoso'] },
@@ -30,6 +34,22 @@ const PRODUCT_KEYWORDS = [
     { product: 'AUXÍLIO-DOENÇA', keywords: ['auxílio-doença', 'auxilio doenca', 'doença', 'doenca', 'afastamento', 'incapacidade'] },
     { product: 'APOSENTADORIA', keywords: ['aposentadoria', 'aposentar', 'inss', 'tempo de contribuição'] },
 ];
+
+/**
+ * Status do Tintim que indicam VENDA/FECHAMENTO.
+ * Quando o Tintim envia esses status, atualizamos a planilha com data e valor.
+ */
+const SALE_STATUS_KEYWORDS = [
+    'venda', 'vendido', 'fechou', 'fechado', 'ganho', 'ganhou',
+    'convertido', 'contrato', 'assinado', 'pago', 'pagou',
+    'sale', 'won', 'closed',
+];
+
+function isSaleStatus(statusName) {
+    if (!statusName) return false;
+    const normalized = statusName.toLowerCase().trim();
+    return SALE_STATUS_KEYWORDS.some(kw => normalized.includes(kw));
+}
 
 function detectProduct(payload) {
     // 1. Tentar por dados de campanha/UTM (se o Tintim enviar)
@@ -67,6 +87,41 @@ function detectProduct(payload) {
     return '';
 }
 
+/**
+ * Detecta se o webhook é uma ATUALIZAÇÃO DE STATUS ou um NOVO LEAD.
+ * 
+ * O Tintim envia os mesmos campos, mas quando é "conversa alterada",
+ * o campo `status` vem preenchido com o novo status do lead.
+ * Quando é "conversa criada", geralmente não vem `status` ou vem vazio.
+ */
+function isStatusUpdate(payload) {
+    // Se tem status definido e não é o status inicial padrão
+    if (payload.status && typeof payload.status === 'object' && payload.status.name) {
+        return true;
+    }
+    if (payload.status && typeof payload.status === 'string' && payload.status.trim() !== '') {
+        return true;
+    }
+    // Verificar se tem sale_amount (indicativo de venda)
+    if (payload.sale_amount !== undefined && payload.sale_amount !== null) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Extrai o nome do status do payload (o Tintim pode mandar como string ou objeto)
+ */
+function extractStatusName(payload) {
+    if (payload.status && typeof payload.status === 'object') {
+        return payload.status.name || payload.status.label || payload.status.title || JSON.stringify(payload.status);
+    }
+    if (payload.status && typeof payload.status === 'string') {
+        return payload.status;
+    }
+    return null;
+}
+
 class WebhookHandler {
     async processWebhook(payload) {
         // LOG COMPLETO do payload (para debug e entender o que o Tintim manda)
@@ -89,15 +144,27 @@ class WebhookHandler {
             return { success: false, error: 'Cliente não encontrado' };
         }
 
-        logger.info(`Lead recebido para: ${client.name}`, {
+        // 3. Decidir: é novo lead ou atualização de status?
+        if (isStatusUpdate(payload)) {
+            return await this.processStatusUpdate(payload, client);
+        } else {
+            return await this.processNewLead(payload, client);
+        }
+    }
+
+    /**
+     * Processa um NOVO LEAD (conversa criada)
+     */
+    async processNewLead(payload, client) {
+        logger.info(`📥 Novo lead recebido para: ${client.name}`, {
             phone: payload.phone,
             chatName: payload.chatName,
         });
 
-        // 3. Detectar produto automaticamente
+        // Detectar produto automaticamente
         const product = detectProduct(payload);
 
-        // 4. Formatar dados para a planilha
+        // Formatar dados para a planilha
         const leadId = uuidv4();
         const leadData = {
             name: payload.chatName || 'Não informado',      // Col A
@@ -113,7 +180,7 @@ class WebhookHandler {
             leadId,
         };
 
-        // 5. Inserir na planilha
+        // Inserir na planilha
         const result = await sheetsService.insertLead(client, leadData);
 
         if (result.success) {
@@ -124,7 +191,62 @@ class WebhookHandler {
             logger.error(`❌ Falha ao inserir lead`, { error: result.error });
         }
 
-        return { success: result.success, leadId, client: client.name };
+        return { success: result.success, leadId, client: client.name, type: 'new_lead' };
+    }
+
+    /**
+     * Processa uma ATUALIZAÇÃO DE STATUS (conversa alterada)
+     */
+    async processStatusUpdate(payload, client) {
+        const statusName = extractStatusName(payload);
+        const saleAmount = payload.sale_amount || null;
+
+        logger.info(`🔄 Atualização de status para: ${client.name}`, {
+            phone: payload.phone,
+            chatName: payload.chatName,
+            newStatus: statusName,
+            saleAmount: saleAmount,
+        });
+
+        // Preparar dados de atualização
+        const updateData = {
+            phone: payload.phone, // Usar telefone bruto para busca flexível
+            status: statusName,
+        };
+
+        // Se é status de VENDA, adicionar data de fechamento e valor
+        if (isSaleStatus(statusName) || saleAmount) {
+            updateData.closeDate = formatDateBR(new Date().toISOString());
+            updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
+
+            if (saleAmount) {
+                updateData.saleAmount = parseFloat(saleAmount);
+                updateData.comment += ` | Valor: R$ ${parseFloat(saleAmount).toFixed(2).replace('.', ',')}`;
+            }
+        } else {
+            // Qualquer outro status (ex: "em atendimento", "sem interesse")
+            updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
+        }
+
+        // Atualizar na planilha
+        const result = await sheetsService.updateLeadStatus(client, updateData);
+
+        if (result.success) {
+            logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ''} [linha ${result.row}]`);
+        } else {
+            logger.warn(`⚠️ Não foi possível atualizar status`, {
+                error: result.error,
+                phone: payload.phone,
+            });
+        }
+
+        return {
+            success: result.success,
+            client: client.name,
+            type: 'status_update',
+            status: statusName,
+            saleAmount,
+        };
     }
 }
 
