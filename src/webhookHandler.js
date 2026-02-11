@@ -90,19 +90,19 @@ function detectProduct(payload) {
 /**
  * Detecta se o webhook é uma ATUALIZAÇÃO DE STATUS ou um NOVO LEAD.
  * 
- * O Tintim envia os mesmos campos, mas quando é "conversa alterada",
- * o campo `status` vem preenchido com o novo status do lead.
- * Quando é "conversa criada", geralmente não vem `status` ou vem vazio.
+ * Confirmado pela documentação do Tintim:
+ *   event_type: "lead.update" → conversa alterada (atualização de status)
+ *   event_type: "lead.create" ou ausente → conversa criada (novo lead)
  */
 function isStatusUpdate(payload) {
-    // Se tem status definido e não é o status inicial padrão
+    // Método principal: campo event_type
+    if (payload.event_type === 'lead.update') {
+        return true;
+    }
+    // Fallback: se tem status ou sale_amount mas sem event_type
     if (payload.status && typeof payload.status === 'object' && payload.status.name) {
         return true;
     }
-    if (payload.status && typeof payload.status === 'string' && payload.status.trim() !== '') {
-        return true;
-    }
-    // Verificar se tem sale_amount (indicativo de venda)
     if (payload.sale_amount !== undefined && payload.sale_amount !== null) {
         return true;
     }
@@ -110,14 +110,25 @@ function isStatusUpdate(payload) {
 }
 
 /**
- * Extrai o nome do status do payload (o Tintim pode mandar como string ou objeto)
+ * Extrai o nome do status do payload.
+ * Formato confirmado do Tintim: { status: { id: 123, name: "Nome" } }
  */
 function extractStatusName(payload) {
     if (payload.status && typeof payload.status === 'object') {
-        return payload.status.name || payload.status.label || payload.status.title || JSON.stringify(payload.status);
+        return payload.status.name || null;
     }
     if (payload.status && typeof payload.status === 'string') {
         return payload.status;
+    }
+    return null;
+}
+
+/**
+ * Extrai o ID do status (útil para mapeamento futuro)
+ */
+function extractStatusId(payload) {
+    if (payload.status && typeof payload.status === 'object') {
+        return payload.status.id || null;
     }
     return null;
 }
@@ -199,13 +210,18 @@ class WebhookHandler {
      */
     async processStatusUpdate(payload, client) {
         const statusName = extractStatusName(payload);
+        const statusId = extractStatusId(payload);
         const saleAmount = payload.sale_amount || null;
+        const leadName = payload.name || payload.chatName || 'Desconhecido';
 
         logger.info(`🔄 Atualização de status para: ${client.name}`, {
             phone: payload.phone,
-            chatName: payload.chatName,
+            leadName: leadName,
+            eventType: payload.event_type,
+            statusId: statusId,
             newStatus: statusName,
             saleAmount: saleAmount,
+            source: payload.source,
         });
 
         // Preparar dados de atualização
