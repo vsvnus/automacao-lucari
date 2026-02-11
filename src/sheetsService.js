@@ -427,6 +427,14 @@ class SheetsService {
                 // Preparar as atualizações em batch
                 const updates = [];
 
+                // Coluna A: Nome do Lead (se fornecido)
+                if (updateData.name) {
+                    updates.push({
+                        range: `'${sheetName}'!A${row}`,
+                        values: [[updateData.name]],
+                    });
+                }
+
                 // Coluna E: Data Fechamento
                 if (updateData.closeDate) {
                     updates.push({

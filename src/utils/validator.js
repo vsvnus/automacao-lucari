@@ -34,9 +34,7 @@ function normalizeTintimPayload(payload) {
     // ── chatName (nome do lead) ─────────────────────────────
     // Formato real: name | Formato legado: chatName
     if (!normalized.chatName) {
-        normalized.chatName = normalized.name
-            || normalized.account?.name
-            || null;
+        normalized.chatName = normalized.name || null;
     }
 
     // ── moment (data/hora do evento) ────────────────────────

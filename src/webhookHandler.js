@@ -206,7 +206,7 @@ class WebhookHandler {
         // Formatar dados para a planilha
         const leadId = uuidv4();
         const leadData = {
-            name: (payload.chatName || 'Não informado') + ' (Auto)',  // Col A — tag de automação
+            name: (payload.chatName || formatPhoneBR(phone)) + ' (Auto)',  // Col A — tag de automação
             phone: formatPhoneBR(phone),                     // Col B
             origin: 'WhatsApp',                              // Col C
             date: formatDateBR(payload.moment),              // Col D
@@ -269,6 +269,7 @@ class WebhookHandler {
         const updateData = {
             phone: payload.phone, // Usar telefone bruto para busca flexível
             status: statusName,
+            name: payload.chatName ? (payload.chatName + ' (Auto)') : undefined,
         };
 
         // Se é status de VENDA, adicionar data de fechamento e valor
