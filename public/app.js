@@ -1,0 +1,490 @@
+/**
+ * Automação de Planilhas — Lucari Digital
+ * Dashboard Application Script
+ */
+
+// ============================================
+// State & DOM Refs
+// ============================================
+const state = {
+    currentSection: 'dashboard',
+    clients: [],
+    activityLog: [],
+    webhookCount: 0,
+};
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const refs = {
+    modal: $('#modal-client'),
+    clientForm: $('#form-client'),
+    clientList: $('#client-list'),
+    sidebar: $('#sidebar'),
+    hamburger: $('#hamburger'),
+};
+
+// ============================================
+// Navigation
+// ============================================
+function navigateTo(section) {
+    state.currentSection = section;
+
+    // Update active section
+    $$('.page-section').forEach(el => el.classList.remove('active'));
+    const target = $(`#section-${section}`);
+    if (target) target.classList.add('active');
+
+    // Update sidebar active state
+    $$('.nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.section === section);
+    });
+
+    // Close mobile sidebar
+    closeMobileSidebar();
+
+    // Refresh section data
+    if (section === 'clients') loadClients();
+    if (section === 'settings') loadSettings();
+}
+
+// Sidebar navigation clicks
+$$('.nav-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+        e.preventDefault();
+        navigateTo(item.dataset.section);
+    });
+});
+
+// Mobile sidebar
+function openMobileSidebar() {
+    refs.sidebar.classList.add('open');
+    let backdrop = $('.sidebar-backdrop');
+    if (!backdrop) {
+        backdrop = document.createElement('div');
+        backdrop.className = 'sidebar-backdrop';
+        document.body.appendChild(backdrop);
+    }
+    backdrop.classList.add('visible');
+    backdrop.onclick = closeMobileSidebar;
+}
+
+function closeMobileSidebar() {
+    refs.sidebar.classList.remove('open');
+    const backdrop = $('.sidebar-backdrop');
+    if (backdrop) backdrop.classList.remove('visible');
+}
+
+refs.hamburger?.addEventListener('click', () => {
+    if (refs.sidebar.classList.contains('open')) {
+        closeMobileSidebar();
+    } else {
+        openMobileSidebar();
+    }
+});
+
+// ============================================
+// API Calls
+// ============================================
+async function fetchHealth() {
+    try {
+        const res = await fetch('/health');
+        if (!res.ok) throw new Error('offline');
+        const data = await res.json();
+        return data;
+    } catch {
+        return null;
+    }
+}
+
+async function fetchClients() {
+    try {
+        const res = await fetch('/admin/clients');
+        const data = await res.json();
+        return data.clients || [];
+    } catch {
+        return [];
+    }
+}
+
+async function addClient(clientData) {
+    const res = await fetch('/admin/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clientData),
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao salvar');
+    }
+    return await res.json();
+}
+
+async function removeClient(id) {
+    const res = await fetch(`/admin/clients/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Erro ao remover');
+}
+
+async function reloadSystem() {
+    const res = await fetch('/admin/reload', { method: 'POST' });
+    return res.ok;
+}
+
+// ============================================
+// Stats & Dashboard
+// ============================================
+async function updateDashboard() {
+    const health = await fetchHealth();
+    const statusIndicator = $('#server-status .status-indicator');
+    const statusText = $('#server-status-text');
+
+    if (health) {
+        // Stats
+        $('#stat-clients').textContent = health.clients || 0;
+        $('#stat-status').textContent = 'Operacional';
+        $('#stat-uptime').textContent = formatUptime(health.uptime);
+        $('#stat-webhooks').textContent = state.webhookCount;
+
+        // Server status
+        statusIndicator?.classList.add('online');
+        statusIndicator?.classList.remove('offline');
+        if (statusText) statusText.textContent = 'Online';
+
+        // Env badge
+        const badge = $('#env-badge');
+        if (badge) {
+            const isProd = health.env === 'production';
+            badge.textContent = isProd ? 'PROD' : 'DEV';
+            badge.style.background = isProd
+                ? 'var(--accent-green-subtle)'
+                : 'var(--accent-orange-subtle)';
+            badge.style.color = isProd
+                ? 'var(--accent-green)'
+                : 'var(--accent-orange)';
+        }
+    } else {
+        $('#stat-status').textContent = 'Offline';
+        statusIndicator?.classList.remove('online');
+        statusIndicator?.classList.add('offline');
+        if (statusText) statusText.textContent = 'Offline';
+    }
+
+    // Load dashboard previews
+    await loadDashboardClients();
+}
+
+function formatUptime(seconds) {
+    if (!seconds) return '—';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h`;
+    return `${h}h ${m}m`;
+}
+
+async function loadDashboardClients() {
+    const clients = await fetchClients();
+    state.clients = clients;
+
+    const container = $('#dashboard-clients-preview');
+    if (!container) return;
+
+    if (clients.length === 0) {
+        container.innerHTML = `
+            <div class="activity-empty">
+                <p>Nenhum cliente cadastrado</p>
+                <small>Clique em "Novo Cliente" para começar</small>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+    clients.slice(0, 5).forEach(client => {
+        const initial = getInitials(client.name);
+        const isActive = client.active !== false;
+        const div = document.createElement('div');
+        div.className = 'activity-item';
+        div.innerHTML = `
+            <div class="client-avatar" style="width:32px;height:32px;font-size:0.7rem;">${escapeHtml(initial)}</div>
+            <div class="activity-text">
+                <span class="message">${escapeHtml(client.name)}</span>
+                <span class="timestamp">${isActive ? '🟢 Ativo' : '🔴 Inativo'} · ${escapeHtml(client.id)}</span>
+            </div>`;
+        container.appendChild(div);
+    });
+}
+
+// ============================================
+// Client Management
+// ============================================
+async function loadClients() {
+    const clients = await fetchClients();
+    state.clients = clients;
+
+    const container = refs.clientList;
+    if (!container) return;
+
+    if (clients.length === 0) {
+        container.innerHTML = `
+            <div class="card" style="grid-column:1/-1">
+                <div class="activity-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    <p>Nenhum cliente cadastrado ainda</p>
+                    <small>Clique em "Novo Cliente" para adicionar seu primeiro cliente</small>
+                </div>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+    clients.forEach(client => {
+        const initial = getInitials(client.name);
+        const isActive = client.active !== false;
+        const instanceShort = client.tintim_instance_id
+            ? client.tintim_instance_id.substring(0, 12) + '...'
+            : 'Não configurado';
+        const sheetShort = client.spreadsheet_id
+            ? client.spreadsheet_id.substring(0, 16) + '...'
+            : 'Não configurado';
+
+        const card = document.createElement('div');
+        card.className = 'client-card';
+        card.innerHTML = `
+            <div class="client-card-header">
+                <div class="client-name-group">
+                    <div class="client-avatar">${escapeHtml(initial)}</div>
+                    <div>
+                        <div class="client-name">${escapeHtml(client.name)}</div>
+                        <span style="font-size:0.75rem;color:var(--text-tertiary);">${escapeHtml(client.id)}</span>
+                    </div>
+                </div>
+                <span class="client-status ${isActive ? 'active' : 'inactive'}">
+                    <span class="status-indicator ${isActive ? 'online' : 'offline'}" style="width:6px;height:6px;"></span>
+                    ${isActive ? 'Ativo' : 'Inativo'}
+                </span>
+            </div>
+            <div class="client-meta">
+                <div class="client-meta-row">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                    Instance: <code>${escapeHtml(instanceShort)}</code>
+                </div>
+                <div class="client-meta-row">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                    Planilha: <code>${escapeHtml(sheetShort)}</code>
+                </div>
+                <div class="client-meta-row">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    Aba: <code>${escapeHtml(client.sheet_name || 'auto')}</code>
+                </div>
+            </div>
+            <div class="client-card-footer">
+                <button class="btn-client-delete" onclick="handleDeleteClient('${escapeHtml(client.id)}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Remover
+                </button>
+            </div>`;
+        container.appendChild(card);
+    });
+}
+
+async function handleDeleteClient(id) {
+    if (!confirm(`Tem certeza que deseja remover o cliente "${id}"?`)) return;
+    try {
+        await removeClient(id);
+        showToast('Cliente removido com sucesso', 'success');
+        loadClients();
+        updateDashboard();
+    } catch (err) {
+        showToast('Erro ao remover cliente', 'error');
+    }
+}
+
+// ============================================
+// Modal
+// ============================================
+function openModal() {
+    refs.modal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => {
+        const firstInput = refs.modal.querySelector('input');
+        if (firstInput) firstInput.focus();
+    }, 100);
+}
+
+function closeModal() {
+    refs.modal.classList.remove('visible');
+    document.body.style.overflow = '';
+    refs.clientForm.reset();
+}
+
+$('#btn-add-client')?.addEventListener('click', openModal);
+
+// Close modal on backdrop click
+refs.modal?.addEventListener('click', (e) => {
+    if (e.target === refs.modal) closeModal();
+});
+
+// Close modal on Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && refs.modal.classList.contains('visible')) {
+        closeModal();
+    }
+});
+
+// Form submit
+refs.clientForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const clientData = {
+        id: $('#client-id').value.trim(),
+        name: $('#client-name').value.trim(),
+        tintim_instance_id: $('#client-instance').value.trim(),
+        spreadsheet_id: $('#client-sheet').value.trim(),
+        sheet_name: 'auto',
+        active: true,
+    };
+
+    try {
+        await addClient(clientData);
+        closeModal();
+        showToast(`Cliente "${clientData.name}" adicionado!`, 'success');
+        loadClients();
+        updateDashboard();
+    } catch (err) {
+        showToast(err.message || 'Erro ao salvar cliente', 'error');
+    }
+});
+
+// ============================================
+// Settings
+// ============================================
+function loadSettings() {
+    const url = `${window.location.origin}/webhook/tintim`;
+    const settingsUrl = $('#settings-webhook-url');
+    if (settingsUrl) settingsUrl.textContent = url;
+
+    const port = window.location.port || '80';
+    const portEl = $('#settings-port');
+    if (portEl) portEl.textContent = port;
+
+    const envEl = $('#settings-env');
+    if (envEl) envEl.textContent = window.location.hostname === 'localhost' ? 'Development' : 'Production';
+}
+
+$('#btn-clear-cache')?.addEventListener('click', async () => {
+    const ok = await reloadSystem();
+    showToast(ok ? 'Cache limpo com sucesso!' : 'Erro ao limpar cache', ok ? 'success' : 'error');
+});
+
+$('#btn-reload-config')?.addEventListener('click', async () => {
+    const ok = await reloadSystem();
+    showToast(ok ? 'Configurações recarregadas!' : 'Erro ao recarregar', ok ? 'success' : 'error');
+    if (ok) {
+        loadClients();
+        updateDashboard();
+    }
+});
+
+$('#btn-reload-system')?.addEventListener('click', async () => {
+    const ok = await reloadSystem();
+    showToast(ok ? 'Sistema recarregado!' : 'Erro ao recarregar', ok ? 'success' : 'error');
+    if (ok) updateDashboard();
+});
+
+// ============================================
+// Copy Webhook URL
+// ============================================
+$('#btn-copy-webhook')?.addEventListener('click', () => {
+    const url = $('#webhook-url').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = $('#btn-copy-webhook');
+        btn.classList.add('copied');
+        btn.querySelector('span').textContent = 'Copiado!';
+        showToast('URL copiada para a área de transferência', 'success');
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.querySelector('span').textContent = 'Copiar';
+        }, 2000);
+    });
+});
+
+// ============================================
+// Toast System
+// ============================================
+function showToast(message, type = 'info') {
+    const container = $('#toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+
+    const icons = {
+        success: '✅',
+        error: '❌',
+        info: 'ℹ️',
+    };
+
+    toast.innerHTML = `<span class="toast-icon">${icons[type] || icons.info}</span><span>${escapeHtml(message)}</span>`;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('hiding');
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// ============================================
+// Keyboard Shortcuts
+// ============================================
+document.addEventListener('keydown', (e) => {
+    // Skip if typing in an input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    // Skip if modal is open
+    if (refs.modal.classList.contains('visible')) return;
+
+    switch (e.key) {
+        case '1': navigateTo('dashboard'); break;
+        case '2': navigateTo('clients'); break;
+        case '3': navigateTo('activity'); break;
+        case '4': navigateTo('settings'); break;
+        case 'n':
+        case 'N':
+            navigateTo('clients');
+            setTimeout(openModal, 200);
+            break;
+    }
+});
+
+// ============================================
+// Utilities
+// ============================================
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0][0].toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// ============================================
+// Initialization
+// ============================================
+function init() {
+    // Set webhook URL
+    const webhookUrl = `${window.location.origin}/webhook/tintim`;
+    const urlEl = $('#webhook-url');
+    if (urlEl) urlEl.textContent = webhookUrl;
+
+    // Load everything
+    updateDashboard();
+    loadSettings();
+
+    // Auto-refresh every 30s
+    setInterval(updateDashboard, 30000);
+}
+
+init();

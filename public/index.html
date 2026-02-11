@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automação de Planilhas — Lucari Digital</title>
+    <meta name="description"
+        content="Sistema de automação de leads WhatsApp para Google Sheets. Gerencie múltiplos clientes em uma única plataforma.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+</head>
+
+<body>
+    <!-- Ambient Background -->
+    <div class="ambient-bg">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+                </svg>
+            </div>
+            <div class="brand-text">
+                <h1>Lucari Digital</h1>
+                <span>Automação de Planilhas</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-section="dashboard">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                <span>Dashboard</span>
+            </a>
+            <a href="#" class="nav-item" data-section="clients">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Clientes</span>
+            </a>
+            <a href="#" class="nav-item" data-section="activity">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+                <span>Atividade</span>
+            </a>
+            <a href="#" class="nav-item" data-section="settings">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                    </path>
+                </svg>
+                <span>Configurações</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="server-status" id="server-status">
+                <span class="status-indicator online"></span>
+                <div class="status-info">
+                    <span class="status-label">Servidor</span>
+                    <span class="status-value" id="server-status-text">Online</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Header -->
+    <header class="mobile-header" id="mobile-header">
+        <button class="hamburger" id="hamburger" aria-label="Menu">
+            <span></span><span></span><span></span>
+        </button>
+        <h1 class="mobile-title">Lucari Digital</h1>
+        <div class="mobile-status">
+            <span class="status-indicator online"></span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+
+        <!-- ===== SECTION: Dashboard ===== -->
+        <section class="page-section active" id="section-dashboard">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Dashboard</h2>
+                    <p class="page-subtitle">Visão geral do sistema de automação</p>
+                </div>
+                <div class="header-actions">
+                    <span class="badge" id="env-badge">DEV</span>
+                    <button class="btn-icon" id="btn-reload-system" title="Recarregar Sistema (Ctrl+R)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Webhook Banner -->
+            <div class="webhook-banner">
+                <div class="webhook-banner-content">
+                    <div class="webhook-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                    </div>
+                    <div class="webhook-details">
+                        <span class="webhook-label">URL do Webhook Tintim</span>
+                        <code id="webhook-url" class="webhook-url">carregando...</code>
+                    </div>
+                </div>
+                <button class="btn-copy" id="btn-copy-webhook" title="Copiar URL">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copiar</span>
+                </button>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-row">
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-clients">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="stat-clients">—</span>
+                        <span class="stat-label">Clientes Ativos</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-status">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="stat-status">—</span>
+                        <span class="stat-label">Status</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-uptime">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="stat-uptime">—</span>
+                        <span class="stat-label">Uptime</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-webhook">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="stat-webhooks">0</span>
+                        <span class="stat-label">Webhooks Hoje</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Cards -->
+            <div class="dashboard-grid">
+                <!-- Recent Clients -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Clientes Recentes</h3>
+                        <button class="btn-text" onclick="navigateTo('clients')">Ver todos →</button>
+                    </div>
+                    <div class="card-body" id="dashboard-clients-preview">
+                        <p class="empty-state">Carregando...</p>
+                    </div>
+                </div>
+
+                <!-- Activity Feed -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Atividade Recente</h3>
+                        <button class="btn-text" onclick="navigateTo('activity')">Ver tudo →</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="activity-feed" id="dashboard-activity">
+                            <div class="activity-empty">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                                </svg>
+                                <p>Aguardando leads do Tintim...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- How It Works -->
+            <div class="card flow-card">
+                <div class="card-header">
+                    <h3>Como Funciona</h3>
+                </div>
+                <div class="flow-steps">
+                    <div class="flow-step">
+                        <div class="flow-icon">📱</div>
+                        <span>Lead no WhatsApp</span>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-step">
+                        <div class="flow-icon">🔗</div>
+                        <span>Tintim Webhook</span>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-step">
+                        <div class="flow-icon">⚙️</div>
+                        <span>Processamento</span>
+                    </div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-step">
+                        <div class="flow-icon">📊</div>
+                        <span>Google Sheets</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECTION: Clients ===== -->
+        <section class="page-section" id="section-clients">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Gerenciar Clientes</h2>
+                    <p class="page-subtitle">Adicione, edite ou remova clientes do sistema</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-primary" id="btn-add-client">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        <span>Novo Cliente</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="clients-grid" id="client-list">
+                <p class="empty-state">Carregando clientes...</p>
+            </div>
+        </section>
+
+        <!-- ===== SECTION: Activity ===== -->
+        <section class="page-section" id="section-activity">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Log de Atividade</h2>
+                    <p class="page-subtitle">Acompanhe leads recebidos e eventos do sistema</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-secondary" id="btn-refresh-logs">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        <span>Atualizar</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="log-stream" id="log-stream">
+                    <div class="activity-empty">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                        <p>Nenhuma atividade registrada ainda.</p>
+                        <small>Leads recebidos aparecerão aqui automaticamente.</small>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECTION: Settings ===== -->
+        <section class="page-section" id="section-settings">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Configurações</h2>
+                    <p class="page-subtitle">Ajustes e informações do sistema</p>
+                </div>
+            </div>
+
+            <div class="settings-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Informações do Sistema</h3>
+                    </div>
+                    <div class="settings-list">
+                        <div class="setting-row">
+                            <span class="setting-label">Webhook URL</span>
+                            <code class="setting-value" id="settings-webhook-url">—</code>
+                        </div>
+                        <div class="setting-row">
+                            <span class="setting-label">Versão</span>
+                            <span class="setting-value">1.0.0</span>
+                        </div>
+                        <div class="setting-row">
+                            <span class="setting-label">Ambiente</span>
+                            <span class="setting-value" id="settings-env">—</span>
+                        </div>
+                        <div class="setting-row">
+                            <span class="setting-label">Porta</span>
+                            <span class="setting-value" id="settings-port">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Ações do Sistema</h3>
+                    </div>
+                    <div class="settings-actions">
+                        <button class="btn-action" id="btn-clear-cache">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path>
+                                <line x1="18" y1="9" x2="12" y2="15"></line>
+                                <line x1="12" y1="9" x2="18" y2="15"></line>
+                            </svg>
+                            <div>
+                                <span>Limpar Cache</span>
+                                <small>Forçar recarga de planilhas</small>
+                            </div>
+                        </button>
+                        <button class="btn-action" id="btn-reload-config">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                            </svg>
+                            <div>
+                                <span>Recarregar Configurações</span>
+                                <small>Reload de clients.json</small>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Atalhos de Teclado</h3>
+                    </div>
+                    <div class="shortcuts-list">
+                        <div class="shortcut-item">
+                            <kbd>1</kbd>
+                            <span>Dashboard</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>2</kbd>
+                            <span>Clientes</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>3</kbd>
+                            <span>Atividade</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>4</kbd>
+                            <span>Configurações</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>N</kbd>
+                            <span>Novo Cliente</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Adicionar Cliente -->
+    <div id="modal-client" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Adicionar Novo Cliente</h2>
+                <button class="btn-modal-close" onclick="closeModal()" aria-label="Fechar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <form id="form-client" autocomplete="off">
+                <div class="form-group">
+                    <label for="client-id">ID Único (slug)</label>
+                    <input type="text" id="client-id" placeholder="ex: minha-empresa" required>
+                    <small class="form-hint">Identificador único, sem espaços ou caracteres especiais</small>
+                </div>
+                <div class="form-group">
+                    <label for="client-name">Nome do Cliente</label>
+                    <input type="text" id="client-name" placeholder="Nome da Empresa" required>
+                </div>
+                <div class="form-group">
+                    <label for="client-instance">Tintim Instance ID</label>
+                    <input type="text" id="client-instance" placeholder="UUID do Tintim (instanceId)" required>
+                    <small class="form-hint">Encontre no painel do Tintim do cliente</small>
+                </div>
+                <div class="form-group">
+                    <label for="client-sheet">ID da Planilha Google Sheets</label>
+                    <input type="text" id="client-sheet" placeholder="ID extraído da URL da planilha" required>
+                    <small class="form-hint">Da URL:
+                        docs.google.com/spreadsheets/d/<strong>ESSE_ID</strong>/edit</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>Salvar Cliente</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,14 @@
+{
+    "clients": [
+        {
+            "id": "raydan-advogados",
+            "name": "Lucas Raydan Advogados",
+            "tintim_instance_id": "11e6d325-8435-4afc-b2e5-91aa0110678f",
+            "tintim_account_code": "",
+            "tintim_account_token": "",
+            "spreadsheet_id": "1Gj5sYOAchnulEPA-KUg6M6aqCqkFZ3rSWPO_7vNJGoY",
+            "sheet_name": "auto",
+            "active": true
+        }
+    ]
+}
