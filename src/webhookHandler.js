@@ -24,6 +24,7 @@ const { validateTintimPayload } = require('./utils/validator');
 const { formatPhoneBR, formatDateBR } = require('./utils/formatter');
 const clientManager = require('./clientManager');
 const sheetsService = require('./sheetsService');
+const supabaseService = require('./supabaseService');
 
 /**
  * Regras de detecção de produto.
@@ -144,6 +145,7 @@ class WebhookHandler {
         const validation = validateTintimPayload(payload);
         if (!validation.valid) {
             logger.warn('Payload inválido', { errors: validation.errors });
+            supabaseService.logWebhookEvent(payload, null, 'invalid');
             return { success: false, errors: validation.errors };
         }
 
@@ -152,15 +154,22 @@ class WebhookHandler {
         if (!client) {
             logger.warn('Nenhum cliente para instanceId', { instanceId: payload.instanceId });
             logLead(payload, 'NO_CLIENT', { instanceId: payload.instanceId });
+            supabaseService.logWebhookEvent(payload, null, 'no_client');
             return { success: false, error: 'Cliente não encontrado' };
         }
 
         // 3. Decidir: é novo lead ou atualização de status?
+        let result;
         if (isStatusUpdate(payload)) {
-            return await this.processStatusUpdate(payload, client);
+            result = await this.processStatusUpdate(payload, client);
         } else {
-            return await this.processNewLead(payload, client);
+            result = await this.processNewLead(payload, client);
         }
+
+        // 4. Salvar evento no Supabase (async, não bloqueia)
+        supabaseService.logWebhookEvent(payload, client.id, result.success ? 'success' : 'failed');
+
+        return result;
     }
 
     /**
@@ -201,6 +210,19 @@ class WebhookHandler {
             logLead(leadData, 'FAILED', { client: client.name, error: result.error });
             logger.error(`❌ Falha ao inserir lead`, { error: result.error });
         }
+
+        // Registrar no Supabase (auditoria)
+        supabaseService.logLead(client.id, {
+            eventType: 'new_lead',
+            phone: payload.phone,
+            name: leadData.name,
+            status: 'Lead Gerado',
+            product: product,
+            origin: 'WhatsApp',
+            sheetName: result.sheetName,
+            result: result.success ? 'success' : 'failed',
+            error: result.error,
+        });
 
         return { success: result.success, leadId, client: client.name, type: 'new_lead' };
     }
@@ -255,6 +277,19 @@ class WebhookHandler {
                 phone: payload.phone,
             });
         }
+
+        // Registrar no Supabase (auditoria)
+        supabaseService.logLead(client.id, {
+            eventType: 'status_update',
+            phone: payload.phone,
+            name: leadName,
+            status: statusName,
+            saleAmount: saleAmount ? parseFloat(saleAmount) : null,
+            sheetName: result.sheetName,
+            sheetRow: result.row,
+            result: result.success ? 'success' : 'failed',
+            error: result.error,
+        });
 
         return {
             success: result.success,

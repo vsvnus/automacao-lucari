@@ -21,6 +21,7 @@ const { logger } = require('./utils/logger');
 const webhookHandler = require('./webhookHandler');
 const clientManager = require('./clientManager');
 const sheetsService = require('./sheetsService');
+const supabaseService = require('./supabaseService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -130,14 +131,15 @@ app.post('/webhook/tintim', async (req, res) => {
 // ====================================================
 
 // Listar clientes
-app.get('/admin/clients', (_req, res) => {
-    res.json({ clients: clientManager.getAllClients() });
+app.get('/admin/clients', async (_req, res) => {
+    const clients = await clientManager.getAllClients();
+    res.json({ clients });
 });
 
 // Adicionar cliente
-app.post('/admin/clients', (req, res) => {
+app.post('/admin/clients', async (req, res) => {
     try {
-        const newClient = clientManager.addClient(req.body);
+        const newClient = await clientManager.addClient(req.body);
         res.status(201).json(newClient);
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -145,9 +147,9 @@ app.post('/admin/clients', (req, res) => {
 });
 
 // Deletar cliente
-app.delete('/admin/clients/:id', (req, res) => {
+app.delete('/admin/clients/:id', async (req, res) => {
     try {
-        clientManager.deleteClient(req.params.id);
+        await clientManager.deleteClient(req.params.id);
         res.sendStatus(204);
     } catch (error) {
         res.status(404).json({ error: error.message });
@@ -155,10 +157,10 @@ app.delete('/admin/clients/:id', (req, res) => {
 });
 
 // Recarregar configurações
-app.post('/admin/reload', (_req, res) => {
-    clientManager.reloadClients();
+app.post('/admin/reload', async (_req, res) => {
+    await clientManager.reloadClients();
     sheetsService.clearCache();
-    res.json({ success: true });
+    res.json({ success: true, dataSource: clientManager.getStats().dataSource });
 });
 
 app.get('/admin/stats', (_req, res) => {
@@ -170,13 +172,21 @@ app.get('/admin/stats', (_req, res) => {
 // ====================================================
 async function startServer() {
     try {
-        clientManager.loadClients();
+        // 1. Inicializar Supabase (se configurado)
+        supabaseService.initialize();
+
+        // 2. Carregar clientes (Supabase → fallback JSON)  
+        await clientManager.loadClients();
+
+        // 3. Inicializar Google Sheets
         await sheetsService.initialize();
 
         app.listen(PORT, () => {
+            const stats = clientManager.getStats();
             logger.info(`🚀 Servidor rodando em http://localhost:${PORT}`);
             logger.info(`📡 Webhook Tintim: http://localhost:${PORT}/webhook/tintim`);
             logger.info(`📊 Dashboard: http://localhost:${PORT}`);
+            logger.info(`💾 Fonte de dados: ${stats.dataSource}`);
         });
 
         // Auto-reload config every 5 min
