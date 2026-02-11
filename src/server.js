@@ -164,8 +164,20 @@ app.post('/admin/reload', async (_req, res) => {
     res.json({ success: true, dataSource: clientManager.getStats().dataSource });
 });
 
-app.get('/admin/stats', (_req, res) => {
-    res.json(clientManager.getStats());
+app.get('/admin/stats', async (_req, res) => {
+    const stats = clientManager.getStats();
+
+    // Buscar contagem total de leads (se disponível no Supabase)
+    const totalLeads = await supabaseService.getTotalLeads(); // Vou criar esse método a seguir
+    stats.totalLeads = totalLeads;
+
+    res.json(stats);
+});
+
+// Atividade Recente (Leads)
+app.get('/admin/activity', async (_req, res) => {
+    const logs = await supabaseService.getRecentLeads(20);
+    res.json({ logs });
 });
 
 // Webhook URL — get

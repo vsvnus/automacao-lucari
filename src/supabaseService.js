@@ -215,6 +215,57 @@ class SupabaseService {
         }
     }
 
+    /**
+     * Busca os últimos logs de leads (atividade recente) para o dashboard.
+     */
+    async getRecentLeads(limit = 20) {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const { data, error } = await this.client
+                .from('leads_log')
+                .select(`
+                    *,
+                    clients ( name )
+                `)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+
+            if (error) throw error;
+
+            return data.map(log => ({
+                id: log.id,
+                client: log.clients?.name || 'Desconhecido',
+                phone: log.phone,
+                name: log.lead_name,
+                status: log.status,
+                event_type: log.event_type,
+                timestamp: log.created_at,
+                result: log.processing_result,
+            }));
+        } catch (error) {
+            logger.error('Erro ao buscar logs recentes', { error: error.message });
+            return [];
+        }
+    }
+
+    async getTotalLeads() {
+        if (!this.isAvailable()) return 0;
+
+        try {
+            const { count, error } = await this.client
+                .from('leads_log')
+                .select('*', { count: 'exact', head: true })
+                .eq('processing_result', 'success') // Só leads processados com sucesso
+                .eq('event_type', 'new_lead'); // Apenas novos leads, não updates
+
+            if (error) throw error;
+            return count;
+        } catch (error) {
+            return 0;
+        }
+    }
+
     // ============================================================
     // WEBHOOK EVENTS (debug/histórico)
     // ============================================================

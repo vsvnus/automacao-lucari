@@ -46,6 +46,7 @@ function navigateTo(section) {
     // Refresh section data
     if (section === 'clients') loadClients();
     if (section === 'settings') loadSettings();
+    if (section === 'activity') loadDashboardActivity();
 }
 
 // Sidebar navigation clicks
@@ -107,6 +108,25 @@ async function fetchClients() {
     }
 }
 
+async function fetchActivity() {
+    try {
+        const res = await fetch('/admin/activity');
+        const data = await res.json();
+        return data.logs || [];
+    } catch {
+        return [];
+    }
+}
+
+async function fetchStats() {
+    try {
+        const res = await fetch('/admin/stats');
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
 async function addClient(clientData) {
     const res = await fetch('/admin/clients', {
         method: 'POST',
@@ -135,6 +155,8 @@ async function reloadSystem() {
 // ============================================
 async function updateDashboard() {
     const health = await fetchHealth();
+    const stats = await fetchStats();
+
     const statusIndicator = $('#server-status .status-indicator');
     const statusText = $('#server-status-text');
 
@@ -143,7 +165,10 @@ async function updateDashboard() {
         $('#stat-clients').textContent = health.clients || 0;
         $('#stat-status').textContent = 'Operacional';
         $('#stat-uptime').textContent = formatUptime(health.uptime);
-        $('#stat-webhooks').textContent = state.webhookCount;
+
+        // Usar totalLeads do endpoint de stats, ou manter webhookCount local como fallback
+        const totalLeads = stats?.totalLeads !== undefined ? stats.totalLeads : state.webhookCount;
+        $('#stat-webhooks').textContent = totalLeads;
 
         // Server status
         statusIndicator?.classList.add('online');
@@ -153,8 +178,8 @@ async function updateDashboard() {
         // Env badge
         const badge = $('#env-badge');
         if (badge) {
-            const isProd = health.env === 'production';
-            badge.textContent = isProd ? 'PROD' : 'DEV';
+            const isProd = health.uptime > 0; // Simplificação, health não retorna env as vezes
+            badge.textContent = window.location.hostname === 'localhost' ? 'DEV' : 'PROD';
             badge.style.background = isProd
                 ? 'var(--accent-green-subtle)'
                 : 'var(--accent-orange-subtle)';
@@ -171,6 +196,7 @@ async function updateDashboard() {
 
     // Load dashboard previews
     await loadDashboardClients();
+    await loadDashboardActivity();
 }
 
 function formatUptime(seconds) {
@@ -212,6 +238,90 @@ async function loadDashboardClients() {
             </div>`;
         container.appendChild(div);
     });
+}
+
+async function loadDashboardActivity() {
+    const logs = await fetchActivity();
+    state.activityLog = logs;
+
+    // 1. Dashboard Preview (Top 5)
+    const dashboardContainer = $('#dashboard-activity');
+    if (dashboardContainer) {
+        if (logs.length === 0) {
+            dashboardContainer.innerHTML = `
+                <div class="activity-empty">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                    </svg>
+                    <p>Aguardando leads...</p>
+                </div>`;
+        } else {
+            dashboardContainer.innerHTML = '';
+            logs.slice(0, 5).forEach(log => {
+                dashboardContainer.appendChild(renderLogItem(log));
+            });
+        }
+    }
+
+    // 2. Full Activity Feed
+    const feedContainer = $('#log-stream');
+    if (feedContainer && state.currentSection === 'activity') {
+        if (logs.length === 0) {
+            feedContainer.innerHTML = `
+                <div class="activity-empty">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                    </svg>
+                    <p>Nenhuma atividade registrada ainda.</p>
+                </div>`;
+        } else {
+            feedContainer.innerHTML = '';
+            logs.forEach(log => {
+                feedContainer.appendChild(renderLogItem(log, true));
+            });
+        }
+    }
+}
+
+function renderLogItem(log, detailed = false) {
+    const div = document.createElement('div');
+    div.className = 'activity-item';
+
+    // Sucesso, warning ou erro
+    let resultType = 'success';
+    if (log.result !== 'success' && log.result !== 'SUCCESS') resultType = 'error';
+
+    const isUpdate = log.event_type === 'lead.update' || log.event_type === 'status_update';
+
+    // Ícone baseado no tipo
+    let icon = '📩';
+    if (isUpdate) icon = '🔄';
+    if (resultType === 'error') icon = '⚠️';
+
+    const timestamp = new Date(log.timestamp);
+    const time = timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const fullDate = timestamp.toLocaleDateString('pt-BR') + ' ' + time;
+
+    div.innerHTML = `
+        <div class="client-avatar" style="font-size:1.2rem; display:flex; align-items:center; justify-content:center; background: ${resultType === 'success' ? 'var(--accent-green-subtle)' : 'var(--accent-orange-subtle)'}; color: ${resultType === 'success' ? 'var(--accent-green)' : 'var(--accent-orange)'}">
+            ${icon}
+        </div>
+        <div class="activity-text">
+            <span class="message">
+                <strong>${escapeHtml(log.client)}</strong>
+                <span style="opacity:0.8">${isUpdate ? 'atualizou status' : 'recebeu lead'}</span>
+            </span>
+            <span class="timestamp">${time} · ${escapeHtml(log.name || 'Sem nome')} <span style="opacity:0.6">(${formatPhoneDisplay(log.phone)})</span></span>
+            ${detailed ? `<small style="display:block;margin-top:4px;opacity:0.6;font-size:0.75rem">${fullDate} · Status: ${log.status || '-'}</small>` : ''}
+        </div>
+    `;
+    return div;
+}
+
+function formatPhoneDisplay(phone) {
+    if (!phone) return '';
+    return phone.replace(/(\d{2})(\d{2})(\d{5})(\d{4})/, '+$1 ($2) $3-$4')
+        .replace(/(\d{2})(\d{2})(\d{4})(\d{4})/, '+$1 ($2) $3-$4');
 }
 
 // ============================================
