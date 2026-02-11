@@ -9,6 +9,14 @@
             "spreadsheet_id": "1Gj5sYOAchnulEPA-KUg6M6aqCqkFZ3rSWPO_7vNJGoY",
             "sheet_name": "auto",
             "active": true
+        },
+        {
+            "id": "Rotta-do-valle",
+            "name": "Rotta do Vale Advogadas",
+            "tintim_instance_id": "05eb6b11-2681-498b-a09b-1f226038acf5",
+            "spreadsheet_id": "1n5DWX26nQIPwN4HvLzd90HrB4AXkd3UQiLj6mcJgBp0",
+            "sheet_name": "auto",
+            "active": true
         }
     ]
 }
