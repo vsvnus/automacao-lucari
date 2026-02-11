@@ -111,9 +111,10 @@ app.post('/webhook/tintim', async (req, res) => {
         const payload = req.body;
 
         logger.info('Webhook do Tintim recebido', {
-            phone: payload.phone,
-            instanceId: payload.instanceId,
-            chatName: payload.chatName,
+            phone: payload.phone || payload.phone_e164,
+            instanceId: payload.instanceId || payload.account?.code,
+            chatName: payload.chatName || payload.name,
+            eventType: payload.event_type,
         });
 
         const result = await webhookHandler.processWebhook(payload);

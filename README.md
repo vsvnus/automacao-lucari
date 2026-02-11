@@ -105,6 +105,15 @@ No painel do Tintim, vá em **Configurações → Webhooks** e configure:
 
 > Os demais campos (Nova mensagem, Alteração na origem) podem ficar vazios.
 
+### 3. Configuração do Webhook
+Configure no Tintim a URL: `https://[seu-domínio]/webhook/tintim`.
+
+O sistema suporta **dois formatos de payload**:
+1. **Webhook Real (Tintim):** Usa `account.code` como identificador e `lead.create` como evento.
+2. **API Legada:** Usa `instanceId` na raiz.
+
+**Importante:** Se o Tintim enviar o nome do lead como `null`, o sistema usará o nome da conta (`account.name`) como fallback para garantir identificação na planilha.
+
 ## 📁 Estrutura do Projeto
 
 ```

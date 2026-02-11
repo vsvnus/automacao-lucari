@@ -93,18 +93,23 @@ function detectProduct(payload) {
  * 
  * Confirmado pela documentação do Tintim:
  *   event_type: "lead.update" → conversa alterada (atualização de status)
- *   event_type: "lead.create" ou ausente → conversa criada (novo lead)
+ *   event_type: "lead.create" → conversa criada (novo lead)
+ * 
+ * IMPORTANTE: O payload de lead.create TAMBÉM tem campo status (ex: "Fez Contato"),
+ * por isso devemos checar event_type PRIMEIRO antes de usar heurísticas.
  */
 function isStatusUpdate(payload) {
-    // Método principal: campo event_type
+    // Método principal: campo event_type (prioridade máxima)
+    if (payload.event_type === 'lead.create') {
+        return false; // Explicitamente NÃO é update
+    }
     if (payload.event_type === 'lead.update') {
         return true;
     }
-    // Fallback: se tem status ou sale_amount mas sem event_type
-    if (payload.status && typeof payload.status === 'object' && payload.status.name) {
-        return true;
-    }
-    if (payload.sale_amount !== undefined && payload.sale_amount !== null) {
+
+    // Fallback (sem event_type): heurísticas para formato legado
+    // Só considerar update se tem sale_amount > 0 (indicando venda)
+    if (payload.sale_amount && parseFloat(payload.sale_amount) > 0) {
         return true;
     }
     return false;
@@ -135,21 +140,32 @@ function extractStatusId(payload) {
 }
 
 class WebhookHandler {
-    async processWebhook(payload) {
+    async processWebhook(rawPayload) {
         // LOG COMPLETO do payload (para debug e entender o que o Tintim manda)
         logger.info('📦 Payload COMPLETO do Tintim:', {
-            fullPayload: JSON.stringify(payload),
+            fullPayload: JSON.stringify(rawPayload),
         });
 
-        // 1. Validar payload
-        const validation = validateTintimPayload(payload);
+        // 1. Validar e NORMALIZAR payload
+        const validation = validateTintimPayload(rawPayload);
         if (!validation.valid) {
             logger.warn('Payload inválido', { errors: validation.errors });
-            supabaseService.logWebhookEvent(payload, null, 'invalid');
+            supabaseService.logWebhookEvent(rawPayload, null, 'invalid');
             return { success: false, errors: validation.errors };
         }
 
-        // 2. Identificar cliente pela instanceId
+        // Usar payload normalizado (campos canônicos injetados)
+        const payload = validation.payload;
+
+        logger.info('📋 Payload normalizado:', {
+            instanceId: payload.instanceId,
+            chatName: payload.chatName,
+            phone: payload.phone || payload.phone_e164,
+            eventType: payload.event_type,
+            moment: payload.moment,
+        });
+
+        // 2. Identificar cliente pela instanceId (normalizado de account.code)
         const client = clientManager.findByInstanceId(payload.instanceId);
         if (!client) {
             logger.warn('Nenhum cliente para instanceId', { instanceId: payload.instanceId });
@@ -176,9 +192,12 @@ class WebhookHandler {
      * Processa um NOVO LEAD (conversa criada)
      */
     async processNewLead(payload, client) {
+        const phone = payload.phone || payload.phone_e164?.replace('+', '') || '';
+
         logger.info(`📥 Novo lead recebido para: ${client.name}`, {
-            phone: payload.phone,
+            phone: phone,
             chatName: payload.chatName,
+            eventType: payload.event_type,
         });
 
         // Detectar produto automaticamente
@@ -188,13 +207,13 @@ class WebhookHandler {
         const leadId = uuidv4();
         const leadData = {
             name: (payload.chatName || 'Não informado') + ' (Auto)',  // Col A — tag de automação
-            phone: formatPhoneBR(payload.phone),             // Col B
+            phone: formatPhoneBR(phone),                     // Col B
             origin: 'WhatsApp',                              // Col C
             date: formatDateBR(payload.moment),              // Col D
             product: product,                                // Col G (auto-detectado)
-            status: 'Lead Gerado',                           // Col H
+            status: extractStatusName(payload) || 'Lead Gerado',  // Col H — status real do Tintim
             // Extras para log
-            phoneRaw: payload.phone,
+            phoneRaw: phone,
             message: payload.text?.message || '',
             messageId: payload.messageId || '',
             leadId,
