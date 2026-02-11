@@ -358,18 +358,83 @@ refs.clientForm?.addEventListener('submit', async (e) => {
 // ============================================
 // Settings
 // ============================================
-function loadSettings() {
-    const url = `${window.location.origin}/webhook/tintim`;
-    const settingsUrl = $('#settings-webhook-url');
-    if (settingsUrl) settingsUrl.textContent = url;
+async function loadSettings() {
+    // Carregar webhook URL do backend (Supabase)
+    try {
+        const res = await fetch('/admin/settings/webhook-url');
+        const data = await res.json();
+        const webhookInput = $('#settings-webhook-input');
+        const dashboardUrl = $('#webhook-url');
+        if (webhookInput) webhookInput.value = data.webhook_url || '';
+        if (dashboardUrl) dashboardUrl.textContent = data.webhook_url || '';
+    } catch {
+        const webhookInput = $('#settings-webhook-input');
+        const fallback = `${window.location.origin}/webhook/tintim`;
+        if (webhookInput) webhookInput.value = fallback;
+    }
 
+    // Porta
     const port = window.location.port || '80';
     const portEl = $('#settings-port');
     if (portEl) portEl.textContent = port;
 
+    // Ambiente
     const envEl = $('#settings-env');
     if (envEl) envEl.textContent = window.location.hostname === 'localhost' ? 'Development' : 'Production';
+
+    // Fonte de dados
+    try {
+        const res = await fetch('/admin/stats');
+        const stats = await res.json();
+        const badge = $('#datasource-badge');
+        if (badge) {
+            const isSupa = stats.dataSource === 'supabase';
+            badge.textContent = isSupa ? '☁️ Supabase' : '📁 Local (JSON)';
+            badge.style.background = isSupa ? 'var(--accent-green-subtle)' : 'var(--accent-orange-subtle)';
+            badge.style.color = isSupa ? 'var(--accent-green)' : 'var(--accent-orange)';
+        }
+    } catch { /* silêncio */ }
 }
+
+// Salvar webhook URL
+$('#btn-save-webhook')?.addEventListener('click', async () => {
+    const input = $('#settings-webhook-input');
+    const url = input?.value?.trim();
+    if (!url) {
+        showToast('Digite uma URL válida', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch('/admin/settings/webhook-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ webhook_url: url }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Webhook URL salva com sucesso!', 'success');
+            // Atualizar no dashboard também
+            const dashboardUrl = $('#webhook-url');
+            if (dashboardUrl) dashboardUrl.textContent = url;
+        } else {
+            showToast(data.error || 'Erro ao salvar URL', 'error');
+        }
+    } catch {
+        showToast('Erro de conexão ao salvar URL', 'error');
+    }
+});
+
+// Copiar webhook URL (settings)
+$('#btn-copy-webhook-settings')?.addEventListener('click', () => {
+    const input = $('#settings-webhook-input');
+    const url = input?.value?.trim();
+    if (url) {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('URL copiada!', 'success');
+        });
+    }
+});
 
 $('#btn-clear-cache')?.addEventListener('click', async () => {
     const ok = await reloadSystem();
@@ -392,7 +457,7 @@ $('#btn-reload-system')?.addEventListener('click', async () => {
 });
 
 // ============================================
-// Copy Webhook URL
+// Copy Webhook URL (Dashboard)
 // ============================================
 $('#btn-copy-webhook')?.addEventListener('click', () => {
     const url = $('#webhook-url').textContent;
@@ -473,15 +538,10 @@ function escapeHtml(str) {
 // ============================================
 // Initialization
 // ============================================
-function init() {
-    // Set webhook URL
-    const webhookUrl = `${window.location.origin}/webhook/tintim`;
-    const urlEl = $('#webhook-url');
-    if (urlEl) urlEl.textContent = webhookUrl;
-
+async function init() {
     // Load everything
+    await loadSettings();
     updateDashboard();
-    loadSettings();
 
     // Auto-refresh every 30s
     setInterval(updateDashboard, 30000);

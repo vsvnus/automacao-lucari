@@ -253,6 +253,48 @@ class SupabaseService {
             logger.warn('Erro ao salvar evento webhook no Supabase', { error: error.message });
         }
     }
+    // ============================================================
+    // SYSTEM SETTINGS (chave-valor persistente)
+    // ============================================================
+
+    /**
+     * Busca um valor de configuração pelo key.
+     */
+    async getSetting(key) {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const { data, error } = await this.client
+                .from('system_settings')
+                .select('value')
+                .eq('key', key)
+                .single();
+
+            if (error) return null;
+            return data?.value || null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Salva (upsert) um valor de configuração.
+     */
+    async setSetting(key, value) {
+        if (!this.isAvailable()) return false;
+
+        try {
+            const { error } = await this.client
+                .from('system_settings')
+                .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+
+            if (error) throw error;
+            return true;
+        } catch (error) {
+            logger.error(`Erro ao salvar setting "${key}"`, { error: error.message });
+            return false;
+        }
+    }
 }
 
 const supabaseService = new SupabaseService();

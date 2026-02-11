@@ -46,6 +46,7 @@ Este documento explica como transferir o controle do sistema para o cliente fina
 | **Servidor** | Render (free tier) | `https://SEU-APP.onrender.com` |
 | **Dashboard** | Render (mesma URL) | `https://SEU-APP.onrender.com/` |
 | **Health Check** | Render | `https://SEU-APP.onrender.com/health` |
+| **Banco de Dados** | Supabase (PostgreSQL) | `https://SEU-PROJETO.supabase.co` |
 | **Keep-alive** | UptimeRobot | Pinga `/health` a cada 5 min |
 | **Planilha** | Google Sheets | Planilha configurada por cliente |
 | **Webhook source** | Tintim | Envia para `/webhook/tintim` |
@@ -66,10 +67,18 @@ Para que o responsável tenha 100% de posse, ele precisa de acesso a:
 1. Crie uma conta em [render.com](https://render.com)
 2. Conecte o repositório GitHub
 3. Configure as variáveis de ambiente:
+   - `SUPABASE_URL` → URL do projeto Supabase
+   - `SUPABASE_SERVICE_ROLE_KEY` → Service Role Key do Supabase
    - `GOOGLE_CREDENTIALS_JSON` → conteúdo completo do JSON da Service Account
    - `NODE_ENV` → `production`
 4. Build Command: `npm install`
 5. Start Command: `npm start`
+
+### B2. Supabase (Banco de Dados)
+
+1. Acesse [supabase.com](https://supabase.com) e faça login na conta do projeto
+2. O banco já tem as tabelas: `clients`, `leads_log`, `webhook_events`, `system_settings`
+3. Clientes e logs são **persistentes** — não se perdem no redeploy do Render
 
 ### C. Google Cloud (Planilhas)
 
@@ -99,13 +108,15 @@ Acessível em `https://SEU-APP.onrender.com/`
 
 **O que pode ser feito:**
 
-- 📊 **Ver estatísticas**: Clientes ativos, tempo online
-- ➕ **Cadastrar clientes**: Clicar em "Novo Cliente" e preencher:
-  - Nome, ID do Tintim (Instance ID), ID da planilha Google
-- 🗑️ **Remover clientes**: Excluir da configuração
-- 🔄 **Recarregar**: Forçar re-leitura do `clients.json`
+- 📊 **Ver estatísticas**: Clientes ativos, tempo online, fonte de dados
+- ➕ **Cadastrar clientes**: Clicar em "Novo Cliente" e preencher (salva no Supabase!)
+- 🗑️ **Remover clientes**: Desativar da configuração
+- 🔄 **Recarregar**: Forçar re-leitura do banco de dados
+- 🔗 **Editar Webhook URL**: Em Configurações, altere a URL do webhook
 
 > ⚠️ O dashboard **não tem login**. Qualquer pessoa com a URL pode acessar. Para um ambiente com muitos usuários, considere adicionar autenticação básica.
+
+> 💡 **Persistência**: Clientes e configurações são salvos no **Supabase** (PostgreSQL). Redeploys no Render **não perdem dados**.
 
 ---
 
@@ -175,6 +186,7 @@ Como é uma **infraestrutura multi-cliente**, é possível:
 | Tecnologia | Uso |
 |------------|-----|
 | **Node.js** + **Express** | Servidor web e API |
+| **Supabase** (PostgreSQL) | Banco de dados (clientes, logs, config) |
 | **Google Sheets API v4** | Leitura e escrita na planilha |
 | **Google Drive API v3** | Verificação de compartilhamento |
 | **Winston** | Sistema de logging |

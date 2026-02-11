@@ -167,6 +167,28 @@ app.get('/admin/stats', (_req, res) => {
     res.json(clientManager.getStats());
 });
 
+// Webhook URL — get
+app.get('/admin/settings/webhook-url', async (req, res) => {
+    const url = await supabaseService.getSetting('webhook_url');
+    const fallback = `${req.protocol}://${req.get('host')}/webhook/tintim`;
+    res.json({ webhook_url: url || fallback });
+});
+
+// Webhook URL — save
+app.post('/admin/settings/webhook-url', async (req, res) => {
+    const { webhook_url } = req.body;
+    if (!webhook_url) {
+        return res.status(400).json({ error: 'webhook_url é obrigatório' });
+    }
+    const saved = await supabaseService.setSetting('webhook_url', webhook_url);
+    if (saved) {
+        logger.info(`Webhook URL atualizada: ${webhook_url}`);
+        res.json({ success: true, webhook_url });
+    } else {
+        res.status(500).json({ error: 'Erro ao salvar. Supabase indisponível?' });
+    }
+});
+
 // ====================================================
 // Inicialização
 // ====================================================

@@ -1,6 +1,6 @@
 # 🚀 WhatsApp Leads Automation
 
-Automação que captura leads do WhatsApp (via [Tintim](https://tintim.app)) e registra automaticamente nas planilhas Google Sheets de cada cliente, com abas mensais, detecção de produto, atualização de status de venda e tag visual `(Auto)`.
+Automação que captura leads do WhatsApp (via [Tintim](https://tintim.app)) e registra automaticamente nas planilhas Google Sheets de cada cliente, com abas mensais, detecção de produto, atualização de status de venda e tag visual `(Auto)`. Dados persistidos no **Supabase** (PostgreSQL).
 
 ## 📋 Visão Geral
 
@@ -57,6 +57,8 @@ cp .env.example .env
 
 | Variável | Descrição | Obrigatório |
 |----------|-----------|:-----------:|
+| `SUPABASE_URL` | URL do projeto Supabase | Sim |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service Role Key do Supabase | Sim |
 | `GOOGLE_CREDENTIALS_JSON` | JSON da Service Account (para produção/Render) | Em produção |
 | `PORT` | Porta do servidor (padrão: 3000) | Não |
 | `MAX_RETRIES` | Tentativas de retry na API Google (padrão: 3) | Não |
@@ -65,21 +67,13 @@ cp .env.example .env
 
 ### 4. Configurar clientes
 
-Edite `config/clients.json`:
+Clientes são gerenciados via **Supabase** (tabela `clients`) ou pelo **Dashboard** (`/admin/clients`). O arquivo `config/clients.json` serve apenas como fallback.
 
-```json
-{
-  "clients": [
-    {
-      "id": "meu-cliente",
-      "name": "Nome do Cliente",
-      "tintim_instance_id": "UUID-DA-INSTANCIA-TINTIM",
-      "spreadsheet_id": "ID_DA_PLANILHA_GOOGLE",
-      "sheet_name": "auto",
-      "active": true
-    }
-  ]
-}
+Para adicionar um cliente, use o Dashboard ou insira diretamente no Supabase:
+
+```sql
+INSERT INTO clients (slug, name, tintim_instance_id, spreadsheet_id, sheet_name)
+VALUES ('meu-cliente', 'Nome do Cliente', 'UUID-TINTIM', 'ID-PLANILHA', 'auto');
 ```
 
 | Campo | Descrição |
@@ -116,13 +110,14 @@ No painel do Tintim, vá em **Configurações → Webhooks** e configure:
 ```
 whatsapp-leads-automation/
 ├── config/
-│   ├── clients.json              # Configuração dos clientes (multi-tenant)
+│   ├── clients.json              # Fallback local de clientes
 │   └── google-credentials.json   # Credenciais Google (NÃO vai pro Git)
 ├── src/
 │   ├── server.js                 # Servidor Express + endpoints + segurança
 │   ├── webhookHandler.js         # Processamento dos webhooks do Tintim
 │   ├── sheetsService.js          # Integração Google Sheets API v4
-│   ├── clientManager.js          # Gerenciamento multi-tenant
+│   ├── clientManager.js          # Gerenciamento multi-tenant (Supabase → JSON)
+│   ├── supabaseService.js        # Persistência no Supabase (PostgreSQL)
 │   └── utils/
 │       ├── logger.js             # Sistema de logging (Winston)
 │       ├── formatter.js          # Formatação BR (telefone, datas)
@@ -130,11 +125,7 @@ whatsapp-leads-automation/
 ├── public/
 │   ├── index.html                # Dashboard administrativo
 │   ├── app.js                    # Lógica do dashboard
-│   └── styles.css                # Estilos do dashboard
-├── logs/                         # Arquivos de log (auto-gerado)
-│   ├── combined.log              # Todos os logs
-│   ├── error.log                 # Apenas erros
-│   └── leads.log                 # Auditoria de leads processados
+│   └── style.css                 # Estilos do dashboard
 ├── .env                          # Variáveis de ambiente (local)
 ├── .env.example                  # Exemplo de .env
 ├── .gitignore
@@ -152,9 +143,11 @@ whatsapp-leads-automation/
 | `POST` | `/webhook/tintim` | Recebimento de webhooks do Tintim |
 | `GET` | `/admin/clients` | Listar clientes configurados |
 | `POST` | `/admin/clients` | Adicionar novo cliente |
-| `DELETE` | `/admin/clients/:id` | Remover cliente |
-| `POST` | `/admin/reload` | Recarregar configurações sem reiniciar |
+| `DELETE` | `/admin/clients/:id` | Remover (desativar) cliente |
+| `POST` | `/admin/reload` | Recarregar configurações |
 | `GET` | `/admin/stats` | Estatísticas do sistema |
+| `GET` | `/admin/settings/webhook-url` | Obter URL do webhook |
+| `POST` | `/admin/settings/webhook-url` | Salvar URL do webhook |
 
 ## 📊 Estrutura da Planilha
 
@@ -216,12 +209,27 @@ Quando o Tintim envia `event_type: "lead.update"`:
 | HTTPS via Render (TLS automático) | ✅ |
 | **Autenticação no dashboard `/admin/*`** | ⚠️ Futuro |
 
+## 💾 Persistência (Supabase)
+
+O sistema usa **Supabase** (PostgreSQL) para persistir:
+
+| Tabela | Conteúdo |
+|--------|----------|
+| `clients` | Configuração dos clientes (substitui clients.json) |
+| `leads_log` | Auditoria de todos os leads processados |
+| `webhook_events` | Payload bruto de cada webhook recebido |
+| `system_settings` | Configurações do sistema (ex: webhook URL) |
+
+**Fallback gracioso:** Se o Supabase ficar indisponível, o sistema automaticamente usa `config/clients.json` como backup. Zero downtime.
+
 ## 🌐 Deploy (Render)
 
 O sistema está configurado para deploy no Render (free tier):
 
 1. Conecte o repositório GitHub ao Render
 2. Configure as variáveis de ambiente:
+   - `SUPABASE_URL` = URL do projeto Supabase
+   - `SUPABASE_SERVICE_ROLE_KEY` = Service Role Key
    - `GOOGLE_CREDENTIALS_JSON` = conteúdo do JSON da Service Account
    - `NODE_ENV` = `production`
 3. Build Command: `npm install`
@@ -243,13 +251,15 @@ O Render free tier dorme após 15min de inatividade. Para manter 24/7:
 
 **Não precisa alterar código!** Apenas:
 
-1. Abra `config/clients.json` ou use o Dashboard
-2. Adicione com os campos: `id`, `name`, `tintim_instance_id`, `spreadsheet_id`, `sheet_name`
-3. Compartilhe a planilha com o email da Service Account
+1. Use o **Dashboard** (botão "Novo Cliente") ou insira diretamente no Supabase
+2. Preencha: `slug`, `name`, `tintim_instance_id`, `spreadsheet_id`, `sheet_name`
+3. Compartilhe a planilha com o email da Service Account como **Editor**
 4. O sistema recarrega automaticamente a cada 5 minutos, ou force:
    ```bash
    curl -X POST https://seu-app.onrender.com/admin/reload
    ```
+
+> 💡 Clientes adicionados pelo Dashboard ou Supabase são **persistentes** — não se perdem no redeploy.
 
 ## 📈 Escalabilidade
 

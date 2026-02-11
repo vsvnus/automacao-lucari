@@ -1443,3 +1443,55 @@ kbd {
 .sidebar-backdrop.visible {
     display: block;
 }
+
+/* ============================================
+   Webhook URL Edit Group (Settings)
+   ============================================ */
+.setting-row-stacked {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 10px;
+}
+
+.webhook-edit-group {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    align-items: center;
+}
+
+.setting-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    min-width: 0;
+}
+
+.setting-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-subtle);
+}
+
+.setting-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+.btn-sm {
+    padding: 8px 14px !important;
+    font-size: 0.8rem !important;
+    gap: 4px;
+}
+
+.badge-sm {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+}
