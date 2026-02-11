@@ -167,7 +167,7 @@ async function updateDashboard() {
         $('#stat-uptime').textContent = formatUptime(health.uptime);
 
         // Usar totalLeads do endpoint de stats, ou manter webhookCount local como fallback
-        const totalLeads = stats?.totalLeads !== undefined ? stats.totalLeads : state.webhookCount;
+        const totalLeads = (stats && stats.totalLeads !== undefined) ? stats.totalLeads : state.webhookCount;
         $('#stat-webhooks').textContent = totalLeads;
 
         // Server status
@@ -241,7 +241,9 @@ async function loadDashboardClients() {
 }
 
 async function loadDashboardActivity() {
+    console.log('Carregando atividades...');
     const logs = await fetchActivity();
+    console.log('Atividades carregadas:', logs);
     state.activityLog = logs;
 
     // 1. Dashboard Preview (Top 5)
