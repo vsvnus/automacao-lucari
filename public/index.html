@@ -167,15 +167,47 @@
             <!-- Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-icon stat-icon-webhook">
+                    <div class="stat-icon stat-icon-status">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <line x1="23" y1="13" x2="17" y2="13"></line>
+                            <line x1="20" y1="10" x2="20" y2="16"></line>
                         </svg>
                     </div>
                     <div class="stat-data">
-                        <span class="stat-value" id="stat-webhooks">0</span>
-                        <span class="stat-label">Webhooks Hoje</span>
+                        <span class="stat-value" id="stat-leads">0</span>
+                        <span class="stat-label">Leads Hoje</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-sale">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="stat-sales">0</span>
+                        <span class="stat-label">Vendas Hoje</span>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-error">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="stat-errors">0</span>
+                        <span class="stat-label">Erros Hoje</span>
                     </div>
                 </div>
 
@@ -192,20 +224,6 @@
                     <div class="stat-data">
                         <span class="stat-value" id="stat-clients">—</span>
                         <span class="stat-label">Clientes Ativos</span>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-icon stat-icon-uptime">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <polyline points="12 6 12 12 16 14"></polyline>
-                        </svg>
-                    </div>
-                    <div class="stat-data">
-                        <span class="stat-value" id="stat-uptime">—</span>
-                        <span class="stat-label">Time Online</span>
                     </div>
                 </div>
             </div>
@@ -315,7 +333,7 @@
             <div class="page-header">
                 <div>
                     <h2 class="page-title">Logs do Sistema</h2>
-                    <p class="page-subtitle">Histórico completo de eventos e webhooks</p>
+                    <p class="page-subtitle">Histórico completo de leads processados</p>
                 </div>
             </div>
 
@@ -339,9 +357,20 @@
                                 Filtrar
                             </button>
                         </div>
-                        <small style="display:block; margin-top:8px; color:var(--text-tertiary);">
-                            Busca em tempo real no histórico dos últimos dias (recebidos e processados).
-                        </small>
+
+                        <!-- Toggle e Filtros -->
+                        <div class="logs-toolbar">
+                            <div class="logs-toggle" id="logs-source-toggle">
+                                <button class="toggle-btn active" data-source="logs">Leads Processados</button>
+                                <button class="toggle-btn" data-source="all">Eventos Raw</button>
+                            </div>
+                            <div class="logs-filters" id="logs-filters">
+                                <button class="filter-chip active" data-filter="all">Todos</button>
+                                <button class="filter-chip" data-filter="errors">Erros</button>
+                                <button class="filter-chip" data-filter="sales">Vendas</button>
+                                <button class="filter-chip" data-filter="new_leads">Novos Leads</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -349,6 +378,7 @@
                 <div class="card" style="grid-column: 1 / -1;">
                     <div class="card-header">
                         <h3>Resultados</h3>
+                        <span class="results-count" id="results-count"></span>
                     </div>
                     <div id="investigation-results" class="log-stream">
                         <div class="activity-empty">

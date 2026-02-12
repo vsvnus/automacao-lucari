@@ -1642,3 +1642,101 @@ kbd {
     color: var(--accent-orange);
     background: var(--accent-orange-subtle);
 }
+
+/* --- Sale Icon --- */
+.stat-icon-sale {
+    color: #a855f7;
+    background: rgba(168, 85, 247, 0.12);
+}
+
+/* --- Error Icon --- */
+.stat-icon-error {
+    color: var(--accent-red);
+    background: var(--accent-red-subtle);
+}
+
+/* --- Logs Toolbar (Toggle + Filters) --- */
+.logs-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.logs-toggle {
+    display: inline-flex;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.toggle-btn {
+    padding: 7px 16px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.toggle-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-surface);
+}
+
+.toggle-btn.active {
+    background: var(--accent-primary);
+    color: white;
+}
+
+.logs-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.filter-chip {
+    padding: 5px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.filter-chip:hover {
+    color: var(--text-primary);
+    border-color: var(--border-active);
+}
+
+.filter-chip.active {
+    background: var(--accent-primary-subtle);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary-hover);
+}
+
+/* --- Results Count --- */
+.results-count {
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+
+/* --- Badge Recovered --- */
+.badge-recovered {
+    background: var(--accent-orange-subtle);
+    color: var(--accent-orange);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}

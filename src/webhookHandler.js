@@ -146,6 +146,17 @@ class WebhookHandler {
             fullPayload: JSON.stringify(rawPayload),
         });
 
+        // 0. Verificação de idempotência — evitar reprocessamento de webhooks duplicados
+        const phone = rawPayload.phone || rawPayload.phone_e164 || '';
+        const eventType = rawPayload.event_type || '';
+        if (phone && eventType) {
+            const isDuplicate = await supabaseService.checkDuplicateWebhook(phone, eventType, 30);
+            if (isDuplicate) {
+                logger.info('⚡ Webhook duplicado ignorado (idempotência)', { phone, eventType });
+                return { success: true, message: 'Duplicado ignorado' };
+            }
+        }
+
         // 1. Validar e NORMALIZAR payload
         const validation = validateTintimPayload(rawPayload);
         if (!validation.valid) {

@@ -102,11 +102,27 @@ app.get('/api/dashboard/stats', async (_req, res) => {
     res.json(stats || { received: 0, processed: 0, errors: 0 });
 });
 
+app.get('/api/dashboard/activity', async (_req, res) => {
+    const activity = await supabaseService.getDashboardActivity(20);
+    res.json(activity);
+});
+
 app.get('/api/dashboard/search', async (req, res) => {
-    const { q } = req.query;
-    // Allow empty query for auto-load (returns recent 20)
-    const results = await supabaseService.searchLeads(q || '');
-    res.json(results);
+    const { q, source } = req.query;
+    if (source === 'all') {
+        // Modo debug: busca em webhook_events + leads_log (raw)
+        const results = await supabaseService.searchAllEvents(q || '');
+        res.json(results);
+    } else {
+        // Default: busca apenas em leads_log (limpo, sem duplicatas)
+        const results = await supabaseService.getProcessedLeads(q || '');
+        res.json(results);
+    }
+});
+
+app.get('/api/dashboard/lead/:phone', async (req, res) => {
+    const timeline = await supabaseService.getLeadTimeline(req.params.phone);
+    res.json(timeline);
 });
 
 app.get('/api/dashboard/errors', async (_req, res) => {
@@ -139,16 +155,8 @@ app.post('/webhook/tintim', async (req, res) => {
             eventType: payload.event_type,
         });
 
-        // 1. Logar evento RAW antes de qualquer processamento (Segurança/Audit)
-        // Isso garante que temos o registro mesmo que o processamento falhe
-        // Passamos null no clientSlug pois ainda não identificamos o cliente
-        await supabaseService.logWebhookEvent(payload, null, 'pending');
-
-        // 2. Processar
+        // Processar (webhookHandler cuida de todo o logging em webhook_events e leads_log)
         const result = await webhookHandler.processWebhook(payload);
-
-        // 3. Atualizar status do evento com o resultado real (se sucesso ou erro tratado)
-        // O webhookHandler já faz log do resultado final, então aqui só logamos info
         if (result.success) {
             logger.info(`Lead processado com sucesso → ${result.client}`);
         }

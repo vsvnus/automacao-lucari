@@ -349,6 +349,183 @@ class SupabaseService {
         }
     }
 
+    /**
+     * Verifica se já existe um webhook duplicado recente (idempotência).
+     * Retorna true se é duplicado (já existe), false se é novo.
+     */
+    async checkDuplicateWebhook(phone, eventType, windowSeconds = 30) {
+        if (!this.isAvailable()) return false;
+
+        try {
+            const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString();
+
+            const query = this.client
+                .from('webhook_events')
+                .select('id', { count: 'exact', head: true })
+                .gte('created_at', windowStart);
+
+            if (phone) query.eq('phone', phone);
+            if (eventType) query.eq('event_type', eventType);
+
+            const { count, error } = await query;
+            if (error) throw error;
+
+            return (count || 0) > 0;
+        } catch (error) {
+            logger.warn('Erro ao verificar duplicata de webhook', { error: error.message });
+            return false; // Na dúvida, processa
+        }
+    }
+
+    /**
+     * Busca atividade do dashboard — apenas leads_log (dados limpos, sem duplicatas).
+     */
+    async getDashboardActivity(limit = 20) {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const { data, error } = await this.client
+                .from('leads_log')
+                .select(`
+                    *,
+                    clients ( name )
+                `)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+
+            if (error) throw error;
+
+            return data.map(log => ({
+                id: log.id,
+                timestamp: log.created_at,
+                phone: log.phone,
+                client: log.clients?.name || 'Desconhecido',
+                name: log.lead_name || 'Sem nome',
+                event_type: log.event_type,
+                status: log.status,
+                result: log.processing_result,
+                error_message: log.error_message,
+                sale_amount: log.sale_amount,
+                product: log.product,
+                sheet_name: log.sheet_name,
+                origin: log.origin,
+            }));
+        } catch (error) {
+            logger.error('Erro ao buscar atividade do dashboard', { error: error.message });
+            return [];
+        }
+    }
+
+    /**
+     * Busca leads processados — apenas leads_log com suporte a filtros.
+     */
+    async getProcessedLeads(query, limit = 50) {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const cleanQuery = query ? query.replace(/[^\w\s-]/gi, '').trim() : '';
+            let dbQuery = this.client
+                .from('leads_log')
+                .select(`*, clients ( name )`)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+
+            if (cleanQuery) {
+                // Tentar identificar se é um slug de cliente
+                const { data: clientData } = await this.client
+                    .from('clients')
+                    .select('id')
+                    .eq('slug', cleanQuery)
+                    .maybeSingle();
+
+                if (clientData) {
+                    dbQuery = dbQuery.eq('client_id', clientData.id);
+                } else {
+                    dbQuery = dbQuery.or(`phone.ilike.%${cleanQuery}%, lead_name.ilike.%${cleanQuery}%`);
+                }
+            }
+
+            const { data, error } = await dbQuery;
+            if (error) throw error;
+
+            return data.map(log => ({
+                id: log.id,
+                timestamp: log.created_at,
+                phone: log.phone,
+                client: log.clients?.name || 'Desconhecido',
+                name: log.lead_name || 'Sem nome',
+                event_type: log.event_type,
+                status: log.status,
+                result: log.processing_result,
+                error_message: log.error_message,
+                sale_amount: log.sale_amount,
+                product: log.product,
+                sheet_name: log.sheet_name,
+                origin: log.origin,
+            }));
+        } catch (error) {
+            logger.error('Erro na busca de leads processados', { error: error.message });
+            return [];
+        }
+    }
+
+    /**
+     * Timeline completa de um lead por telefone (webhook_events + leads_log agrupados).
+     */
+    async getLeadTimeline(phone) {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const cleanPhone = phone.replace(/[^\d+]/g, '');
+
+            const [eventsResult, logsResult] = await Promise.all([
+                this.client
+                    .from('webhook_events')
+                    .select(`*, clients ( name )`)
+                    .ilike('phone', `%${cleanPhone}%`)
+                    .order('created_at', { ascending: true })
+                    .limit(100),
+                this.client
+                    .from('leads_log')
+                    .select(`*, clients ( name )`)
+                    .ilike('phone', `%${cleanPhone}%`)
+                    .order('created_at', { ascending: true })
+                    .limit(100),
+            ]);
+
+            const events = (eventsResult.data || []).map(e => ({
+                id: `evt_${e.id}`,
+                timestamp: e.created_at,
+                type: 'webhook',
+                phone: e.phone,
+                client: e.clients?.name || 'Desconhecido',
+                event_type: e.event_type,
+                status: e.processing_result,
+                payload: e.payload,
+            }));
+
+            const logs = (logsResult.data || []).map(l => ({
+                id: `log_${l.id}`,
+                timestamp: l.created_at,
+                type: 'processing',
+                phone: l.phone,
+                client: l.clients?.name || 'Desconhecido',
+                name: l.lead_name,
+                event_type: l.event_type,
+                status: l.status,
+                result: l.processing_result,
+                error_message: l.error_message,
+                sale_amount: l.sale_amount,
+                sheet_name: l.sheet_name,
+            }));
+
+            return [...events, ...logs].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        } catch (error) {
+            logger.error('Erro ao buscar timeline do lead', { error: error.message });
+            return [];
+        }
+    }
+
     // ============================================================
     // WEBHOOK EVENTS (debug/histórico)
     // ============================================================
@@ -444,15 +621,38 @@ class SupabaseService {
             today.setHours(0, 0, 0, 0);
             const todayIso = today.toISOString();
 
-            // 1. Total Recebido Hoje (webhook_events)
-            const { count: receivedCount, error: receivedError } = await this.client
-                .from('webhook_events')
+            // 1. Novos Leads Hoje (leads_log com event_type=new_lead e sucesso)
+            const { count: newLeadsCount, error: newLeadsError } = await this.client
+                .from('leads_log')
                 .select('*', { count: 'exact', head: true })
-                .gte('created_at', todayIso);
+                .gte('created_at', todayIso)
+                .eq('event_type', 'new_lead')
+                .eq('processing_result', 'success');
 
-            if (receivedError) throw receivedError;
+            if (newLeadsError) throw newLeadsError;
 
-            // 2. Total Processado com Sucesso Hoje (leads_log)
+            // 2. Vendas Hoje (leads_log com status contendo keywords de venda)
+            const { data: salesData, error: salesError } = await this.client
+                .from('leads_log')
+                .select('id')
+                .gte('created_at', todayIso)
+                .eq('event_type', 'status_update')
+                .eq('processing_result', 'success')
+                .not('sale_amount', 'is', null);
+
+            if (salesError) throw salesError;
+            const salesCount = salesData ? salesData.length : 0;
+
+            // 3. Erros Hoje (leads_log com resultado failed)
+            const { count: errorCount, error: errorError } = await this.client
+                .from('leads_log')
+                .select('*', { count: 'exact', head: true })
+                .gte('created_at', todayIso)
+                .eq('processing_result', 'failed');
+
+            if (errorError) throw errorError;
+
+            // 4. Total processado hoje (para compatibilidade)
             const { count: processedCount, error: processedError } = await this.client
                 .from('leads_log')
                 .select('*', { count: 'exact', head: true })
@@ -461,19 +661,13 @@ class SupabaseService {
 
             if (processedError) throw processedError;
 
-            // 3. Total Erros Hoje (webhook_events falhos)
-            const { count: errorCount, error: errorError } = await this.client
-                .from('webhook_events')
-                .select('*', { count: 'exact', head: true })
-                .gte('created_at', todayIso)
-                .neq('processing_result', 'success');
-
-            if (errorError) throw errorError;
-
             return {
-                received: receivedCount || 0,
+                newLeads: newLeadsCount || 0,
+                sales: salesCount || 0,
+                errors: errorCount || 0,
                 processed: processedCount || 0,
-                errors: errorCount || 0
+                // Mantém campos antigos para compatibilidade
+                received: (newLeadsCount || 0) + salesCount,
             };
         } catch (error) {
             logger.error('Erro ao buscar stats do dashboard', { error: error.message });
@@ -488,7 +682,7 @@ class SupabaseService {
      * Busca leads por telefone, nome ou ID (Investigação)
      * Se query for vazia, retorna os últimos 20 registros gerais.
      */
-    async searchLeads(query) {
+    async searchAllEvents(query) {
         if (!this.isAvailable()) return [];
 
         try {

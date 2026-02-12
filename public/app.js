@@ -65,7 +65,7 @@ function navigateTo(section, replace = false) {
     if (section === 'logs') {
         const container = $('#investigation-results');
         if (container && (container.innerHTML.includes('Carregando') || container.innerHTML.trim() === '')) {
-            searchLeads(''); // Auto-load
+            searchLeads('');
         }
     }
 }
@@ -193,18 +193,24 @@ async function reloadSystem() {
 async function updateDashboard() {
     const health = await fetchHealth();
     const stats = await fetchStats();
+    const dashboardStats = await fetchDashboardStats();
 
     const statusIndicator = $('#server-status .status-indicator');
     const statusText = $('#server-status-text');
 
     if (health) {
-        // Stats
+        // Stats cards
         $('#stat-clients').textContent = health.clients || 0;
-        $('#stat-uptime').textContent = formatUptime(health.uptime);
 
-        // Usar totalLeads do endpoint de stats, ou manter webhookCount local como fallback
-        const totalLeads = (stats && stats.totalLeads !== undefined) ? stats.totalLeads : state.webhookCount;
-        $('#stat-webhooks').textContent = totalLeads;
+        // New stats from /api/dashboard/stats
+        if (dashboardStats) {
+            const leadsEl = $('#stat-leads');
+            const salesEl = $('#stat-sales');
+            const errorsEl = $('#stat-errors');
+            if (leadsEl) leadsEl.textContent = dashboardStats.newLeads || 0;
+            if (salesEl) salesEl.textContent = dashboardStats.sales || 0;
+            if (errorsEl) errorsEl.textContent = dashboardStats.errors || 0;
+        }
 
         // Server status
         statusIndicator?.classList.add('online');
@@ -214,7 +220,7 @@ async function updateDashboard() {
         // Env badge
         const badge = $('#env-badge');
         if (badge) {
-            const isProd = health.uptime > 0; // Simplificação
+            const isProd = health.uptime > 0;
             badge.textContent = window.location.hostname === 'localhost' ? 'DEV' : 'PROD';
             badge.style.background = isProd
                 ? 'var(--accent-green-subtle)'
@@ -233,6 +239,15 @@ async function updateDashboard() {
     // Load dashboard previews
     await loadDashboardClients();
     await loadDashboardActivity();
+}
+
+async function fetchDashboardStats() {
+    try {
+        const res = await fetch('/api/dashboard/stats');
+        return await res.json();
+    } catch {
+        return null;
+    }
 }
 
 function formatUptime(seconds) {
@@ -297,7 +312,7 @@ window.viewClientLogs = function (clientSlug) {
 async function loadDashboardActivity() {
     let logs = [];
     try {
-        const res = await fetch('/api/dashboard/search?q=');
+        const res = await fetch('/api/dashboard/activity');
         logs = await res.json();
         if (!Array.isArray(logs)) logs = [];
     } catch (e) { console.error('Error loading activity:', e); }
@@ -317,17 +332,7 @@ async function loadDashboardActivity() {
         } else {
             dashboardContainer.innerHTML = '';
             logs.slice(0, 5).forEach(item => {
-                const adapted = {
-                    result: (item.status && item.status.includes('Erro')) ? 'error' : 'success',
-                    status: item.status ? item.status.replace(/^Processado: /, '') : 'Desconhecido',
-                    event_type: item.type === 'event' ? 'webhook' : 'log',
-                    timestamp: item.timestamp,
-                    name: item.name || 'Sem nome',
-                    phone: item.phone,
-                    client: item.client,
-                    error_message: item.payload?.error || (item.status.includes('Erro') ? item.status : null)
-                };
-                dashboardContainer.appendChild(renderLogItem(adapted));
+                dashboardContainer.appendChild(renderLogItem(item));
             });
         }
     }
@@ -337,45 +342,43 @@ function renderLogItem(log, detailed = false) {
     const div = document.createElement('div');
     div.className = 'activity-item';
 
-    // Sucesso, warning ou erro
-    let resultType = 'success';
-    if (log.result !== 'success' && log.result !== 'SUCCESS') resultType = 'error';
-
-    const isUpdate = log.event_type === 'lead.update' || log.event_type === 'status_update';
-
-    // Debug
-    if (log.status && (log.status.includes('Recuperada') || log.status.includes('não encontrado'))) {
-        console.log('Detectado lead recuperado:', log);
-    }
+    const isFailed = log.result === 'failed' || log.result === 'error';
+    const isNewLead = log.event_type === 'new_lead';
+    const isUpdate = log.event_type === 'status_update' || log.event_type === 'lead.update';
+    const isSale = isUpdate && log.sale_amount && parseFloat(log.sale_amount) > 0;
+    const isRecovered = log.status && (log.status.includes('Recuperad') || log.status.includes('não encontrado'));
 
     const timestamp = new Date(log.timestamp);
     const time = timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const fullDate = timestamp.toLocaleDateString('pt-BR') + ' ' + time;
 
-    // Ícone e Cor baseados no tipo
-    let icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>';
-    let iconClass = 'stat-icon-webhook'; // Laranja padrão
-    let badge = '<span class="badge-status badge-new">Novo Lead</span>';
+    // Clean status display (remove prefix "Processado: " if present)
+    const cleanStatus = log.status ? log.status.replace(/^Processado:\s*/, '') : '';
 
-    // 1. Erro (Prioridade máxima se falhou)
-    if (resultType === 'error') {
+    // Determine badge and icon
+    let icon, iconClass, badge;
+
+    if (isFailed) {
         icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
-        iconClass = 'stat-icon-webhook'; // Vermelho (via CSS error)
+        iconClass = 'stat-icon-error';
         badge = '<span class="badge-status badge-error">Erro</span>';
-    }
-    // 2. Status Específico (Se não for erro)
-    else if (log.status === 'Venda') {
+    } else if (isSale) {
+        icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>';
+        iconClass = 'stat-icon-sale';
         badge = '<span class="badge-status badge-sale">Venda</span>';
-        iconClass = 'stat-icon-status'; // Verde
-    } else if (log.status && (log.status.includes('Recuperada') || log.status.includes('não encontrado'))) {
-        badge = `<span class="badge-status badge-warning">${escapeHtml(log.status)}</span>`;
-        iconClass = 'stat-icon-warning'; // Amarelo
-    }
-    // 3. Atualização Genérica
-    else if (isUpdate) {
+    } else if (isRecovered) {
         icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>';
-        iconClass = 'stat-icon-clients'; // Roxo/Azul
-        badge = '<span class="badge-status badge-update">Atualização</span>';
+        iconClass = 'stat-icon-warning';
+        badge = '<span class="badge-status badge-recovered">Recuperado</span>';
+    } else if (isUpdate) {
+        icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>';
+        iconClass = 'stat-icon-clients';
+        badge = '<span class="badge-status badge-update">Atualizado</span>';
+    } else {
+        // new_lead + success (default)
+        icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="23" y1="13" x2="17" y2="13"></line><line x1="20" y1="10" x2="20" y2="16"></line></svg>';
+        iconClass = 'stat-icon-status';
+        badge = '<span class="badge-status badge-new">Novo Lead</span>';
     }
 
     div.innerHTML = `
@@ -388,20 +391,16 @@ function renderLogItem(log, detailed = false) {
                     ${escapeHtml((log.name && log.name !== 'Sem nome') ? log.name : formatPhoneDisplay(log.phone))}
                 </span>
                 ${badge}
-                
-                ${/* Tooltip de Erro */ ''}
-                ${(resultType === 'error' && log.error_message) ? `
+                ${isFailed && log.error_message ? `
                     <span class="error-icon-container" data-tooltip="${escapeHtml(log.error_message)}">
-                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-500">
+                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"></circle>
                             <line x1="12" y1="8" x2="12" y2="12"></line>
                             <line x1="12" y1="16" x2="12.01" y2="16"></line>
                         </svg>
                     </span>
                 ` : ''}
-
-                ${/* Tooltip de Aviso (Recuperada) */ ''}
-                ${(log.status && (log.status.includes('Recuperada') || log.status.includes('não encontrado'))) ? `
+                ${isRecovered ? `
                     <span class="error-icon-container warning" data-tooltip="Lead não encontrado na planilha durante venda. Criado automaticamente.">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-orange)">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -412,14 +411,13 @@ function renderLogItem(log, detailed = false) {
                 ` : ''}
             </div>
             <div class="activity-subtitle">
-                ${escapeHtml(log.client)} • ${formatPhoneDisplay(log.phone)}
+                ${escapeHtml(log.client)} · ${formatPhoneDisplay(log.phone)}${cleanStatus ? ` · ${escapeHtml(cleanStatus)}` : ''}
             </div>
         </div>
         <div class="activity-meta">
             <span class="activity-time">${time}</span>
             ${detailed ? `<span style="font-size:0.7rem;color:var(--text-tertiary);">${fullDate}</span>` : ''}
         </div>
-
     `;
     return div;
 }
@@ -841,25 +839,49 @@ async function navigateToClientDetails(clientId) {
 const btnInvestigate = $('#btn-investigate');
 const inputInvestigate = $('#investigation-search');
 
+// Current log source and filter state
+let currentLogSource = 'logs';
+let currentLogFilter = 'all';
+let lastSearchResults = [];
+
 function setupInvestigationListeners() {
     const btn = $('#btn-investigate');
     const input = $('#investigation-search');
 
     if (btn && input) {
-        // Remove listeners to avoid duplicates if re-run (though app.js runs once)
-        // Since we can't easily remove anonymous listeners, we trust init runs once.
-        btn.addEventListener('click', () => {
-            const query = input.value.trim();
-            if (query) searchLeads(query);
-        });
+        const doSearch = () => {
+            const term = input.value.trim();
+            searchLeads(term);
+        };
 
-        input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                const query = input.value.trim();
-                if (query) searchLeads(query);
-            }
-        });
+        btn.onclick = doSearch;
+        input.onkeypress = (e) => {
+            if (e.key === 'Enter') doSearch();
+        };
     }
+
+    // Toggle: Leads Processados / Eventos Raw
+    const toggleBtns = $$('#logs-source-toggle .toggle-btn');
+    toggleBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            toggleBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentLogSource = btn.dataset.source;
+            const input = $('#investigation-search');
+            searchLeads(input ? input.value.trim() : '');
+        });
+    });
+
+    // Filters: Todos / Erros / Vendas / Novos Leads
+    const filterChips = $$('#logs-filters .filter-chip');
+    filterChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            filterChips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            currentLogFilter = chip.dataset.filter;
+            applyFilterToResults();
+        });
+    });
 }
 
 // Call immediately in case elements exist
@@ -875,9 +897,11 @@ async function searchLeads(query) {
         </div>`;
 
     try {
-        const res = await fetch(`/api/dashboard/search?q=${encodeURIComponent(query)}`);
+        const sourceParam = currentLogSource === 'all' ? '&source=all' : '';
+        const res = await fetch(`/api/dashboard/search?q=${encodeURIComponent(query || '')}${sourceParam}`);
         const results = await res.json();
-        renderInvestigationResults(results);
+        lastSearchResults = results;
+        applyFilterToResults();
     } catch (err) {
         container.innerHTML = `
             <div class="activity-empty">
@@ -887,49 +911,77 @@ async function searchLeads(query) {
     }
 }
 
+function applyFilterToResults() {
+    let filtered = lastSearchResults;
+
+    if (currentLogFilter === 'errors') {
+        filtered = filtered.filter(item => item.result === 'failed' || item.result === 'error');
+    } else if (currentLogFilter === 'sales') {
+        filtered = filtered.filter(item =>
+            (item.sale_amount && parseFloat(item.sale_amount) > 0) ||
+            (item.status && item.status.toLowerCase().includes('vend'))
+        );
+    } else if (currentLogFilter === 'new_leads') {
+        filtered = filtered.filter(item => item.event_type === 'new_lead');
+    }
+
+    renderInvestigationResults(filtered);
+}
+
 function renderInvestigationResults(results) {
     const container = $('#investigation-results');
     if (!container) return;
+
+    // Update count
+    const countEl = $('#results-count');
+    if (countEl) countEl.textContent = results && results.length ? `${results.length} resultado${results.length !== 1 ? 's' : ''}` : '';
 
     if (!results || results.length === 0) {
         container.innerHTML = `
             <div class="activity-empty">
                 <p>Nenhum resultado encontrado</p>
-                <small>Tente outro termo</small>
+                <small>Tente outro termo ou filtro</small>
             </div>`;
         return;
     }
 
+    // If source=all (raw mode), use old-style rendering with payload
+    if (currentLogSource === 'all') {
+        renderRawResults(container, results);
+        return;
+    }
+
+    // Clean mode (leads_log only)
+    container.innerHTML = '';
+    results.forEach(item => {
+        container.appendChild(renderLogItem(item, true));
+    });
+}
+
+function renderRawResults(container, results) {
     container.innerHTML = '';
     results.forEach(item => {
         const div = document.createElement('div');
         div.className = 'activity-item';
 
         const timestamp = new Date(item.timestamp).toLocaleString('pt-BR');
+        const isError = item.status && (item.status.toLowerCase().includes('erro') || item.result === 'failed');
+        const typeLabel = item.type === 'event' ? 'Webhook' : 'Lead Log';
 
         let badgeClass = 'badge-status';
         let iconClass = 'stat-icon-webhook';
-        let detailsHtml = '';
 
-        if (item.status.toLowerCase().includes('erro') || item.status === 'error' || item.status === 'Erro Processamento') {
+        if (isError) {
             badgeClass += ' badge-error';
-            iconClass = 'stat-icon-status';
-            // Show specific error from payload if available
-            const errorMsg = item.payload?.error || 'Erro desconhecido';
-            detailsHtml = `<div style="color:var(--accent-red);font-size:0.85rem;margin-top:4px;">❌ ${escapeHtml(errorMsg)}</div>`;
-        } else if (item.status.includes('Processado') || item.status === 'success') {
-            badgeClass += ' badge-sale';
-            iconClass = 'stat-icon-sale';
-            // Show destination sheet
-            const sheet = item.payload?.sheet || '?';
-            const aba = item.payload?.sheet_name || 'auto'; // Some logs might not have this, check payload structure
-            detailsHtml = `<div style="color:var(--accent-green);font-size:0.85rem;margin-top:4px;">✅ Enviado para: <strong>${escapeHtml(sheet)}</strong></div>`;
-        } else {
+            iconClass = 'stat-icon-error';
+        } else if (item.type === 'log') {
             badgeClass += ' badge-new';
-            detailsHtml = `<div style="color:var(--text-tertiary);font-size:0.85rem;margin-top:4px;">📥 Webhook recebido</div>`;
+            iconClass = 'stat-icon-status';
+        } else {
+            badgeClass += ' badge-update';
         }
 
-        let statusBadge = `<span class="${badgeClass}">${item.status}</span>`;
+        const displayStatus = item.status ? item.status.replace(/^Processado:\s*/, '') : typeLabel;
 
         let payloadId = `payload-${item.id}`;
 
@@ -942,26 +994,21 @@ function renderInvestigationResults(results) {
             </div>
             <div class="activity-content" style="width:100%">
                 <div class="activity-title" style="display:flex;justify-content:space-between;align-items:center">
-                    <span>${formatPhoneDisplay(item.phone) || 'Sem telefone'}</span>
-                    ${statusBadge}
+                    <span>${escapeHtml(item.name || formatPhoneDisplay(item.phone) || 'Sem telefone')}</span>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <span style="font-size:0.6rem;padding:2px 6px;border-radius:4px;background:var(--bg-surface);color:var(--text-tertiary);text-transform:uppercase;font-weight:600;">${typeLabel}</span>
+                        <span class="${badgeClass}">${escapeHtml(displayStatus)}</span>
+                    </div>
                 </div>
                 <div class="activity-subtitle">
                     ${escapeHtml(item.client)} · ${timestamp}
                 </div>
-                ${detailsHtml}
-                
                 <div style="margin-top:8px;">
                      <button class="btn-text btn-sm" onclick="togglePayload('${payloadId}')">
                         Ver Payload
                     </button>
                     <div id="${payloadId}" class="payload-preview" style="display:none; margin-top: 8px;">
-                        <div class="payload-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <span style="font-weight:600; font-size:0.8rem; color: #000;">Payload JSON</span>
-                            <button class="btn-icon btn-sm" onclick="togglePayload('${payloadId}')" title="Fechar" style="color: #000;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                            </button>
-                        </div>
-                        <pre style="color: #000; background: #f5f5f5; padding: 10px; border-radius: 6px; overflow-x: auto;">${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre>
+                        <pre style="color: var(--text-primary); background: var(--bg-primary); padding: 10px; border-radius: 6px; overflow-x: auto; font-size:0.75rem; border: 1px solid var(--border-subtle);">${escapeHtml(JSON.stringify(item.payload, null, 2))}</pre>
                     </div>
                 </div>
             </div>`;
@@ -978,59 +1025,13 @@ function togglePayload(id) {
 
 async function loadRecentErrors() {
     navigateTo('logs');
-    const container = $('#investigation-results');
-    if (container) {
-        container.innerHTML = `
-            <div class="activity-empty">
-                <p>Carregando erros recentes...</p>
-            </div>`;
-
-        try {
-            const res = await fetch('/api/dashboard/errors');
-            const errors = await res.json();
-
-            const adapted = errors.map(e => ({
-                id: e.id,
-                timestamp: e.created_at,
-                phone: e.phone,
-                client: e.clients?.name || 'Desconhecido',
-                status: 'Erro Processamento',
-                payload: {
-                    error: e.error_message,
-                    ...e
-                }
-            }));
-            renderInvestigationResults(adapted);
-        } catch (err) {
-            container.innerHTML = `<div class="activity-empty"><p class="error">Erro ao carregar</p></div>`;
-        }
-    }
+    // Set filter to errors and trigger search
+    currentLogFilter = 'errors';
+    const filterChips = $$('#logs-filters .filter-chip');
+    filterChips.forEach(c => c.classList.toggle('active', c.dataset.filter === 'errors'));
+    searchLeads('');
 }
 window.loadRecentErrors = loadRecentErrors;
-
-function setupInvestigationListeners() {
-    const btn = $('#btn-investigate');
-    const input = $('#investigation-search');
-
-    if (btn && input) {
-        const doSearch = () => {
-            const term = input.value.trim();
-            if (term) searchLeads(term);
-            else searchLeads(''); // Auto-load if empty
-        };
-
-        btn.onclick = doSearch;
-        input.onkeypress = (e) => {
-            if (e.key === 'Enter') doSearch();
-        };
-    }
-
-    // Auto-load on init
-    const container = $('#investigation-results');
-    if (container && container.innerHTML.includes('Carregando')) {
-        searchLeads('');
-    }
-}
 
 document.getElementById('btn-refresh-client-logs')?.addEventListener('click', () => {
     if (currentDetailClientId) loadClientDetails(currentDetailClientId);
