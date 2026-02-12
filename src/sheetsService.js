@@ -20,6 +20,14 @@ const MESES_BR = [
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
 
+// Status terminais — leads com esses status NÃO são levados para o mês seguinte
+const TERMINAL_STATUSES = [
+    'contato finalizado',
+    'venda',
+    'comprou',
+    'desqualificado',
+];
+
 // Cabeçalhos padrão (conforme planilha real do cliente)
 const HEADERS = [
     'Nome do Lead',
@@ -147,6 +155,13 @@ class SheetsService {
 
         // Nenhuma aba do mês encontrada — criar nova
         await this.ensureSheet(client.spreadsheet_id, targetName, existingSheets);
+
+        // Copiar leads ativos do mês anterior para a nova aba
+        const previousSheet = this.findPreviousMonthSheet(existingSheets);
+        if (previousSheet) {
+            await this.copyActiveLeadsFromSheet(client.spreadsheet_id, previousSheet, targetName);
+        }
+
         this.spreadsheetCache.set(cacheKey, targetName);
         return targetName;
     }
@@ -256,6 +271,100 @@ class SheetsService {
         } catch (error) {
             logger.error(`Erro ao garantir aba "${sheetName}"`, { error: error.message });
             throw error;
+        }
+    }
+
+    /**
+     * Encontra a aba do mês anterior na lista de abas existentes.
+     * Retorna o nome da aba ou null se não encontrar.
+     */
+    findPreviousMonthSheet(existingSheets) {
+        const brDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+        // Mês anterior
+        const prevDate = new Date(brDate);
+        prevDate.setMonth(prevDate.getMonth() - 1);
+
+        const prevMes = MESES_BR[prevDate.getMonth()];
+        const prevAno = String(prevDate.getFullYear()).slice(-2);
+
+        const match = existingSheets.find(name => {
+            const normalized = name.replace(/\s+/g, '').toLowerCase();
+            return normalized.includes(prevMes.toLowerCase()) && normalized.includes(prevAno);
+        });
+
+        if (match) {
+            logger.info(`Aba do mês anterior encontrada: "${match}"`);
+        }
+
+        return match || null;
+    }
+
+    /**
+     * Copia leads ativos do mês anterior para a nova aba do mês atual.
+     * Exclui leads com status terminal (Contato Finalizado, Venda, Desqualificado, Comprou).
+     * Mantém leads com status ativo (Lead Gerado, Lead Conectado, Proposta, Geladeira, etc).
+     * Limpa as colunas DIA 1-5 (I-M) e Comentários (N) dos leads copiados.
+     */
+    async copyActiveLeadsFromSheet(spreadsheetId, sourceSheetName, targetSheetName) {
+        try {
+            // Ler todos os dados da aba de origem (pular cabeçalho)
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sourceSheetName}'!A2:N`,
+            });
+
+            const allRows = response.data.values || [];
+
+            if (allRows.length === 0) {
+                logger.info(`Aba "${sourceSheetName}" está vazia, nada para copiar`);
+                return;
+            }
+
+            // Filtrar: manter apenas leads com status NÃO terminal
+            // Coluna H (status) = índice 7
+            const activeRows = allRows.filter(row => {
+                const status = (row[7] || '').toLowerCase().trim();
+                // Excluir se o status contém qualquer keyword terminal
+                const isTerminal = TERMINAL_STATUSES.some(ts => status.includes(ts));
+                return !isTerminal;
+            });
+
+            if (activeRows.length === 0) {
+                logger.info(`Nenhum lead ativo para copiar de "${sourceSheetName}"`);
+                return;
+            }
+
+            // Limpar colunas DIA 1-5 (I-M, índices 8-12) e Comentários (N, índice 13) dos leads copiados
+            const cleanedRows = activeRows.map(row => {
+                const newRow = [...row];
+                // Garantir que a row tem 14 colunas
+                while (newRow.length < 14) newRow.push('');
+                // Limpar DIA 1-5 e Comentários
+                newRow[8] = '';   // I: DIA 1
+                newRow[9] = '';   // J: DIA 2
+                newRow[10] = '';  // K: DIA 3
+                newRow[11] = '';  // L: DIA 4
+                newRow[12] = '';  // M: DIA 5
+                newRow[13] = '';  // N: Comentários
+                // Limpar data/valor de fechamento (novo mês, reiniciar)
+                newRow[4] = '';   // E: Data Fechamento
+                newRow[5] = '';   // F: Valor Fechamento
+                return newRow;
+            });
+
+            // Inserir os leads ativos na nova aba (a partir da linha 2, após cabeçalho)
+            await this.sheets.spreadsheets.values.update({
+                spreadsheetId,
+                range: `'${targetSheetName}'!A2:N${cleanedRows.length + 1}`,
+                valueInputOption: 'RAW',
+                requestBody: { values: cleanedRows },
+            });
+
+            logger.info(`✅ ${cleanedRows.length} leads ativos copiados de "${sourceSheetName}" para "${targetSheetName}" (${allRows.length - cleanedRows.length} excluídos por status terminal)`);
+
+        } catch (error) {
+            // Não falhar a criação da aba por causa da cópia
+            logger.error(`Erro ao copiar leads ativos de "${sourceSheetName}"`, { error: error.message });
         }
     }
 
@@ -394,7 +503,47 @@ class SheetsService {
     }
 
     /**
+     * Retorna lista de nomes de abas mensais existentes, ordenadas da mais recente para a mais antiga.
+     */
+    async getMonthlySheetNames(spreadsheetId) {
+        try {
+            const spreadsheet = await this.sheets.spreadsheets.get({
+                spreadsheetId,
+                fields: 'sheets.properties.title',
+            });
+
+            const allSheets = spreadsheet.data.sheets.map(s => s.properties.title);
+
+            // Filtrar apenas abas que parecem mensais (formato "Mês-AA")
+            const monthlyPattern = new RegExp(
+                `^(${MESES_BR.join('|')})[\\s-]*(\\d{2})$`, 'i'
+            );
+
+            const monthlySheets = allSheets
+                .filter(name => monthlyPattern.test(name.replace(/\s+/g, '')))
+                .sort((a, b) => {
+                    // Ordenar por ano-mês decrescente
+                    const parseSheet = (name) => {
+                        const normalized = name.replace(/\s+/g, '');
+                        const match = normalized.match(monthlyPattern);
+                        if (!match) return 0;
+                        const mesIdx = MESES_BR.findIndex(m => m.toLowerCase() === match[1].toLowerCase());
+                        const ano = parseInt(match[2], 10);
+                        return ano * 12 + mesIdx;
+                    };
+                    return parseSheet(b) - parseSheet(a);
+                });
+
+            return monthlySheets;
+        } catch (error) {
+            logger.warn('Erro ao listar abas mensais', { error: error.message });
+            return [];
+        }
+    }
+
+    /**
      * Atualiza o status de um lead existente na planilha.
+     * Busca primeiro no mês atual, depois em meses anteriores.
      * Atualiza colunas:
      *   E: Data Fechamento
      *   F: Valor de Fechamento
@@ -411,13 +560,36 @@ class SheetsService {
                     throw new Error(`Cliente "${client.name}": spreadsheet_id não configurado`);
                 }
 
-                const sheetName = await this.resolveSheetName(client);
+                const currentSheetName = await this.resolveSheetName(client);
 
-                // Buscar a linha do lead pelo telefone
-                const row = await this.findLeadRowByPhone(spreadsheetId, sheetName, updateData.phone);
+                // Buscar a linha do lead pelo telefone — primeiro no mês atual
+                let row = await this.findLeadRowByPhone(spreadsheetId, currentSheetName, updateData.phone);
+                let sheetName = currentSheetName;
+
+                // Se não encontrou no mês atual, buscar em meses anteriores
+                if (!row) {
+                    logger.info(`Lead não encontrado em "${currentSheetName}", buscando em meses anteriores...`, {
+                        phone: updateData.phone,
+                        client: client.name,
+                    });
+
+                    const monthlySheets = await this.getMonthlySheetNames(spreadsheetId);
+
+                    for (const prevSheet of monthlySheets) {
+                        if (prevSheet === currentSheetName) continue; // Já buscamos
+                        row = await this.findLeadRowByPhone(spreadsheetId, prevSheet, updateData.phone);
+                        if (row) {
+                            sheetName = prevSheet;
+                            logger.info(`Lead encontrado em aba anterior: "${prevSheet}" linha ${row}`, {
+                                phone: updateData.phone,
+                            });
+                            break;
+                        }
+                    }
+                }
 
                 if (!row) {
-                    logger.warn(`Lead não encontrado para atualização`, {
+                    logger.warn(`Lead não encontrado para atualização em nenhuma aba`, {
                         phone: updateData.phone,
                         client: client.name,
                     });

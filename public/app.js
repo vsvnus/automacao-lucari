@@ -548,6 +548,17 @@ function renderLogItem(log, detailed = false) {
         badge = '<span class="badge-status badge-new">Novo Lead</span>';
     }
 
+    // Origin badge
+    const origin = log.origin || '';
+    let originBadge = '';
+    if (origin) {
+        let originClass = 'badge-origin-default';
+        if (origin.toLowerCase().includes('meta')) originClass = 'badge-origin-meta';
+        else if (origin.toLowerCase().includes('google')) originClass = 'badge-origin-google';
+        else if (origin.toLowerCase().includes('pago')) originClass = 'badge-origin-paid';
+        originBadge = `<span class="badge-status ${originClass}">${escapeHtml(origin)}</span>`;
+    }
+
     div.innerHTML = `
         <div class="activity-icon-wrapper ${iconClass}">
             ${icon}
@@ -558,6 +569,7 @@ function renderLogItem(log, detailed = false) {
                     ${escapeHtml((log.name && log.name !== 'Sem nome') ? cleanDisplayName(log.name) : formatPhoneDisplay(log.phone))}
                 </span>
                 ${badge}
+                ${originBadge}
                 ${isFailed && log.error_message ? `
                     <span class="error-icon-container" data-tooltip="${escapeHtml(log.error_message)}">
                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

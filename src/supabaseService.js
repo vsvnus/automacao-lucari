@@ -296,6 +296,8 @@ class SupabaseService {
                 timestamp: log.created_at,
                 result: log.processing_result,
                 error_message: log.error_message,
+                origin: log.origin,
+                sale_amount: log.sale_amount,
             }));
         } catch (error) {
             logger.error('Erro ao buscar logs recentes', { error: error.message });
@@ -344,6 +346,8 @@ class SupabaseService {
                     timestamp: log.created_at,
                     result: log.processing_result,
                     error_message: log.error_message,
+                    origin: log.origin,
+                    sale_amount: log.sale_amount,
                 }))
             };
         } catch (error) {

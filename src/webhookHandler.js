@@ -43,6 +43,7 @@ const PRODUCT_KEYWORDS = [
 const SALE_STATUS_KEYWORDS = [
     'venda', 'vendido', 'fechou', 'fechado', 'ganho', 'ganhou',
     'convertido', 'contrato', 'assinado', 'pago', 'pagou',
+    'comprou', 'comprado',
     'sale', 'won', 'closed',
 ];
 
@@ -250,7 +251,10 @@ class WebhookHandler {
         }
 
         // 4. Salvar evento no Supabase (async, não bloqueia)
-        supabaseService.logWebhookEvent(payload, client.id, result.success ? 'success' : 'failed');
+        // Nota: leads filtrados já logam dentro de processNewLead/processStatusUpdate
+        if (result.type !== 'filtered') {
+            supabaseService.logWebhookEvent(payload, client.id, result.success ? 'success' : 'failed');
+        }
 
         return result;
     }
@@ -286,6 +290,31 @@ class WebhookHandler {
         // Etapa 2: Detecção de Origem (Meta, Google, WhatsApp orgânico)
         const origin = detectOrigin(payload);
         logger.info(`📡 Origem detectada: ${origin.channel}`, { source: payload.source, utmSource: payload.utm_source || payload.utmSource });
+
+        // Etapa 2.5: FILTRO — Apenas leads de tráfego pago vão para a planilha
+        // Conversas orgânicas do WhatsApp (sem tracking de campanha) são ignoradas
+        const PAID_CHANNELS = ['Meta Ads', 'Google Ads', 'Tráfego Pago'];
+        if (!PAID_CHANNELS.includes(origin.channel)) {
+            logger.info(`🚫 Lead orgânico ignorado (sem campanha): ${payload.chatName || phone} — origem: ${origin.channel}`, {
+                phone: phone,
+                channel: origin.channel,
+                client: client.name,
+            });
+
+            supabaseService.logLead(client.id, {
+                eventType: 'new_lead',
+                phone: phone,
+                name: payload.chatName || phone,
+                status: 'Ignorado (Orgânico)',
+                origin: origin.channel,
+                result: 'filtered',
+                error: null,
+            });
+
+            supabaseService.logWebhookEvent(payload, client.id, 'filtered_organic');
+
+            return { success: true, message: 'Lead orgânico ignorado (sem campanha)', type: 'filtered' };
+        }
 
         // Etapa 3: Preparação de Dados
         const leadId = uuidv4();
@@ -404,12 +433,23 @@ class WebhookHandler {
         );
 
         if (!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
+            // Verificar origem antes de recuperar — só inserir se for tráfego pago
+            const recoveryOrigin = detectOrigin(payload);
+            const PAID_CHANNELS = ['Meta Ads', 'Google Ads', 'Tráfego Pago'];
+            if (!PAID_CHANNELS.includes(recoveryOrigin.channel)) {
+                logger.info(`🚫 Recuperação de venda ignorada (lead orgânico): ${payload.chatName || payload.phone}`, {
+                    phone: payload.phone,
+                    channel: recoveryOrigin.channel,
+                });
+                return { success: true, message: 'Venda orgânica ignorada (sem campanha)', type: 'filtered' };
+            }
+
             logger.warn(`⚠️ Lead não encontrado para atualização de venda. Tentando inserir como novo...`, { phone: payload.phone });
 
             const recoveryLeadData = {
                 name: (payload.chatName || formatPhoneBR(payload.phone)) + ' (Recuperado)',
                 phone: formatPhoneBR(payload.phone),
-                origin: 'WhatsApp',
+                origin: recoveryOrigin.channel,
                 date: formatDateBR(new Date().toISOString()), // Data atual
                 product: detectProduct(payload) || 'Indefinido',
                 status: `Venda (Cliente não encontrado)`, // Status especial
