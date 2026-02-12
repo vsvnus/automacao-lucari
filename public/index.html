@@ -164,6 +164,23 @@
                 </button>
             </div>
 
+            <!-- Period Selector -->
+            <div class="period-selector" id="period-selector">
+                <div class="period-pills">
+                    <button class="period-pill active" data-period="today">Hoje</button>
+                    <button class="period-pill" data-period="yesterday">Ontem</button>
+                    <button class="period-pill" data-period="7d">7 dias</button>
+                    <button class="period-pill" data-period="30d">30 dias</button>
+                    <button class="period-pill" data-period="custom">Personalizado</button>
+                </div>
+                <div class="period-custom-range" id="period-custom-range" style="display:none;">
+                    <input type="date" class="period-date-input" id="period-from" />
+                    <span class="period-range-sep">at&eacute;</span>
+                    <input type="date" class="period-date-input" id="period-to" />
+                    <button class="btn-primary btn-sm" id="btn-period-apply">Aplicar</button>
+                </div>
+            </div>
+
             <!-- Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-card">
@@ -178,7 +195,7 @@
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="stat-leads">0</span>
-                        <span class="stat-label">Leads Hoje</span>
+                        <span class="stat-label" id="label-leads">Leads Hoje</span>
                     </div>
                 </div>
 
@@ -192,7 +209,7 @@
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="stat-sales">0</span>
-                        <span class="stat-label">Vendas Hoje</span>
+                        <span class="stat-label" id="label-sales">Vendas Hoje</span>
                     </div>
                 </div>
 
@@ -207,7 +224,7 @@
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="stat-errors">0</span>
-                        <span class="stat-label">Erros Hoje</span>
+                        <span class="stat-label" id="label-errors">Erros Hoje</span>
                     </div>
                 </div>
 

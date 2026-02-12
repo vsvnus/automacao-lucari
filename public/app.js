@@ -11,6 +11,9 @@ const state = {
     clients: [],
     activityLog: [],
     webhookCount: 0,
+    period: 'today',
+    dateFrom: null,
+    dateTo: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -188,6 +191,153 @@ async function reloadSystem() {
 }
 
 // ============================================
+// Period Selector
+// ============================================
+
+/**
+ * Retorna { from, to } em ISO UTC baseado no período selecionado.
+ * Usa fuso São Paulo (UTC-3) para calcular meia-noite.
+ */
+function getSelectedDateRange() {
+    const SP_OFFSET = -3; // UTC-3
+
+    function spMidnightToUTC(date) {
+        // date é um Date representando um dia; queremos meia-noite SP daquele dia em UTC
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        // Meia-noite SP = 03:00 UTC
+        return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), -SP_OFFSET, 0, 0));
+    }
+
+    function spNow() {
+        const now = new Date();
+        const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+        return new Date(utcMs + SP_OFFSET * 3600000);
+    }
+
+    const today = spNow();
+    let from, to;
+
+    switch (state.period) {
+        case 'today':
+            from = spMidnightToUTC(today);
+            to = null; // sem limite superior — inclui até agora
+            break;
+        case 'yesterday': {
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            from = spMidnightToUTC(yesterday);
+            to = spMidnightToUTC(today); // até meia-noite de hoje (exclusive)
+            break;
+        }
+        case '7d': {
+            const d = new Date(today);
+            d.setDate(d.getDate() - 6);
+            from = spMidnightToUTC(d);
+            to = null;
+            break;
+        }
+        case '30d': {
+            const d = new Date(today);
+            d.setDate(d.getDate() - 29);
+            from = spMidnightToUTC(d);
+            to = null;
+            break;
+        }
+        case 'custom': {
+            if (state.dateFrom) {
+                const parts = state.dateFrom.split('-');
+                from = spMidnightToUTC(new Date(parts[0], parts[1] - 1, parts[2]));
+            }
+            if (state.dateTo) {
+                const parts = state.dateTo.split('-');
+                const endDay = new Date(parts[0], parts[1] - 1, parts[2]);
+                endDay.setDate(endDay.getDate() + 1); // incluir o dia inteiro
+                to = spMidnightToUTC(endDay);
+            }
+            break;
+        }
+        default:
+            from = spMidnightToUTC(today);
+            to = null;
+    }
+
+    return {
+        from: from ? from.toISOString() : undefined,
+        to: to ? to.toISOString() : undefined,
+    };
+}
+
+function getPeriodLabel() {
+    switch (state.period) {
+        case 'today': return 'Hoje';
+        case 'yesterday': return 'Ontem';
+        case '7d': return '7 dias';
+        case '30d': return '30 dias';
+        case 'custom': return 'Personalizado';
+        default: return 'Hoje';
+    }
+}
+
+function buildDateQS() {
+    const { from, to } = getSelectedDateRange();
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
+}
+
+function updatePeriodLabels() {
+    const label = getPeriodLabel();
+    const labelLeads = document.getElementById('label-leads');
+    const labelSales = document.getElementById('label-sales');
+    const labelErrors = document.getElementById('label-errors');
+    if (labelLeads) labelLeads.textContent = `Leads ${label}`;
+    if (labelSales) labelSales.textContent = `Vendas ${label}`;
+    if (labelErrors) labelErrors.textContent = `Erros ${label}`;
+
+    // Update "leads hoje" label on client preview cards
+    const countLabels = document.querySelectorAll('.leads-count-label');
+    countLabels.forEach(el => {
+        el.textContent = `leads ${label.toLowerCase()}`;
+    });
+}
+
+function setupPeriodSelector() {
+    const pills = document.querySelectorAll('.period-pill');
+    const customRange = document.getElementById('period-custom-range');
+    const btnApply = document.getElementById('btn-period-apply');
+
+    pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+            pills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.period = pill.dataset.period;
+
+            if (state.period === 'custom') {
+                if (customRange) customRange.style.display = 'flex';
+            } else {
+                if (customRange) customRange.style.display = 'none';
+                updatePeriodLabels();
+                updateDashboard();
+            }
+        });
+    });
+
+    if (btnApply) {
+        btnApply.addEventListener('click', () => {
+            const fromInput = document.getElementById('period-from');
+            const toInput = document.getElementById('period-to');
+            state.dateFrom = fromInput ? fromInput.value : null;
+            state.dateTo = toInput ? toInput.value : null;
+            updatePeriodLabels();
+            updateDashboard();
+        });
+    }
+}
+
+// ============================================
 // Stats & Dashboard
 // ============================================
 async function updateDashboard() {
@@ -243,7 +393,7 @@ async function updateDashboard() {
 
 async function fetchDashboardStats() {
     try {
-        const res = await fetch('/api/dashboard/stats');
+        const res = await fetch(`/api/dashboard/stats${buildDateQS()}`);
         return await res.json();
     } catch {
         return null;
@@ -297,7 +447,7 @@ async function loadDashboardClients() {
             </div>
             <div class="client-leads-count">
                 <span class="leads-count-value">${count}</span>
-                <span class="leads-count-label">leads hoje</span>
+                <span class="leads-count-label">leads ${getPeriodLabel().toLowerCase()}</span>
             </div>
             <div class="activity-arrow">
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
@@ -310,7 +460,7 @@ async function loadDashboardClients() {
 
 async function fetchLeadsCountByClient() {
     try {
-        const res = await fetch('/api/dashboard/leads-by-client');
+        const res = await fetch(`/api/dashboard/leads-by-client${buildDateQS()}`);
         return await res.json();
     } catch {
         return {};
@@ -329,7 +479,7 @@ window.viewClientLogs = function (clientSlug) {
 async function loadDashboardActivity() {
     let logs = [];
     try {
-        const res = await fetch('/api/dashboard/activity');
+        const res = await fetch(`/api/dashboard/activity${buildDateQS()}`);
         logs = await res.json();
         if (!Array.isArray(logs)) logs = [];
     } catch (e) { console.error('Error loading activity:', e); }
@@ -830,6 +980,8 @@ async function init() {
 
     // 3. Setup Listeners
     setupInvestigationListeners();
+    setupPeriodSelector();
+    updatePeriodLabels();
 }
 
 init();

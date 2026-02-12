@@ -13,18 +13,22 @@ const { logger } = require('./utils/logger');
 
 /**
  * Retorna meia-noite de "hoje" no fuso de São Paulo (UTC-3) em formato ISO.
- * Garante que DEV e PROD usem o mesmo referencial de tempo.
+ * Usa Date.UTC para evitar dependência do fuso da máquina (funciona em DEV e PROD).
  */
 function getTodayStartISO() {
     const now = new Date();
-    const spOffset = -3 * 60; // São Paulo UTC-3
-    const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-    const spNow = new Date(utcMs + spOffset * 60000);
-    // Meia-noite em SP
-    spNow.setHours(0, 0, 0, 0);
-    // Converter de volta para UTC: subtrair o offset de SP
-    const midnightUtc = new Date(spNow.getTime() - spOffset * 60000);
-    return midnightUtc.toISOString();
+    // Hora atual em SP: UTC - 3h
+    const spHour = now.getUTCHours() - 3;
+    // Se spHour < 0, ainda é "ontem" em SP
+    const spDate = new Date(now);
+    if (spHour < 0) spDate.setUTCDate(spDate.getUTCDate() - 1);
+    // Meia-noite SP = 03:00 UTC do mesmo dia SP
+    return new Date(Date.UTC(
+        spDate.getUTCFullYear(),
+        spDate.getUTCMonth(),
+        spDate.getUTCDate(),
+        3, 0, 0, 0
+    )).toISOString();
 }
 
 class SupabaseService {
@@ -395,12 +399,15 @@ class SupabaseService {
 
     /**
      * Busca atividade do dashboard — apenas leads_log (dados limpos, sem duplicatas).
+     * @param {number} [limit=20]
+     * @param {string} [startDate] — ISO date string para filtrar >=.
+     * @param {string} [endDate]   — ISO date string para filtrar <=.
      */
-    async getDashboardActivity(limit = 20) {
+    async getDashboardActivity(limit = 20, startDate, endDate) {
         if (!this.isAvailable()) return [];
 
         try {
-            const { data, error } = await this.client
+            let query = this.client
                 .from('leads_log')
                 .select(`
                     *,
@@ -408,6 +415,11 @@ class SupabaseService {
                 `)
                 .order('created_at', { ascending: false })
                 .limit(limit);
+
+            if (startDate) query = query.gte('created_at', startDate);
+            if (endDate) query = query.lte('created_at', endDate);
+
+            const { data, error } = await query;
 
             if (error) throw error;
 
@@ -486,20 +498,26 @@ class SupabaseService {
     }
 
     /**
-     * Retorna contagem de leads de hoje agrupada por client_id.
+     * Retorna contagem de leads agrupada por client_id para um período.
+     * @param {string} [startDate] — ISO date. Default: meia-noite de hoje (SP).
+     * @param {string} [endDate]   — ISO date.
      * Resultado: { "client-slug": 5, "outro-slug": 2 }
      */
-    async getLeadsCountByClientToday() {
+    async getLeadsCountByClient(startDate, endDate) {
         if (!this.isAvailable()) return {};
 
         try {
-            const todayIso = getTodayStartISO();
+            const from = startDate || getTodayStartISO();
 
-            const { data, error } = await this.client
+            let query = this.client
                 .from('leads_log')
                 .select('client_id, clients ( slug )')
-                .gte('created_at', todayIso)
+                .gte('created_at', from)
                 .eq('processing_result', 'success');
+
+            if (endDate) query = query.lte('created_at', endDate);
+
+            const { data, error } = await query;
 
             if (error) throw error;
 
@@ -512,9 +530,14 @@ class SupabaseService {
             }
             return counts;
         } catch (error) {
-            logger.error('Erro ao contar leads por cliente hoje', { error: error.message });
+            logger.error('Erro ao contar leads por cliente', { error: error.message });
             return {};
         }
+    }
+
+    /** Alias para compatibilidade */
+    async getLeadsCountByClientToday() {
+        return this.getLeadsCountByClient();
     }
 
     /**
@@ -659,51 +682,64 @@ class SupabaseService {
     // ============================================================
 
     /**
-     * Busca estatísticas agregadas para o dashboard (hoje)
+     * Busca estatísticas agregadas para o dashboard.
+     * @param {string} [startDate] — ISO date string para filtrar >=. Default: meia-noite de hoje (SP).
+     * @param {string} [endDate]   — ISO date string para filtrar <=.
      */
-    async getDashboardStats() {
+    async getDashboardStats(startDate, endDate) {
         if (!this.isAvailable()) return null;
 
         try {
-            const todayIso = getTodayStartISO();
+            const from = startDate || getTodayStartISO();
 
-            // 1. Novos Leads Hoje (leads_log com event_type=new_lead e sucesso)
-            const { count: newLeadsCount, error: newLeadsError } = await this.client
-                .from('leads_log')
-                .select('*', { count: 'exact', head: true })
-                .gte('created_at', todayIso)
-                .eq('event_type', 'new_lead')
-                .eq('processing_result', 'success');
+            // Helper: aplica filtro de período a uma query
+            const applyRange = (query) => {
+                query = query.gte('created_at', from);
+                if (endDate) query = query.lte('created_at', endDate);
+                return query;
+            };
+
+            // 1. Novos Leads (leads_log com event_type=new_lead e sucesso)
+            const { count: newLeadsCount, error: newLeadsError } = await applyRange(
+                this.client
+                    .from('leads_log')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('event_type', 'new_lead')
+                    .eq('processing_result', 'success')
+            );
 
             if (newLeadsError) throw newLeadsError;
 
-            // 2. Vendas Hoje (leads_log com status contendo keywords de venda)
-            const { data: salesData, error: salesError } = await this.client
-                .from('leads_log')
-                .select('id')
-                .gte('created_at', todayIso)
-                .eq('event_type', 'status_update')
-                .eq('processing_result', 'success')
-                .not('sale_amount', 'is', null);
+            // 2. Vendas (leads_log com sale_amount preenchido)
+            const { data: salesData, error: salesError } = await applyRange(
+                this.client
+                    .from('leads_log')
+                    .select('id')
+                    .eq('event_type', 'status_update')
+                    .eq('processing_result', 'success')
+                    .not('sale_amount', 'is', null)
+            );
 
             if (salesError) throw salesError;
             const salesCount = salesData ? salesData.length : 0;
 
-            // 3. Erros Hoje (leads_log com resultado failed)
-            const { count: errorCount, error: errorError } = await this.client
-                .from('leads_log')
-                .select('*', { count: 'exact', head: true })
-                .gte('created_at', todayIso)
-                .eq('processing_result', 'failed');
+            // 3. Erros (leads_log com resultado failed)
+            const { count: errorCount, error: errorError } = await applyRange(
+                this.client
+                    .from('leads_log')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('processing_result', 'failed')
+            );
 
             if (errorError) throw errorError;
 
-            // 4. Total processado hoje (para compatibilidade)
-            const { count: processedCount, error: processedError } = await this.client
-                .from('leads_log')
-                .select('*', { count: 'exact', head: true })
-                .gte('created_at', todayIso)
-                .eq('processing_result', 'success');
+            // 4. Total processado (para compatibilidade)
+            const { count: processedCount, error: processedError } = await applyRange(
+                this.client
+                    .from('leads_log')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('processing_result', 'success')
+            );
 
             if (processedError) throw processedError;
 
@@ -712,7 +748,6 @@ class SupabaseService {
                 sales: salesCount || 0,
                 errors: errorCount || 0,
                 processed: processedCount || 0,
-                // Mantém campos antigos para compatibilidade
                 received: (newLeadsCount || 0) + salesCount,
             };
         } catch (error) {

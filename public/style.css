@@ -489,6 +489,96 @@ body {
     color: var(--accent-green);
 }
 
+/* --- Period Selector --- */
+.period-selector {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.period-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.period-pill {
+    padding: 7px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.period-pill:hover {
+    color: var(--text-primary);
+    border-color: var(--border-active);
+    background: var(--bg-surface);
+}
+
+.period-pill.active {
+    background: var(--accent-primary-subtle);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary-hover);
+}
+
+.period-custom-range {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.period-range-sep {
+    font-size: 0.82rem;
+    color: var(--text-tertiary);
+}
+
+.period-date-input {
+    padding: 8px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    color-scheme: dark;
+}
+
+.period-date-input:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-subtle);
+}
+
+@media (max-width: 768px) {
+    .period-pills {
+        gap: 4px;
+    }
+
+    .period-pill {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+    }
+
+    .period-custom-range {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .period-range-sep {
+        text-align: center;
+    }
+}
+
 /* --- Stats --- */
 /* --- Stats (New Grid) --- */
 .stats-grid {

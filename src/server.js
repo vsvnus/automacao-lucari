@@ -97,13 +97,15 @@ app.get('/health', (_req, res) => {
 // Dashboard & Investigação API
 // ====================================================
 
-app.get('/api/dashboard/stats', async (_req, res) => {
-    const stats = await supabaseService.getDashboardStats();
+app.get('/api/dashboard/stats', async (req, res) => {
+    const { from, to } = req.query;
+    const stats = await supabaseService.getDashboardStats(from || undefined, to || undefined);
     res.json(stats || { received: 0, processed: 0, errors: 0 });
 });
 
-app.get('/api/dashboard/activity', async (_req, res) => {
-    const activity = await supabaseService.getDashboardActivity(20);
+app.get('/api/dashboard/activity', async (req, res) => {
+    const { from, to } = req.query;
+    const activity = await supabaseService.getDashboardActivity(20, from || undefined, to || undefined);
     res.json(activity);
 });
 
@@ -125,8 +127,9 @@ app.get('/api/dashboard/lead/:phone', async (req, res) => {
     res.json(timeline);
 });
 
-app.get('/api/dashboard/leads-by-client', async (_req, res) => {
-    const counts = await supabaseService.getLeadsCountByClientToday();
+app.get('/api/dashboard/leads-by-client', async (req, res) => {
+    const { from, to } = req.query;
+    const counts = await supabaseService.getLeadsCountByClient(from || undefined, to || undefined);
     res.json(counts);
 });
 
