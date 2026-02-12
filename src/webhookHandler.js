@@ -293,7 +293,7 @@ class WebhookHandler {
 
         // Etapa 2.5: FILTRO — Apenas leads de tráfego pago vão para a planilha
         // Conversas orgânicas do WhatsApp (sem tracking de campanha) são ignoradas
-        const PAID_CHANNELS = ['Meta Ads', 'Google Ads', 'Tráfego Pago'];
+        const PAID_CHANNELS = ['Meta Ads', 'Google Ads'];
         if (!PAID_CHANNELS.includes(origin.channel)) {
             logger.info(`🚫 Lead orgânico ignorado (sem campanha): ${payload.chatName || phone} — origem: ${origin.channel}`, {
                 phone: phone,
@@ -435,7 +435,7 @@ class WebhookHandler {
         if (!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
             // Verificar origem antes de recuperar — só inserir se for tráfego pago
             const recoveryOrigin = detectOrigin(payload);
-            const PAID_CHANNELS = ['Meta Ads', 'Google Ads', 'Tráfego Pago'];
+            const PAID_CHANNELS = ['Meta Ads', 'Google Ads'];
             if (!PAID_CHANNELS.includes(recoveryOrigin.channel)) {
                 logger.info(`🚫 Recuperação de venda ignorada (lead orgânico): ${payload.chatName || payload.phone}`, {
                     phone: payload.phone,
