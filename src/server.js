@@ -125,6 +125,11 @@ app.get('/api/dashboard/lead/:phone', async (req, res) => {
     res.json(timeline);
 });
 
+app.get('/api/dashboard/leads-by-client', async (_req, res) => {
+    const counts = await supabaseService.getLeadsCountByClientToday();
+    res.json(counts);
+});
+
 app.get('/api/dashboard/errors', async (_req, res) => {
     const errors = await supabaseService.getRecentErrors();
     res.json(errors);

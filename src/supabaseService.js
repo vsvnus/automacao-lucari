@@ -470,6 +470,40 @@ class SupabaseService {
     }
 
     /**
+     * Retorna contagem de leads de hoje agrupada por client_id.
+     * Resultado: { "client-slug": 5, "outro-slug": 2 }
+     */
+    async getLeadsCountByClientToday() {
+        if (!this.isAvailable()) return {};
+
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const todayIso = today.toISOString();
+
+            const { data, error } = await this.client
+                .from('leads_log')
+                .select('client_id, clients ( slug )')
+                .gte('created_at', todayIso)
+                .eq('processing_result', 'success');
+
+            if (error) throw error;
+
+            const counts = {};
+            for (const row of data) {
+                const slug = row.clients?.slug;
+                if (slug) {
+                    counts[slug] = (counts[slug] || 0) + 1;
+                }
+            }
+            return counts;
+        } catch (error) {
+            logger.error('Erro ao contar leads por cliente hoje', { error: error.message });
+            return {};
+        }
+    }
+
+    /**
      * Timeline completa de um lead por telefone (webhook_events + leads_log agrupados).
      */
     async getLeadTimeline(phone) {

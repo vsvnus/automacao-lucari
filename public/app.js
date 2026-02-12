@@ -260,7 +260,10 @@ function formatUptime(seconds) {
 }
 
 async function loadDashboardClients() {
-    const clients = await fetchClients();
+    const [clients, leadCounts] = await Promise.all([
+        fetchClients(),
+        fetchLeadsCountByClient(),
+    ]);
     state.clients = clients;
 
     const container = $('#dashboard-clients-preview');
@@ -279,6 +282,7 @@ async function loadDashboardClients() {
     clients.slice(0, 5).forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
+        const count = leadCounts[client.slug] || leadCounts[client.id] || 0;
         const div = document.createElement('div');
         div.className = 'activity-item clickable';
         div.style.cursor = 'pointer';
@@ -291,6 +295,10 @@ async function loadDashboardClients() {
                 <div class="activity-title">${escapeHtml(client.name)}</div>
                 <div class="activity-subtitle">${isActive ? '🟢 Ativo' : '🔴 Inativo'} · ${escapeHtml(client.slug)}</div>
             </div>
+            <div class="client-leads-count">
+                <span class="leads-count-value">${count}</span>
+                <span class="leads-count-label">leads hoje</span>
+            </div>
             <div class="activity-arrow">
                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.3">
                      <polyline points="9 18 15 12 9 6"></polyline>
@@ -298,6 +306,15 @@ async function loadDashboardClients() {
             </div>`;
         container.appendChild(div);
     });
+}
+
+async function fetchLeadsCountByClient() {
+    try {
+        const res = await fetch('/api/dashboard/leads-by-client');
+        return await res.json();
+    } catch {
+        return {};
+    }
 }
 
 window.viewClientLogs = function (clientSlug) {

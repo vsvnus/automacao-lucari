@@ -625,6 +625,10 @@ body {
     transition: background 0.2s;
 }
 
+.activity-item.clickable {
+    grid-template-columns: 44px 1fr auto auto;
+}
+
 .activity-item:hover {
     background: var(--bg-surface);
 }
@@ -1731,6 +1735,31 @@ kbd {
 .results-count {
     font-size: 0.78rem;
     color: var(--text-tertiary);
+    font-weight: 500;
+}
+
+/* --- Client Leads Count (Dashboard preview) --- */
+.client-leads-count {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 50px;
+}
+
+.leads-count-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--accent-green);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.leads-count-label {
+    font-size: 0.6rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     font-weight: 500;
 }
 
