@@ -11,6 +11,22 @@
 const { createClient } = require('@supabase/supabase-js');
 const { logger } = require('./utils/logger');
 
+/**
+ * Retorna meia-noite de "hoje" no fuso de São Paulo (UTC-3) em formato ISO.
+ * Garante que DEV e PROD usem o mesmo referencial de tempo.
+ */
+function getTodayStartISO() {
+    const now = new Date();
+    const spOffset = -3 * 60; // São Paulo UTC-3
+    const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+    const spNow = new Date(utcMs + spOffset * 60000);
+    // Meia-noite em SP
+    spNow.setHours(0, 0, 0, 0);
+    // Converter de volta para UTC: subtrair o offset de SP
+    const midnightUtc = new Date(spNow.getTime() - spOffset * 60000);
+    return midnightUtc.toISOString();
+}
+
 class SupabaseService {
     constructor() {
         this.client = null;
@@ -477,9 +493,7 @@ class SupabaseService {
         if (!this.isAvailable()) return {};
 
         try {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayIso = today.toISOString();
+            const todayIso = getTodayStartISO();
 
             const { data, error } = await this.client
                 .from('leads_log')
@@ -651,9 +665,7 @@ class SupabaseService {
         if (!this.isAvailable()) return null;
 
         try {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const todayIso = today.toISOString();
+            const todayIso = getTodayStartISO();
 
             // 1. Novos Leads Hoje (leads_log com event_type=new_lead e sucesso)
             const { count: newLeadsCount, error: newLeadsError } = await this.client
