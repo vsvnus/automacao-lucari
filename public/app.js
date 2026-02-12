@@ -555,7 +555,7 @@ function renderLogItem(log, detailed = false) {
         <div class="activity-content">
             <div class="activity-title">
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">
-                    ${escapeHtml((log.name && log.name !== 'Sem nome') ? log.name : formatPhoneDisplay(log.phone))}
+                    ${escapeHtml((log.name && log.name !== 'Sem nome') ? cleanDisplayName(log.name) : formatPhoneDisplay(log.phone))}
                 </span>
                 ${badge}
                 ${isFailed && log.error_message ? `
@@ -946,6 +946,11 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+function cleanDisplayName(name) {
+    if (!name) return name;
+    return name.replace(/\s*\(Auto\)\s*/gi, '').trim();
+}
+
 // ============================================
 // Initialization
 // ============================================
@@ -1163,7 +1168,7 @@ function renderRawResults(container, results) {
             </div>
             <div class="activity-content" style="width:100%">
                 <div class="activity-title" style="display:flex;justify-content:space-between;align-items:center">
-                    <span>${escapeHtml(item.name || formatPhoneDisplay(item.phone) || 'Sem telefone')}</span>
+                    <span>${escapeHtml(cleanDisplayName(item.name) || formatPhoneDisplay(item.phone) || 'Sem telefone')}</span>
                     <div style="display:flex;gap:4px;align-items:center;">
                         <span style="font-size:0.6rem;padding:2px 6px;border-radius:4px;background:var(--bg-surface);color:var(--text-tertiary);text-transform:uppercase;font-weight:600;">${typeLabel}</span>
                         <span class="${badgeClass}">${escapeHtml(displayStatus)}</span>
