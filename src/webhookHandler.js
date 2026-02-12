@@ -52,6 +52,53 @@ function isSaleStatus(statusName) {
     return SALE_STATUS_KEYWORDS.some(kw => normalized.includes(kw));
 }
 
+/**
+ * Detecta a ORIGEM/CANAL do lead a partir do payload do Tintim.
+ * Retorna { channel, comment } onde:
+ *   channel = "Meta Ads" | "Google Ads" | "WhatsApp Orgânico" | "WhatsApp"
+ *   comment = texto descritivo para a coluna Comentários da planilha
+ */
+function detectOrigin(payload) {
+    // Campos do Tintim que indicam a origem
+    const source = (payload.source || '').toLowerCase();
+    const channel = (payload.channel || '').toLowerCase();
+    const medium = (payload.medium || '').toLowerCase();
+    const utmSource = (payload.utmSource || payload.utm_source || '').toLowerCase();
+    const utmMedium = (payload.utmMedium || payload.utm_medium || '').toLowerCase();
+    const allFields = [source, channel, medium, utmSource, utmMedium].join(' ');
+
+    // Google Ads
+    if (allFields.match(/google|gclid|g_ads|googleads|search|pmax|performance.max/)) {
+        return { channel: 'Google Ads', comment: 'Lead chegou pelo Google Ads' };
+    }
+
+    // Meta / Facebook / Instagram Ads
+    if (allFields.match(/meta|facebook|instagram|fb|ig|fbclid|meta_ads/)) {
+        return { channel: 'Meta Ads', comment: 'Lead chegou no Wpp pelo Meta' };
+    }
+
+    // Tráfego pago genérico (CPC/CPM mas sem identificar a plataforma)
+    if (allFields.match(/cpc|cpm|paid|ads|ppc/)) {
+        return { channel: 'Tráfego Pago', comment: 'Lead chegou via tráfego pago' };
+    }
+
+    // Checar UTM params como fallback adicional
+    const campaignFields = [
+        payload.utmCampaign, payload.utm_campaign, payload.campaign,
+        payload.adName, payload.ad_name, payload.adSetName, payload.adset_name,
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (campaignFields.match(/google|gclid|search|pmax/)) {
+        return { channel: 'Google Ads', comment: 'Lead chegou pelo Google Ads' };
+    }
+    if (campaignFields.match(/meta|facebook|instagram|fb|ig/)) {
+        return { channel: 'Meta Ads', comment: 'Lead chegou no Wpp pelo Meta' };
+    }
+
+    // WhatsApp orgânico (default)
+    return { channel: 'WhatsApp', comment: 'Lead chegou via WhatsApp' };
+}
+
 function detectProduct(payload) {
     // 1. Tentar por dados de campanha/UTM (se o Tintim enviar)
     const campaignFields = [
@@ -236,12 +283,17 @@ class WebhookHandler {
             });
         }
 
-        // Etapa 2: Preparação de Dados
+        // Etapa 2: Detecção de Origem (Meta, Google, WhatsApp orgânico)
+        const origin = detectOrigin(payload);
+        logger.info(`📡 Origem detectada: ${origin.channel}`, { source: payload.source, utmSource: payload.utm_source || payload.utmSource });
+
+        // Etapa 3: Preparação de Dados
         const leadId = uuidv4();
         const leadData = {
             name: (payload.chatName || formatPhoneBR(phone)) + ' (Auto)',
             phone: formatPhoneBR(phone),
-            origin: 'WhatsApp',
+            origin: origin.channel,
+            originComment: origin.comment,
             date: formatDateBR(payload.moment),
             product: product,
             status: extractStatusName(payload) || 'Lead Gerado',
@@ -271,7 +323,7 @@ class WebhookHandler {
                 name: leadData.name,
                 status: 'Lead Gerado',
                 product: product,
-                origin: 'WhatsApp',
+                origin: origin.channel,
                 sheetName: result.sheetName,
                 result: 'success',
                 error: null,
@@ -285,11 +337,11 @@ class WebhookHandler {
                 eventType: 'new_lead',
                 phone: payload.phone,
                 name: leadData.name,
-                status: 'Erro', // Status visual para o painel
+                status: 'Erro',
                 product: product,
-                origin: 'WhatsApp',
+                origin: origin.channel,
                 result: 'failed',
-                error: `Falha Planilha: ${errorMsg}`, // Erro detalhado para o painel
+                error: `Falha Planilha: ${errorMsg}`,
             });
         }
 

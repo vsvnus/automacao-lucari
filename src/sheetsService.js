@@ -262,16 +262,16 @@ class SheetsService {
     /**
      * Insere um lead na planilha.
      * Usa values.update com célula exata para evitar deslocamento de colunas.
-     * 
+     *
      * Colunas preenchidas pela automação:
      *   A: Nome do Lead
      *   B: Telefone
-     *   C: Meio de Contato ("Meta Ads")
+     *   C: Meio de Contato (detectado: Meta Ads / Google Ads / WhatsApp)
      *   D: Data 1º Contato
      *   G: Produto (auto-detectado)
      *   H: Status Lead ("Lead Gerado")
-     *   N: Comentários ("Lead chegou no Wpp pelo Meta")
-     * 
+     *   N: Comentários (dinâmico conforme origem)
+     *
      * Colunas deixadas para a equipe:
      *   E: Data Fechamento
      *   F: Valor de Fechamento
@@ -295,20 +295,20 @@ class SheetsService {
 
                 // Montar linha COMPLETA com todas as 14 colunas (A-N)
                 const row = [
-                    leadData.name,           // A: Nome do Lead
-                    leadData.phone,          // B: Telefone
-                    'Meta Ads',              // C: Meio de Contato
-                    leadData.date,           // D: Data 1º Contato
-                    '',                      // E: Data Fechamento (equipe)
-                    '',                      // F: Valor de Fechamento (equipe)
-                    leadData.product || '',  // G: Produto
-                    'Lead Gerado',           // H: Status Lead
-                    '',                      // I: DIA 1 (equipe)
-                    '',                      // J: DIA 2 (equipe)
-                    '',                      // K: DIA 3 (equipe)
-                    '',                      // L: DIA 4 (equipe)
-                    '',                      // M: DIA 5 (equipe)
-                    'Lead chegou no Wpp pelo Meta',  // N: Comentários
+                    leadData.name,                          // A: Nome do Lead
+                    leadData.phone,                         // B: Telefone
+                    leadData.origin || 'WhatsApp',          // C: Meio de Contato (dinâmico)
+                    leadData.date,                          // D: Data 1º Contato
+                    '',                                     // E: Data Fechamento (equipe)
+                    '',                                     // F: Valor de Fechamento (equipe)
+                    leadData.product || '',                 // G: Produto
+                    'Lead Gerado',                          // H: Status Lead
+                    '',                                     // I: DIA 1 (equipe)
+                    '',                                     // J: DIA 2 (equipe)
+                    '',                                     // K: DIA 3 (equipe)
+                    '',                                     // L: DIA 4 (equipe)
+                    '',                                     // M: DIA 5 (equipe)
+                    leadData.originComment || 'Lead recebido via automação',  // N: Comentários
                 ];
 
                 // Usar values.update com célula exata (não append!)
