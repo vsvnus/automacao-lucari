@@ -1,55 +1,20 @@
 /**
- * Auth Service - Supabase Integration
+ * Auth Service — Session-based (PostgreSQL)
+ * Substitui a autenticação via Supabase
  */
-let supabaseClient = null;
-
-async function initSupabase() {
-    if (supabaseClient) return supabaseClient;
-
-    try {
-        // Fetch config from server to avoid hardcoding keys in frontend build if we were building, 
-        // but here we fetch them to be safe and centralize config in env vars on server.
-        const response = await fetch('/api/config');
-        const config = await response.json();
-
-        if (!config.supabaseUrl || !config.supabaseAnonKey) {
-            console.error('Supabase config missing');
-            return null;
-        }
-
-        if (window.supabase && window.supabase.createClient) {
-            supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-        } else {
-            console.error('Supabase library not loaded');
-            return null;
-        }
-        return supabaseClient;
-    } catch (error) {
-        console.error('Failed to init Supabase:', error);
-        return null;
-    }
-}
 
 const auth = {
     /**
-     * Initialize Auth Service
-     */
-    init: async () => {
-        return await initSupabase();
-    },
-
-    /**
-     * Login with Email and Password
+     * Login com email e senha
      */
     login: async (email, password) => {
-        if (!supabaseClient) await initSupabase();
-
-        const { data, error } = await supabaseClient.auth.signInWithPassword({
-            email,
-            password
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
         });
-
-        if (error) throw error;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao fazer login');
         return data;
     },
 
@@ -57,45 +22,56 @@ const auth = {
      * Logout
      */
     logout: async () => {
-        if (!supabaseClient) await initSupabase();
-        const { error } = await supabaseClient.auth.signOut();
-        if (error) throw error;
+        await fetch('/api/auth/logout', { method: 'POST' });
         window.location.href = '/login.html';
     },
 
     /**
-     * Get Current User
+     * Retorna o usuário atual ou null
      */
     getUser: async () => {
-        if (!supabaseClient) await initSupabase();
-        const { data: { user } } = await supabaseClient.auth.getUser();
-        return user;
+        try {
+            const res = await fetch('/api/auth/me');
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data.user;
+        } catch {
+            return null;
+        }
     },
 
     /**
-     * Check if user is authenticated, redirect if not
-     * @param {boolean} redirectIfUnauth - Auto redirect to login if false
+     * Verifica se o usuário está autenticado.
+     * Redireciona para /login.html se não estiver.
      */
     checkAuth: async (redirectIfUnauth = true) => {
-        if (!supabaseClient) await initSupabase();
-
-        const { data: { session } } = await supabaseClient.auth.getSession();
-
-        if (!session && redirectIfUnauth) {
-            window.location.href = '/login.html';
+        try {
+            const res = await fetch('/api/auth/me');
+            if (!res.ok) {
+                if (redirectIfUnauth) window.location.href = '/login.html';
+                return null;
+            }
+            const data = await res.json();
+            return data.user;
+        } catch {
+            if (redirectIfUnauth) window.location.href = '/login.html';
             return null;
         }
+    },
 
-        // Setup auth state listener
-        supabaseClient.auth.onAuthStateChange((event, session) => {
-            if (event === 'SIGNED_OUT' || (!session && redirectIfUnauth)) {
-                window.location.href = '/login.html';
-            }
+    /**
+     * Setup inicial (cria primeiro admin)
+     */
+    setup: async (email, password, name) => {
+        const res = await fetch('/api/auth/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, name }),
         });
-
-        return session?.user;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro no setup');
+        return data;
     }
 };
 
-// Expose to window
 window.authService = auth;

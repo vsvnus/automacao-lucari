@@ -3,4 +3,8 @@ node_modules/
 config/google-credentials.json
 logs/*.log
 *.log
+*.bak
 .DS_Store
+restore_data.sql
+generate_migration.py
+ACCESS_LINKS.md

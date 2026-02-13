@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automação de Planilhas — Lucari Digital</title>
+    <title>Plataforma Unificada — Lucari Digital</title>
     <meta name="description"
         content="Sistema de automação de leads WhatsApp para Google Sheets. Gerencie múltiplos clientes em uma única plataforma.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,7 +38,7 @@
             </div>
             <div class="brand-text">
                 <h1>Lucari Digital</h1>
-                <span>Automação de Planilhas</span>
+                <span>Plataforma Unificada</span>
             </div>
         </div>
 
@@ -69,6 +69,32 @@
                 </svg>
                 <span>Logs do Sistema</span>
             </a>
+
+            <div class="nav-divider"></div>
+
+            <a href="#" class="nav-item" data-section="sdr">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>SDR de IA</span>
+            </a>
+            <a href="#" class="nav-item" data-section="calculadora">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="2" width="16" height="20" rx="2"></rect>
+                    <line x1="8" y1="6" x2="16" y2="6"></line>
+                    <line x1="8" y1="10" x2="10" y2="10"></line>
+                    <line x1="14" y1="10" x2="16" y2="10"></line>
+                    <line x1="8" y1="14" x2="10" y2="14"></line>
+                    <line x1="14" y1="14" x2="16" y2="14"></line>
+                    <line x1="8" y1="18" x2="16" y2="18"></line>
+                </svg>
+                <span>Calculadora</span>
+            </a>
+
+            <div class="nav-divider"></div>
+
             <a href="#" class="nav-item" data-section="settings">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
@@ -103,7 +129,6 @@
     </aside>
 
     <!-- Scripts -->
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="js/auth.js"></script>
 
     <!-- Mobile Header -->
@@ -427,7 +452,7 @@
                                 webhooks</label>
                             <div class="webhook-edit-group">
                                 <input type="url" id="settings-webhook-input" class="setting-input"
-                                    placeholder="https://seu-app.onrender.com/webhook/tintim" />
+                                    placeholder="https://dashboard.vin8n.online/webhook/tintim" />
                                 <button class="btn-primary btn-sm" id="btn-save-webhook" title="Salvar URL">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -524,9 +549,16 @@
                             <kbd>3</kbd>
                             <span>Logs do Sistema</span>
                         </div>
-
                         <div class="shortcut-item">
                             <kbd>4</kbd>
+                            <span>SDR de IA</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>5</kbd>
+                            <span>Calculadora</span>
+                        </div>
+                        <div class="shortcut-item">
+                            <kbd>6</kbd>
                             <span>Configurações</span>
                         </div>
                         <div class="shortcut-item">
@@ -537,6 +569,90 @@
                 </div>
             </div>
         </section>
+
+        <!-- ===== SECTION: SDR de IA ===== -->
+        <section class="page-section" id="section-sdr">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">SDR de IA</h2>
+                    <p class="page-subtitle">Atendimento automatizado via WhatsApp</p>
+                </div>
+                <button class="btn-primary" id="btn-add-sdr-tenant">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>Novo Tenant</span>
+                </button>
+            </div>
+
+            <div id="sdr-tenants-list" class="clients-grid">
+                <div class="card" style="grid-column:1/-1">
+                    <div class="activity-empty">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                        <p>Nenhum tenant SDR configurado</p>
+                        <small>Configure um tenant para começar a usar o SDR de IA</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid" style="margin-top: 24px;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Conversas Recentes</h3>
+                    </div>
+                    <div class="activity-feed" id="sdr-conversations">
+                        <div class="activity-empty">
+                            <p>Aguardando conversas...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Knowledge Base</h3>
+                    </div>
+                    <div class="activity-feed" id="sdr-knowledge">
+                        <div class="activity-empty">
+                            <p>Nenhum documento carregado</p>
+                            <small>Faça upload de PDFs ou textos para o SDR usar como base de conhecimento</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== SECTION: Calculadora ===== -->
+        <section class="page-section" id="section-calculadora">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Calculadora</h2>
+                    <p class="page-subtitle">Calculadora de Salário Maternidade</p>
+                </div>
+            </div>
+
+            <div id="calc-tenants-list" class="clients-grid">
+                <div class="card" style="grid-column:1/-1">
+                    <div class="activity-empty">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
+                            <rect x="4" y="2" width="16" height="20" rx="2"></rect>
+                            <line x1="8" y1="6" x2="16" y2="6"></line>
+                        </svg>
+                        <p>Carregando tenants da calculadora...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 24px;">
+                <div class="card-header">
+                    <h3>Leads Recentes</h3>
+                </div>
+                <div class="activity-feed" id="calc-leads">
+                    <div class="activity-empty">
+                        <p>Aguardando leads...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
     </main>
 
     <!-- Modal Adicionar Cliente -->

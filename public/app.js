@@ -11,7 +11,7 @@ const state = {
     clients: [],
     activityLog: [],
     webhookCount: 0,
-    period: 'today',
+    period: '30d',
     dateFrom: null,
     dateTo: null,
 };
@@ -35,7 +35,7 @@ function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs'];
+    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs', 'sdr', 'calculadora'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -71,6 +71,8 @@ function navigateTo(section, replace = false) {
             searchLeads('');
         }
     }
+    if (section === 'sdr') loadSDRSection();
+    if (section === 'calculadora') loadCalcSection();
 }
 
 // Handle Browser Back/Forward
@@ -393,9 +395,17 @@ async function updateDashboard() {
 
 async function fetchDashboardStats() {
     try {
+        console.log('[DEBUG] Fetching Stats:', `/api/dashboard/stats${buildDateQS()}`);
         const res = await fetch(`/api/dashboard/stats${buildDateQS()}`);
-        return await res.json();
-    } catch {
+        if (!res.ok) {
+            console.error('[DEBUG] Stats Fetch Failed:', res.status, res.statusText);
+            return null;
+        }
+        const data = await res.json();
+        console.log('[DEBUG] Stats Data:', data);
+        return data;
+    } catch (e) {
+        console.error('[DEBUG] Stats Fetch Error:', e);
         return null;
     }
 }
@@ -460,7 +470,8 @@ async function loadDashboardClients() {
 
 async function fetchLeadsCountByClient() {
     try {
-        const res = await fetch(`/api/dashboard/leads-by-client${buildDateQS()}`);
+        // Changed from leads-by-client to clients-preview based on server.js analysis
+        const res = await fetch(`/api/dashboard/clients-preview${buildDateQS()}`);
         return await res.json();
     } catch {
         return {};
@@ -811,10 +822,10 @@ async function loadSettings() {
         const stats = await res.json();
         const badge = $('#datasource-badge');
         if (badge) {
-            const isSupa = stats.dataSource === 'supabase';
-            badge.textContent = isSupa ? '☁️ Supabase' : '📁 Local (JSON)';
-            badge.style.background = isSupa ? 'var(--accent-green-subtle)' : 'var(--accent-orange-subtle)';
-            badge.style.color = isSupa ? 'var(--accent-green)' : 'var(--accent-orange)';
+            const isPg = stats.dataSource === 'postgresql';
+            badge.textContent = isPg ? '🐘 PostgreSQL' : '📁 Local (JSON)';
+            badge.style.background = isPg ? 'var(--accent-green-subtle)' : 'var(--accent-orange-subtle)';
+            badge.style.color = isPg ? 'var(--accent-green)' : 'var(--accent-orange)';
         }
     } catch { /* silêncio */ }
 }
@@ -932,7 +943,9 @@ document.addEventListener('keydown', (e) => {
         case '1': navigateTo('dashboard'); break;
         case '2': navigateTo('clients'); break;
         case '3': navigateTo('logs'); break;
-        case '4': navigateTo('settings'); break;
+        case '4': navigateTo('sdr'); break;
+        case '5': navigateTo('calculadora'); break;
+        case '6': navigateTo('settings'); break;
         case 'n':
         case 'N':
             navigateTo('clients');
@@ -1347,15 +1360,120 @@ closeModal = function () {
     delete refs.modal.dataset.mode;
 };
 
-// Update form submit handler
-refs.clientForm?.removeEventListener('submit', refs.clientForm.submitHandler); // This won't work easily as handler is anon.
-// Instead, I will modify the existing handler or just check the mode inside a new handler if I can replace it.
-// Since I can't easily replace the anonymous listener, I will use a dirty trick: 
-// I'll make the form submit logic check for the 'disabled' ID field or dataset.
+// ============================================
+// SDR de IA Section
+// ============================================
 
-// Wait, I can't remove the previous event listener because it was an anonymous function.
-// I will just RELOAD the window or REWRITE the event listener logic by replacing the element (cloneNode) to strip listeners
-// OR better: I will accept that the previous listener runs... wait.
-// If the previous listener runs, it calls 'addClient' which does POST.
-// If I'm editing, I need PUT.
-// This is messy. I should rewrite the form submit handler in the file properly.
+const SDR_API_BASE = '/api/sdr'; // proxied through this server
+
+async function loadSDRSection() {
+    const container = $('#sdr-tenants-list');
+    if (!container) return;
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants`);
+        if (!res.ok) {
+            container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>SDR de IA não conectado</p><small>Verifique se o serviço está rodando</small></div></div>`;
+            return;
+        }
+        const tenants = await res.json();
+
+        if (!tenants || tenants.length === 0) {
+            container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <p>Nenhum tenant SDR configurado</p><small>Clique em "Novo Tenant" para começar</small></div></div>`;
+            return;
+        }
+
+        container.innerHTML = '';
+        tenants.forEach(tenant => {
+            const card = document.createElement('div');
+            card.className = 'client-card';
+            const initial = getInitials(tenant.name);
+            card.innerHTML = `
+                <div class="client-card-header">
+                    <div class="client-name-group">
+                        <div class="client-avatar" style="background: linear-gradient(135deg, #06b6d4, #0891b2);">${escapeHtml(initial)}</div>
+                        <div>
+                            <div class="client-name">${escapeHtml(tenant.name)}</div>
+                            <span style="font-size:0.75rem;color:var(--text-tertiary);">${escapeHtml(tenant.slug)} · ${escapeHtml(tenant.niche || 'Geral')}</span>
+                        </div>
+                    </div>
+                    <span class="client-status ${tenant.active ? 'active' : 'inactive'}">
+                        <span class="status-indicator ${tenant.active ? 'online' : 'offline'}" style="width:6px;height:6px;"></span>
+                        ${tenant.active ? 'Ativo' : 'Inativo'}
+                    </span>
+                </div>
+                <div class="client-meta">
+                    <div class="client-meta-row">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        Modelo: <code>${escapeHtml(tenant.llm_model || 'gpt-4o-mini')}</code>
+                    </div>
+                    <div class="client-meta-row">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>
+                        Horário: <code>${escapeHtml(tenant.business_hours_start || '08:00')} — ${escapeHtml(tenant.business_hours_end || '18:00')}</code>
+                    </div>
+                    <div class="client-meta-row">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5.09 3h3"></path></svg>
+                        WhatsApp: <code>${escapeHtml(tenant.whatsapp_number || 'Não configurado')}</code>
+                    </div>
+                </div>`;
+            container.appendChild(card);
+        });
+    } catch (err) {
+        container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>Erro ao carregar SDR</p><small>${escapeHtml(err.message)}</small></div></div>`;
+    }
+}
+
+// ============================================
+// Calculadora Section
+// ============================================
+
+const CALC_API_BASE = '/api/calc'; // proxied through this server
+
+async function loadCalcSection() {
+    const container = $('#calc-tenants-list');
+    if (!container) return;
+
+    try {
+        const res = await fetch(`${CALC_API_BASE}/tenants`);
+        if (!res.ok) {
+            container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>Calculadora não conectada</p><small>Verifique se o serviço está rodando</small></div></div>`;
+            return;
+        }
+        const tenants = await res.json();
+
+        if (!tenants || tenants.length === 0) {
+            container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><rect x="4" y="2" width="16" height="20" rx="2"></rect></svg>
+                <p>Nenhum advogado cadastrado</p><small>Cadastre advogados na calculadora para vê-los aqui</small></div></div>`;
+            return;
+        }
+
+        container.innerHTML = '';
+        tenants.forEach(tenant => {
+            const card = document.createElement('div');
+            card.className = 'client-card';
+            const initial = getInitials(tenant.nome || tenant.name);
+            card.innerHTML = `
+                <div class="client-card-header">
+                    <div class="client-name-group">
+                        <div class="client-avatar" style="background: linear-gradient(135deg, #f59e0b, #d97706);">${escapeHtml(initial)}</div>
+                        <div>
+                            <div class="client-name">${escapeHtml(tenant.nome || tenant.name)}</div>
+                            <span style="font-size:0.75rem;color:var(--text-tertiary);">${escapeHtml(tenant.slug)} · OAB ${escapeHtml(tenant.oab || '')}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="client-card-footer">
+                    <a href="${escapeHtml(tenant.calcUrl || `/calc/${tenant.slug}`)}" target="_blank" class="btn-text">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                        Abrir Calculadora
+                    </a>
+                </div>`;
+            container.appendChild(card);
+        });
+    } catch (err) {
+        container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>Erro ao carregar</p><small>${escapeHtml(err.message)}</small></div></div>`;
+    }
+}

@@ -2,7 +2,7 @@
  * ClientManager — Gerenciamento multi-cliente via Tintim
  * 
  * Fonte de dados (em ordem de prioridade):
- *   1. Supabase (se configurado) — persistente
+ *   1. PostgreSQL (se configurado) — persistente
  *   2. config/clients.json — fallback local
  * 
  * Cada cliente é identificado pelo instanceId do Tintim.
@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { logger } = require('./utils/logger');
-const supabaseService = require('./supabaseService');
+const pgService = require('./pgService');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'clients.json');
 
@@ -20,23 +20,23 @@ class ClientManager {
         this.clients = [];
         this.clientsByInstanceId = new Map();
         this.lastLoadTime = null;
-        this.dataSource = 'local'; // 'supabase' ou 'local'
+        this.dataSource = 'local'; // 'postgresql' ou 'local'
     }
 
     /**
-     * Carrega clientes. Tenta Supabase primeiro, fallback para JSON local.
+     * Carrega clientes. Tenta PostgreSQL primeiro, fallback para JSON local.
      */
     async loadClients() {
-        // Tentar Supabase primeiro
-        if (supabaseService.isAvailable()) {
-            const supaClients = await supabaseService.getActiveClients();
-            if (supaClients && supaClients.length > 0) {
-                this._applyClients(supaClients);
-                this.dataSource = 'supabase';
-                logger.info(`${this.clients.length} cliente(s) carregado(s) do Supabase`);
+        // Tentar PostgreSQL primeiro
+        if (pgService.isAvailable()) {
+            const dbClients = await pgService.getActiveClients();
+            if (dbClients && dbClients.length > 0) {
+                this._applyClients(dbClients);
+                this.dataSource = 'postgresql';
+                logger.info(`${this.clients.length} cliente(s) carregado(s) do PostgreSQL`);
                 return this.clients;
             }
-            logger.warn('Supabase disponível mas sem clientes, usando fallback local');
+            logger.warn('PostgreSQL disponível mas sem clientes, usando fallback local');
         }
 
         // Fallback: carregar do arquivo local
@@ -105,13 +105,13 @@ class ClientManager {
     }
 
     /**
-     * Adiciona um cliente. Persiste no Supabase se disponível.
+     * Adiciona um cliente. Persiste no PostgreSQL se disponível.
      */
     async addClient(clientData) {
-        // Tentar Supabase primeiro
-        if (supabaseService.isAvailable()) {
-            await supabaseService.addClient(clientData);
-            await this.loadClients(); // Recarregar
+        // Tentar PostgreSQL primeiro
+        if (pgService.isAvailable()) {
+            await pgService.addClient(clientData);
+            await this.loadClients();
             return clientData;
         }
 
@@ -132,9 +132,9 @@ class ClientManager {
      * Remove (desativa) um cliente.
      */
     async deleteClient(clientId) {
-        // Tentar Supabase primeiro
-        if (supabaseService.isAvailable()) {
-            await supabaseService.deleteClient(clientId);
+        // Tentar PostgreSQL primeiro
+        if (pgService.isAvailable()) {
+            await pgService.deleteClient(clientId);
             await this.loadClients();
             return true;
         }
@@ -162,10 +162,10 @@ class ClientManager {
     }
 
     async getAllClients() {
-        // Tentar Supabase primeiro
-        if (supabaseService.isAvailable()) {
-            const supaClients = await supabaseService.getAllClients();
-            if (supaClients) return supaClients;
+        // Tentar PostgreSQL primeiro
+        if (pgService.isAvailable()) {
+            const dbClients = await pgService.getAllClients();
+            if (dbClients) return dbClients;
         }
 
         // Fallback

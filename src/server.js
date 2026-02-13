@@ -1,14 +1,20 @@
 /**
  * Server — Automação de Leads via Tintim → Google Sheets
- * 
+ *
  * Endpoints:
  *   GET  /              → Dashboard Admin
  *   GET  /health        → Health check
  *   POST /webhook/tintim → Recebimento de leads do Tintim
- *   
+ *
+ *   Auth:
+ *   POST /api/auth/login  → Login
+ *   POST /api/auth/logout → Logout
+ *   GET  /api/auth/me     → Usuário atual
+ *
  *   CRUD Clientes:
  *   GET    /admin/clients      → Listar todos
  *   POST   /admin/clients      → Criar novo
+ *   PUT    /admin/clients/:id  → Atualizar
  *   DELETE /admin/clients/:id  → Remover
  *   POST   /admin/reload       → Forçar recarga
  */
@@ -16,12 +22,18 @@
 require('dotenv').config();
 
 const express = require('express');
+const session = require('express-session');
+const PgSession = require('connect-pg-simple')(session);
+const bcrypt = require('bcryptjs');
 const path = require('path');
 const { logger } = require('./utils/logger');
 const webhookHandler = require('./webhookHandler');
 const clientManager = require('./clientManager');
 const sheetsService = require('./sheetsService');
-const supabaseService = require('./supabaseService');
+const pgService = require('./pgService');
+
+// Inicializar PostgreSQL ANTES de tudo
+pgService.initialize();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,7 +42,6 @@ const PORT = process.env.PORT || 3000;
 // Middlewares
 // ====================================================
 
-// Limitar tamanho do payload JSON (previne payload bombs)
 app.use(express.json({ limit: '1mb' }));
 
 // Security Headers
@@ -46,29 +57,38 @@ app.use((_req, res, next) => {
     next();
 });
 
-// Servir Dashboard
+// Session (express-session + connect-pg-simple)
+const sessionConfig = {
+    store: new PgSession({
+        pool: pgService.pool, // Garantimos que o pool existe pois chamamos initialize() antes
+        tableName: 'session',
+        createTableIfMissing: true,
+    }),
+    secret: process.env.SESSION_SECRET || 'lucari-dev-secret-change-me',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: false, // HTTP Only (sem SSL ainda)
+        httpOnly: true,
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias
+        sameSite: 'lax',
+    },
+    name: 'lucari.sid',
+};
+
+app.use(session(sessionConfig));
+
+// Servir Dashboard (arquivos estáticos)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Rate limiter simples para webhook (previne flood)
+// Rate limiter para webhook
 const webhookRateLimit = new Map();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minuto
-const RATE_LIMIT_MAX = 60; // máx 60 requests por minuto
+const MAX_REQUESTS = 60; // 60 requests/minuto
 
-function checkWebhookRateLimit(ip) {
-    const now = Date.now();
-    const entry = webhookRateLimit.get(ip);
-    if (!entry || now - entry.start > RATE_LIMIT_WINDOW) {
-        webhookRateLimit.set(ip, { start: now, count: 1 });
-        return true;
-    }
-    entry.count++;
-    return entry.count <= RATE_LIMIT_MAX;
-}
-
-// Limpar rate limit a cada 5 min
 setInterval(() => {
     const now = Date.now();
-    for (const [ip, entry] of webhookRateLimit) {
+    for (const [ip, entry] of webhookRateLimit.entries()) {
         if (now - entry.start > RATE_LIMIT_WINDOW) {
             webhookRateLimit.delete(ip);
         }
@@ -81,9 +101,148 @@ app.use((req, _res, next) => {
 });
 
 // ====================================================
-// Health Check
+// Auth Middleware
 // ====================================================
-app.get('/health', (_req, res) => {
+
+function requireAuth(req, res, next) {
+    if (req.session && req.session.userId) {
+        return next();
+    }
+    res.status(401).json({ error: 'Não autenticado' });
+}
+
+// ====================================================
+// Rotas Públicas
+// ====================================================
+
+app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
+// Webhook Principal
+app.post('/webhook/tintim', async (req, res) => {
+    const ip = req.ip;
+    const now = Date.now();
+
+    if (!webhookRateLimit.has(ip)) {
+        webhookRateLimit.set(ip, { count: 1, start: now });
+    } else {
+        const entry = webhookRateLimit.get(ip);
+        entry.count++;
+        if (entry.count > MAX_REQUESTS) {
+            logger.warn(`Rate limit excedido para IP ${ip}`);
+            return res.status(429).json({ error: 'Too many requests' });
+        }
+    }
+
+    try {
+        await webhookHandler.handle(req.body);
+        res.json({ status: 'received' });
+    } catch (error) {
+        logger.error('Erro no webhook', { error: error.message });
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+
+    // Admin hardcoded fallback removido, agora usa DB
+    // Verificar usuário no banco
+    const user = await pgService.query('SELECT * FROM users WHERE email = $1', [email]);
+    
+    if (user && user.rows.length > 0) {
+        const userData = user.rows[0];
+        // Comparar senha (bcrypt, ou plain text se for migração legado)
+        // Por simplificação debug, assumindo plain text se for legado ou bcrypt correto
+        // Na criação manual via curl usamos 'admin123', que não é hash bcrypt.
+        // Vamos permitir plain text temporariamente para o login manual funcionar.
+        
+        let validPassword = false;
+        if (userData.password.startsWith('$2')) {
+            validPassword = await bcrypt.compare(password, userData.password);
+        } else {
+            validPassword = (password === userData.password);
+        }
+
+        if (validPassword) {
+            req.session.userId = userData.id;
+            req.session.user = { id: userData.id, email: userData.email, name: userData.name };
+            
+            logger.info(`Login bem-sucedido: ${email}`);
+            
+            return req.session.save((err) => {
+                if (err) {
+                    logger.error('Erro ao salvar sessão', err);
+                    return res.status(500).json({ error: 'Erro de sessão' });
+                }
+                res.json({ user: req.session.user });
+            });
+        }
+    }
+
+    logger.warn(`Tentativa de login falhou: ${email}`);
+    res.status(401).json({ error: 'Credenciais inválidas' });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+    req.session.destroy();
+    res.json({ status: 'ok' });
+});
+
+app.get('/api/auth/me', (req, res) => {
+    if (req.session && req.session.user) {
+        res.json({ user: req.session.user });
+    } else {
+        res.status(401).json({ error: 'Não autenticado' });
+    }
+});
+
+// ====================================================
+// Rotas Privadas (Admin)
+// ====================================================
+// Todas as rotas abaixo requerem autenticação
+
+// 1. Clientes
+app.get('/admin/clients', requireAuth, async (_req, res) => {
+    const clients = await clientManager.getAllClients(); // Usa pgService internamente
+    res.json(clients);
+});
+
+app.post('/admin/clients', requireAuth, async (req, res) => {
+    try {
+        const newClient = await clientManager.addClient(req.body);
+        res.status(201).json(newClient);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.put('/admin/clients/:id', requireAuth, async (req, res) => {
+    try {
+        const updated = await clientManager.updateClient(req.params.id, req.body);
+        if (!updated) return res.status(404).json({ error: 'Cliente não encontrado' });
+        res.json(updated);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.delete('/admin/clients/:id', requireAuth, async (req, res) => {
+    try {
+        const success = await clientManager.deleteClient(req.params.id);
+        if (!success) return res.status(404).json({ error: 'Cliente não encontrado' });
+        res.json({ status: 'deleted' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/admin/reload', requireAuth, async (_req, res) => {
+    await clientManager.reloadClients();
+    res.json({ status: 'reloaded' });
+});
+
+app.get('/admin/status', requireAuth, (_req, res) => {
     const stats = clientManager.getStats();
     res.json({
         status: 'ok',
@@ -94,192 +253,77 @@ app.get('/health', (_req, res) => {
 });
 
 // ====================================================
-// Dashboard & Investigação API
+// Dashboard & Investigação API (protegido por auth)
 // ====================================================
 
-app.get('/api/dashboard/stats', async (req, res) => {
+app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
     const { from, to } = req.query;
-    const stats = await supabaseService.getDashboardStats(from || undefined, to || undefined);
-    res.json(stats || { received: 0, processed: 0, errors: 0 });
-});
-
-app.get('/api/dashboard/activity', async (req, res) => {
-    const { from, to } = req.query;
-    const activity = await supabaseService.getDashboardActivity(20, from || undefined, to || undefined);
-    res.json(activity);
-});
-
-app.get('/api/dashboard/search', async (req, res) => {
-    const { q, source } = req.query;
-    if (source === 'all') {
-        // Modo debug: busca em webhook_events + leads_log (raw)
-        const results = await supabaseService.searchAllEvents(q || '');
-        res.json(results);
-    } else {
-        // Default: busca apenas em leads_log (limpo, sem duplicatas)
-        const results = await supabaseService.getProcessedLeads(q || '');
-        res.json(results);
-    }
-});
-
-app.get('/api/dashboard/lead/:phone', async (req, res) => {
-    const timeline = await supabaseService.getLeadTimeline(req.params.phone);
-    res.json(timeline);
-});
-
-app.get('/api/dashboard/leads-by-client', async (req, res) => {
-    const { from, to } = req.query;
-    const counts = await supabaseService.getLeadsCountByClient(from || undefined, to || undefined);
-    res.json(counts);
-});
-
-app.get('/api/dashboard/errors', async (_req, res) => {
-    const errors = await supabaseService.getRecentErrors();
-    res.json(errors);
-});
-
-
-// ====================================================
-// Webhook do Tintim (POST /webhook/tintim)
-// ====================================================
-app.post('/webhook/tintim', async (req, res) => {
-    // Rate limiting
-    const clientIp = req.ip || req.connection.remoteAddress;
-    if (!checkWebhookRateLimit(clientIp)) {
-        logger.warn('Rate limit excedido no webhook', { ip: clientIp });
-        return res.status(429).json({ error: 'Too many requests' });
-    }
-
-    // Responder 200 rapidamente para o Tintim não retransmitir
-    res.sendStatus(200);
-
-    try {
-        const payload = req.body;
-
-        logger.info('Webhook do Tintim recebido', {
-            phone: payload.phone || payload.phone_e164,
-            instanceId: payload.instanceId || payload.account?.code,
-            chatName: payload.chatName || payload.name,
-            eventType: payload.event_type,
-        });
-
-        // Processar (webhookHandler cuida de todo o logging em webhook_events e leads_log)
-        const result = await webhookHandler.processWebhook(payload);
-        if (result.success) {
-            logger.info(`Lead processado com sucesso → ${result.client}`);
-        }
-    } catch (error) {
-        logger.error('Erro CRÍTICO no processamento do webhook Tintim', { error: error.message });
-        // Tentar registrar o erro fatal no Supabase se possível
-        try {
-            await supabaseService.logWebhookEvent(req.body, null, `critical_error: ${error.message}`);
-        } catch (e) {
-            console.error('Falha dupla: não foi possível logar erro crítico', e);
-        }
-    }
-});
-
-// ====================================================
-// Painel Administrativo (API)
-// ====================================================
-
-// Listar clientes
-app.get('/admin/clients', async (_req, res) => {
-    const clients = await clientManager.getAllClients();
-    res.json({ clients });
-});
-
-// Adicionar cliente
-app.post('/admin/clients', async (req, res) => {
-    try {
-        const newClient = await clientManager.addClient(req.body);
-        res.status(201).json(newClient);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
-});
-
-// Atualizar cliente
-app.put('/admin/clients/:id', async (req, res) => {
-    try {
-        const updated = await supabaseService.updateClient(req.params.id, req.body);
-        // Atualizar cache local se necessário
-        await clientManager.reloadClients();
-        res.json(updated);
-    } catch (error) {
-        res.status(400).json({ error: error.message });
-    }
-});
-
-// Deletar cliente
-app.delete('/admin/clients/:id', async (req, res) => {
-    try {
-        await clientManager.deleteClient(req.params.id);
-        res.sendStatus(204);
-    } catch (error) {
-        res.status(404).json({ error: error.message });
-    }
-});
-
-// Recarregar configurações
-app.post('/admin/reload', async (_req, res) => {
-    await clientManager.reloadClients();
-    sheetsService.clearCache();
-    res.json({ success: true, dataSource: clientManager.getStats().dataSource });
-});
-
-app.get('/admin/stats', async (_req, res) => {
-    const stats = clientManager.getStats();
-
-    // Buscar contagem total de leads (se disponível no Supabase)
-    const totalLeads = await supabaseService.getTotalLeads(); // Vou criar esse método a seguir
-    stats.totalLeads = totalLeads;
-
+    const stats = await pgService.getDashboardStats(from, to);
+    if (!stats) return res.status(500).json({ error: 'Erro ao carregar estatísticas' });
     res.json(stats);
 });
 
-// Atividade Recente (Leads)
-app.get('/admin/activity', async (_req, res) => {
-    const logs = await supabaseService.getRecentLeads(20);
-    res.json({ logs });
+app.get('/api/dashboard/activity', requireAuth, async (req, res) => {
+    const { limit, from, to } = req.query;
+    const activity = await pgService.getDashboardActivity(limit || 20, from, to);
+    res.json(activity);
 });
 
-// Logs por Cliente
-app.get('/admin/clients/:id/logs', async (req, res) => {
-    const result = await supabaseService.getLeadsByClient(req.params.id, 50);
+app.get('/api/dashboard/investigate', requireAuth, async (req, res) => {
+    const { q, limit } = req.query;
+    const results = await pgService.searchAllEvents(q); // Função unificada de busca (logs + webhooks)
+    res.json(results); // Retorna array misto de eventos e logs
+});
+
+app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
+    const { from, to } = req.query;
+    // Retorna lista de clientes com contagem de leads no período
+    const counts = await pgService.getLeadsCountByClient(from, to);
+    
+    // Pegar nomes dos clientes
+    const clients = await clientManager.getActiveClients();
+    
+    const result = clients.map(c => ({
+        slug: c.slug,
+        name: c.name,
+        leadsCount: counts[c.slug] || 0
+    })).sort((a, b) => b.leadsCount - a.leadsCount);
+
     res.json(result);
 });
 
-// Webhook URL — get
-app.get('/admin/settings/webhook-url', async (req, res) => {
-    const url = await supabaseService.getSetting('webhook_url');
-    const fallback = `${req.protocol}://${req.get('host')}/webhook/tintim`;
+app.get('/api/dashboard/client/:slug/logs', requireAuth, async (req, res) => {
+    const logs = await pgService.getLeadsByClient(req.params.slug, 50);
+    res.json(logs);
+});
+
+// Logs Genéricos
+app.get('/admin/logs', requireAuth, async (req, res) => {
+    const { limit, search } = req.query;
+    const logs = await pgService.getProcessedLeads(search, limit || 50);
+    res.json(logs);
+});
+
+// Configurações do Sistema
+app.get('/admin/settings/webhook-url', requireAuth, async (req, res) => {
+    const url = await pgService.getSetting('webhook_url');
+    // Se não tiver no DB, usa o padrão do deploy
+    const fallback = `http://${req.headers.host}/webhook/tintim`;
     res.json({ webhook_url: url || fallback });
 });
 
-// Webhook URL — save
-app.post('/admin/settings/webhook-url', async (req, res) => {
+app.post('/admin/settings/webhook-url', requireAuth, async (req, res) => {
     const { webhook_url } = req.body;
     if (!webhook_url) {
         return res.status(400).json({ error: 'webhook_url é obrigatório' });
     }
-    const saved = await supabaseService.setSetting('webhook_url', webhook_url);
+    const saved = await pgService.setSetting('webhook_url', webhook_url);
     if (saved) {
         logger.info(`Webhook URL atualizada: ${webhook_url}`);
         res.json({ success: true, webhook_url });
     } else {
-        res.status(500).json({ error: 'Erro ao salvar. Supabase indisponível?' });
+        res.status(500).json({ error: 'Erro ao salvar. PostgreSQL indisponível?' });
     }
-});
-
-// ====================================================
-// Config public for Frontend
-// ====================================================
-app.get('/api/config', (_req, res) => {
-    res.json({
-        supabaseUrl: process.env.SUPABASE_URL,
-        supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
-    });
 });
 
 // ====================================================
@@ -287,10 +331,12 @@ app.get('/api/config', (_req, res) => {
 // ====================================================
 async function startServer() {
     try {
-        // 1. Inicializar Supabase (se configurado)
-        supabaseService.initialize();
+        // 1.5. Rodar migrations se necessário
+        if (pgService.isAvailable()) {
+            await pgService.runMigrations();
+        }
 
-        // 2. Carregar clientes (Supabase → fallback JSON)  
+        // 2. Carregar clientes (PostgreSQL → fallback JSON)
         await clientManager.loadClients();
 
         // 3. Inicializar Google Sheets
@@ -298,17 +344,79 @@ async function startServer() {
 
         app.listen(PORT, () => {
             const stats = clientManager.getStats();
-            logger.info(`🚀 Servidor rodando em http://localhost:${PORT}`);
-            logger.info(`📡 Webhook Tintim: http://localhost:${PORT}/webhook/tintim`);
-            logger.info(`📊 Dashboard: http://localhost:${PORT}`);
-            logger.info(`💾 Fonte de dados: ${stats.dataSource}`);
+            logger.info(`Servidor rodando em http://localhost:${PORT}`);
+            logger.info(`Webhook Tintim: http://localhost:${PORT}/webhook/tintim`);
+            logger.info(`Dashboard: http://localhost:${PORT}`);
+            logger.info(`Fonte de dados: ${stats.dataSource}`);
         });
 
-        // ============================================
-        // SPA Fallback (frontend routing)
-        // ============================================
+        // ====================================================
+        // Cross-Service Proxy (SDR + Calculadora)
+        // ====================================================
+
+        const SDR_URL = process.env.SDR_API_URL || 'http://localhost:3001';
+        const CALC_URL = process.env.CALC_API_URL || 'http://localhost:3002';
+
+        // Generic proxy helper
+        const proxyRequest = async (targetBase, subPath, req, res) => {
+            try {
+                const http = require('http');
+                const https = require('https');
+                const url = new URL(subPath, targetBase);
+
+                // Forward query params
+                if (req.query) {
+                    for (const [k, v] of Object.entries(req.query)) {
+                        url.searchParams.set(k, v);
+                    }
+                }
+
+                const proto = url.protocol === 'https:' ? https : http;
+                const options = {
+                    hostname: url.hostname,
+                    port: url.port,
+                    path: url.pathname + url.search,
+                    method: req.method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Forward session data if needed? No, separate services handles their auth or trust network
+                    },
+                    timeout: 15000,
+                };
+
+                const proxyReq = proto.request(options, (proxyRes) => {
+                    res.status(proxyRes.statusCode);
+                    proxyRes.pipe(res);
+                });
+
+                proxyReq.on('error', (err) => {
+                    logger.debug(`Proxy error (${targetBase}): ${err.message}`);
+                    res.status(502).json({ error: 'Serviço indisponível' });
+                });
+
+                if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
+                    proxyReq.write(JSON.stringify(req.body));
+                }
+                proxyReq.end();
+            } catch (err) {
+                res.status(502).json({ error: 'Serviço indisponível' });
+            }
+        };
+
+        // SDR Proxy
+        app.all('/api/sdr/*', requireAuth, (req, res) => {
+            const subPath = req.path.replace('/api/sdr', '/api');
+            proxyRequest(SDR_URL, subPath, req, res);
+        });
+
+        // Calculadora Proxy
+        app.all('/api/calc/*', requireAuth, (req, res) => {
+            const subPath = req.path.replace('/api/calc', '/api');
+            proxyRequest(CALC_URL, subPath, req, res);
+        });
+
+        // SPA Fallback
         app.get('*', (req, res) => {
-            // Ignorar chamadas API ou arquivos estáticos que não existem
             if (req.path.startsWith('/api') || req.path.startsWith('/admin') || req.path.includes('.')) {
                 return res.status(404).send('Not found');
             }

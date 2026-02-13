@@ -24,7 +24,7 @@ const { validateTintimPayload } = require('./utils/validator');
 const { formatPhoneBR, formatDateBR } = require('./utils/formatter');
 const clientManager = require('./clientManager');
 const sheetsService = require('./sheetsService');
-const supabaseService = require('./supabaseService');
+const pgService = require('./pgService');
 
 /**
  * Regras de detecção de produto.
@@ -198,7 +198,7 @@ class WebhookHandler {
         const phone = rawPayload.phone || rawPayload.phone_e164 || '';
         const eventType = rawPayload.event_type || '';
         if (phone && eventType) {
-            const isDuplicate = await supabaseService.checkDuplicateWebhook(phone, eventType, 30);
+            const isDuplicate = await pgService.checkDuplicateWebhook(phone, eventType, 30);
             if (isDuplicate) {
                 logger.info('⚡ Webhook duplicado ignorado (idempotência)', { phone, eventType });
                 return { success: true, message: 'Duplicado ignorado' };
@@ -209,7 +209,7 @@ class WebhookHandler {
         const validation = validateTintimPayload(rawPayload);
         if (!validation.valid) {
             logger.warn('Payload inválido', { errors: validation.errors });
-            supabaseService.logWebhookEvent(rawPayload, null, 'invalid');
+            pgService.logWebhookEvent(rawPayload, null, 'invalid');
             return { success: false, errors: validation.errors };
         }
 
@@ -229,7 +229,7 @@ class WebhookHandler {
         const KNOWN_EVENTS = ['lead.create', 'lead.update'];
         if (payload.event_type && !KNOWN_EVENTS.includes(payload.event_type)) {
             logger.warn(`Evento ignorado pelo sistema: ${payload.event_type}`);
-            supabaseService.logWebhookEvent(payload, null, 'ignored_type');
+            pgService.logWebhookEvent(payload, null, 'ignored_type');
             return { success: true, message: `Evento ${payload.event_type} ignorado` };
         }
 
@@ -238,7 +238,7 @@ class WebhookHandler {
         if (!client) {
             logger.warn('Nenhum cliente para instanceId', { instanceId: payload.instanceId });
             logLead(payload, 'NO_CLIENT', { instanceId: payload.instanceId });
-            supabaseService.logWebhookEvent(payload, null, 'no_client');
+            pgService.logWebhookEvent(payload, null, 'no_client');
             return { success: false, error: 'Cliente não encontrado' };
         }
 
@@ -253,7 +253,7 @@ class WebhookHandler {
         // 4. Salvar evento no Supabase (async, não bloqueia)
         // Nota: leads filtrados já logam dentro de processNewLead/processStatusUpdate
         if (result.type !== 'filtered') {
-            supabaseService.logWebhookEvent(payload, client.id, result.success ? 'success' : 'failed');
+            pgService.logWebhookEvent(payload, client.id, result.success ? 'success' : 'failed');
         }
 
         return result;
@@ -277,7 +277,7 @@ class WebhookHandler {
             product = detectProduct(payload);
         } catch (err) {
             logger.warn('Falha na detecção de produto', { error: err.message });
-            supabaseService.logLead(client.id, {
+            pgService.logLead(client.id, {
                 eventType: 'new_lead',
                 phone: phone,
                 name: payload.chatName,
@@ -301,7 +301,7 @@ class WebhookHandler {
                 client: client.name,
             });
 
-            supabaseService.logLead(client.id, {
+            pgService.logLead(client.id, {
                 eventType: 'new_lead',
                 phone: phone,
                 name: payload.chatName || phone,
@@ -311,7 +311,7 @@ class WebhookHandler {
                 error: null,
             });
 
-            supabaseService.logWebhookEvent(payload, client.id, 'filtered_organic');
+            pgService.logWebhookEvent(payload, client.id, 'filtered_organic');
 
             return { success: true, message: 'Lead orgânico ignorado (sem campanha)', type: 'filtered' };
         }
@@ -346,7 +346,7 @@ class WebhookHandler {
             logLead(leadData, 'SUCCESS', { client: client.name, sheet: result.sheetName });
             logger.info(`✅ Lead inserido: ${leadData.name} → ${client.name} (${result.sheetName})${product ? ` [${product}]` : ''}`);
 
-            supabaseService.logLead(client.id, {
+            pgService.logLead(client.id, {
                 eventType: 'new_lead',
                 phone: payload.phone,
                 name: leadData.name,
@@ -362,7 +362,7 @@ class WebhookHandler {
             logLead(leadData, 'FAILED', { client: client.name, error: errorMsg });
             logger.error(`❌ Falha ao inserir lead`, { error: errorMsg });
 
-            supabaseService.logLead(client.id, {
+            pgService.logLead(client.id, {
                 eventType: 'new_lead',
                 phone: payload.phone,
                 name: leadData.name,
@@ -482,7 +482,7 @@ class WebhookHandler {
         if (result.success) {
             logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ''} [linha ${result.row}]`);
 
-            supabaseService.logLead(client.id, {
+            pgService.logLead(client.id, {
                 eventType: 'status_update',
                 phone: payload.phone,
                 name: leadName,
@@ -502,7 +502,7 @@ class WebhookHandler {
                 phone: payload.phone,
             });
 
-            supabaseService.logLead(client.id, {
+            pgService.logLead(client.id, {
                 eventType: 'status_update',
                 phone: payload.phone,
                 name: leadName,

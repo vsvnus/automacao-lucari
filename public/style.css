@@ -238,6 +238,12 @@ body {
     background: var(--accent-primary);
 }
 
+.nav-divider {
+    height: 1px;
+    background: var(--border-subtle);
+    margin: 8px 14px;
+}
+
 .sidebar-footer {
     padding: 16px 16px 20px;
     border-top: 1px solid var(--border-subtle);
