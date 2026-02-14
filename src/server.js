@@ -280,8 +280,8 @@ app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
     // Retorna lista de clientes com contagem de leads no período
     const counts = await pgService.getLeadsCountByClient(from, to);
     
-    // Pegar nomes dos clientes
-    const clients = await clientManager.getActiveClients();
+    // Pegar nomes dos clientes (ativos)
+    const clients = clientManager.clients;
     
     const result = clients.map(c => ({
         slug: c.slug,

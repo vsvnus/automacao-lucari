@@ -65,8 +65,18 @@ class SheetsService {
                 ],
             };
 
-            if (process.env.GOOGLE_CREDENTIALS_JSON) {
-                // Em produção (Render), usamos a variável de ambiente com o JSON string
+            if (process.env.GOOGLE_CREDENTIALS_B64) {
+                // Prefer base64-encoded credentials (avoids Docker build issues with newlines)
+                try {
+                    const decoded = Buffer.from(process.env.GOOGLE_CREDENTIALS_B64, 'base64').toString('utf-8');
+                    authConfig.credentials = JSON.parse(decoded);
+                    logger.info('Usando credenciais do Google via GOOGLE_CREDENTIALS_B64');
+                } catch (e) {
+                    logger.error('Erro ao decodificar GOOGLE_CREDENTIALS_B64', { error: e.message });
+                    throw new Error('GOOGLE_CREDENTIALS_B64 inválido');
+                }
+            } else if (process.env.GOOGLE_CREDENTIALS_JSON) {
+                // Fallback: JSON string (may have issues with newlines in Docker builds)
                 try {
                     authConfig.credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
                     logger.info('Usando credenciais do Google via GOOGLE_CREDENTIALS_JSON');
