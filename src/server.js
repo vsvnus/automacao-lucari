@@ -140,7 +140,7 @@ app.post('/webhook/tintim', async (req, res) => {
     }
 
     try {
-        await webhookHandler.handle(req.body);
+        await webhookHandler.processWebhook(req.body);
         res.json({ status: 'received' });
     } catch (error) {
         logger.error('Erro no webhook', { error: error.message });
