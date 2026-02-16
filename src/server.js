@@ -315,8 +315,10 @@ app.get('/admin/logs', requireAuth, async (req, res) => {
 // Configurações do Sistema
 app.get('/admin/settings/webhook-url', requireAuth, async (req, res) => {
     const url = await pgService.getSetting('webhook_url');
-    // Se não tiver no DB, usa o padrão do deploy
-    const fallback = `http://${req.headers.host}/webhook/tintim`;
+    // Se não tiver no DB, usa o domínio real (via proxy/Traefik) ou fallback
+    const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+    const host = req.headers['x-forwarded-host'] || req.hostname;
+    const fallback = `${proto}://${host}/webhook/tintim`;
     res.json({ webhook_url: url || fallback });
 });
 
