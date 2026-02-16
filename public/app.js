@@ -142,7 +142,8 @@ async function fetchClients() {
     try {
         const res = await fetch('/admin/clients');
         const data = await res.json();
-        return data.clients || [];
+        // Backend returns array directly or {clients: [...]}
+        return Array.isArray(data) ? data : (data.clients || []);
     } catch {
         return [];
     }

@@ -38,6 +38,9 @@ pgService.initialize();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust reverse proxy (Coolify/Traefik) for correct session handling behind HTTPS
+app.set('trust proxy', 1);
+
 // ====================================================
 // Middlewares
 // ====================================================
@@ -115,7 +118,10 @@ function requireAuth(req, res, next) {
 // Rotas Públicas
 // ====================================================
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+app.get('/health', (_req, res) => {
+    const stats = clientManager.getStats();
+    res.json({ status: 'ok', uptime: process.uptime(), clients: stats.totalActiveClients });
+});
 
 // Webhook Principal
 app.post('/webhook/tintim', async (req, res) => {
@@ -158,10 +164,11 @@ app.post('/api/auth/login', async (req, res) => {
         // Vamos permitir plain text temporariamente para o login manual funcionar.
         
         let validPassword = false;
-        if (userData.password.startsWith('$2')) {
-            validPassword = await bcrypt.compare(password, userData.password);
+        const storedHash = userData.password_hash || userData.password;
+        if (storedHash && storedHash.startsWith('$2')) {
+            validPassword = await bcrypt.compare(password, storedHash);
         } else {
-            validPassword = (password === userData.password);
+            validPassword = (password === storedHash);
         }
 
         if (validPassword) {
