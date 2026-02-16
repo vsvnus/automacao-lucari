@@ -1796,6 +1796,45 @@ kbd {
     color: white;
 }
 
+/* --- Client Select (Logs) --- */
+.client-select {
+    padding: 7px 32px 7px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%238b8d98' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.client-select:hover {
+    color: var(--text-primary);
+    border-color: var(--border-active);
+}
+
+.client-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-subtle);
+    color: var(--text-primary);
+}
+
+.client-select option {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+}
+
 .logs-filters {
     display: flex;
     gap: 6px;

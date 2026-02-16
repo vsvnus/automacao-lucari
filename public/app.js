@@ -66,6 +66,7 @@ function navigateTo(section, replace = false) {
     if (section === 'settings') loadSettings();
     if (section === 'settings') loadSettings();
     if (section === 'logs') {
+        populateClientSelect();
         const container = $('#investigation-results');
         if (container && (container.innerHTML.includes('Carregando') || container.innerHTML.trim() === '')) {
             searchLeads('');
@@ -487,11 +488,15 @@ async function fetchLeadsCountByClient() {
 
 window.viewClientLogs = function (clientSlug) {
     navigateTo('logs');
-    const input = document.getElementById('investigation-search');
-    if (input) {
-        input.value = clientSlug;
-        if (typeof searchLeads === 'function') searchLeads(clientSlug);
+    // Use the client selector dropdown instead of the search input
+    const select = document.getElementById('logs-client-select');
+    if (select) {
+        select.value = clientSlug;
+        currentClientFilter = clientSlug;
     }
+    const input = document.getElementById('investigation-search');
+    if (input) input.value = '';
+    if (typeof searchLeads === 'function') searchLeads('');
 };
 
 async function loadDashboardActivity() {
@@ -689,10 +694,6 @@ async function loadClients() {
                 </div>
             </div>
             <div class="client-card-footer">
-                <button class="btn-text" onclick="navigateToClientDetails('${escapeHtml(client.slug)}')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7Z"/></svg>
-                    Ver Detalhes
-                </button>
                 <div style="flex:1"></div>
                 <button class="btn-text" onclick="handleEditClient('${escapeHtml(client.slug)}')">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -1048,6 +1049,7 @@ const inputInvestigate = $('#investigation-search');
 // Current log source and filter state
 let currentLogSource = 'logs';
 let currentLogFilter = 'all';
+let currentClientFilter = '';
 let lastSearchResults = [];
 
 function setupInvestigationListeners() {
@@ -1088,10 +1090,39 @@ function setupInvestigationListeners() {
             applyFilterToResults();
         });
     });
+
+    // Client selector
+    const clientSelect = $('#logs-client-select');
+    if (clientSelect) {
+        populateClientSelect();
+        clientSelect.addEventListener('change', () => {
+            currentClientFilter = clientSelect.value;
+            const input = $('#investigation-search');
+            searchLeads(input ? input.value.trim() : '');
+        });
+    }
 }
 
 // Call immediately in case elements exist
 setupInvestigationListeners();
+
+async function populateClientSelect() {
+    const select = $('#logs-client-select');
+    if (!select) return;
+    const clients = await fetchClients();
+    // Keep "Todos os clientes" as first option, clear dynamic options
+    select.innerHTML = '<option value="">Todos os clientes</option>';
+    clients.forEach(client => {
+        const opt = document.createElement('option');
+        opt.value = client.slug;
+        opt.textContent = client.name;
+        select.appendChild(opt);
+    });
+    // Restore current selection if any
+    if (currentClientFilter) {
+        select.value = currentClientFilter;
+    }
+}
 
 async function searchLeads(query) {
     const container = $('#investigation-results');
@@ -1105,7 +1136,8 @@ async function searchLeads(query) {
     try {
         const sourceParam = currentLogSource === 'all' ? '&source=all' : '';
         const dateQS = buildDateQS().replace('?', '&');
-        const res = await fetch(`/api/dashboard/investigate?q=${encodeURIComponent(query || '')}${sourceParam}${dateQS}`);
+        const searchQuery = currentClientFilter && !query ? currentClientFilter : (currentClientFilter && query ? `${currentClientFilter} ${query}` : query);
+        const res = await fetch(`/api/dashboard/investigate?q=${encodeURIComponent(searchQuery || '')}${sourceParam}${dateQS}`);
         const results = await res.json();
         lastSearchResults = results;
         applyFilterToResults();
