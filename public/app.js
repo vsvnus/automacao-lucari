@@ -150,9 +150,9 @@ async function fetchClients() {
 
 async function fetchActivity() {
     try {
-        const res = await fetch('/admin/activity');
+        const res = await fetch(`/api/dashboard/activity${buildDateQS()}`);
         const data = await res.json();
-        return data.logs || [];
+        return Array.isArray(data) ? data : (data.logs || []);
     } catch {
         return [];
     }
@@ -160,7 +160,7 @@ async function fetchActivity() {
 
 async function fetchStats() {
     try {
-        const res = await fetch('/admin/stats');
+        const res = await fetch('/admin/status');
         return await res.json();
     } catch {
         return null;
@@ -470,9 +470,15 @@ async function loadDashboardClients() {
 
 async function fetchLeadsCountByClient() {
     try {
-        // Changed from leads-by-client to clients-preview based on server.js analysis
         const res = await fetch(`/api/dashboard/clients-preview${buildDateQS()}`);
-        return await res.json();
+        const data = await res.json();
+        // Backend returns array [{slug, name, leadsCount}], convert to map {slug: count}
+        if (Array.isArray(data)) {
+            const map = {};
+            data.forEach(item => { map[item.slug] = item.leadsCount || 0; });
+            return map;
+        }
+        return data;
     } catch {
         return {};
     }
@@ -818,7 +824,7 @@ async function loadSettings() {
 
     // Fonte de dados
     try {
-        const res = await fetch('/admin/stats');
+        const res = await fetch('/admin/status');
         const stats = await res.json();
         const badge = $('#datasource-badge');
         if (badge) {
@@ -1097,7 +1103,8 @@ async function searchLeads(query) {
 
     try {
         const sourceParam = currentLogSource === 'all' ? '&source=all' : '';
-        const res = await fetch(`/api/dashboard/search?q=${encodeURIComponent(query || '')}${sourceParam}`);
+        const dateQS = buildDateQS().replace('?', '&');
+        const res = await fetch(`/api/dashboard/investigate?q=${encodeURIComponent(query || '')}${sourceParam}${dateQS}`);
         const results = await res.json();
         lastSearchResults = results;
         applyFilterToResults();
@@ -1249,7 +1256,7 @@ async function loadClientDetails(clientId) {
     if (titleEl) titleEl.textContent = 'Carregando...';
 
     try {
-        const res = await fetch(`/ admin / clients / ${clientId}/logs`);
+        const res = await fetch(`/api/dashboard/client/${clientId}/logs`);
         const data = await res.json();
 
         if (titleEl) titleEl.textContent = data.clientName || clientId;

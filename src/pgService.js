@@ -725,8 +725,11 @@ class PgService {
         }
     }
 
-    async searchAllEvents(searchQuery) {
+    async searchAllEvents(searchQuery, options = {}) {
         if (!this.isAvailable()) return [];
+
+        const { source, from, to, limit: maxResults } = options;
+        const resultLimit = parseInt(maxResults, 10) || 50;
 
         try {
             const cleanQuery = searchQuery ? searchQuery.replace(/[^\w\s-]/gi, '').trim() : '';
@@ -740,60 +743,119 @@ class PgService {
                 if (rows.length > 0) clientUuid = rows[0].id;
             }
 
-            let eventsRows, logsRows;
+            // Build date filter clauses
+            function buildDateFilter(alias, params) {
+                let clause = '';
+                if (from) {
+                    params.push(from);
+                    clause += ` AND ${alias}.created_at >= $${params.length}`;
+                }
+                if (to) {
+                    params.push(to);
+                    clause += ` AND ${alias}.created_at <= $${params.length}`;
+                }
+                return clause;
+            }
+
+            let eventsRows = [], logsRows = [];
+            const includeEvents = source === 'all';
+            const includeLogs = true; // always include logs
 
             if (!cleanQuery) {
-                const [er, lr] = await Promise.all([
-                    this.query(
+                const promises = [];
+
+                if (includeEvents) {
+                    const eParams = [];
+                    const eDateFilter = buildDateFilter('w', eParams);
+                    eParams.push(resultLimit);
+                    promises.push(this.query(
                         `SELECT w.*, c.name as client_name FROM webhook_events w
                          LEFT JOIN clients c ON w.client_id = c.id
-                         ORDER BY w.created_at DESC LIMIT 20`
-                    ),
-                    this.query(
-                        `SELECT l.*, c.name as client_name FROM leads_log l
-                         LEFT JOIN clients c ON l.client_id = c.id
-                         ORDER BY l.created_at DESC LIMIT 20`
-                    ),
-                ]);
+                         WHERE 1=1${eDateFilter}
+                         ORDER BY w.created_at DESC LIMIT $${eParams.length}`,
+                        eParams
+                    ));
+                } else {
+                    promises.push(Promise.resolve({ rows: [] }));
+                }
+
+                const lParams = [];
+                const lDateFilter = buildDateFilter('l', lParams);
+                lParams.push(resultLimit);
+                promises.push(this.query(
+                    `SELECT l.*, c.name as client_name FROM leads_log l
+                     LEFT JOIN clients c ON l.client_id = c.id
+                     WHERE 1=1${lDateFilter}
+                     ORDER BY l.created_at DESC LIMIT $${lParams.length}`,
+                    lParams
+                ));
+
+                const [er, lr] = await Promise.all(promises);
                 eventsRows = er.rows;
                 logsRows = lr.rows;
             } else if (clientUuid) {
-                const [er, lr] = await Promise.all([
-                    this.query(
+                const promises = [];
+
+                if (includeEvents) {
+                    const eParams = [clientUuid];
+                    const eDateFilter = buildDateFilter('w', eParams);
+                    eParams.push(resultLimit);
+                    promises.push(this.query(
                         `SELECT w.*, c.name as client_name FROM webhook_events w
                          LEFT JOIN clients c ON w.client_id = c.id
-                         WHERE w.client_id = $1
-                         ORDER BY w.created_at DESC LIMIT 50`,
-                        [clientUuid]
-                    ),
-                    this.query(
-                        `SELECT l.*, c.name as client_name FROM leads_log l
-                         LEFT JOIN clients c ON l.client_id = c.id
-                         WHERE l.client_id = $1
-                         ORDER BY l.created_at DESC LIMIT 50`,
-                        [clientUuid]
-                    ),
-                ]);
+                         WHERE w.client_id = $1${eDateFilter}
+                         ORDER BY w.created_at DESC LIMIT $${eParams.length}`,
+                        eParams
+                    ));
+                } else {
+                    promises.push(Promise.resolve({ rows: [] }));
+                }
+
+                const lParams = [clientUuid];
+                const lDateFilter = buildDateFilter('l', lParams);
+                lParams.push(resultLimit);
+                promises.push(this.query(
+                    `SELECT l.*, c.name as client_name FROM leads_log l
+                     LEFT JOIN clients c ON l.client_id = c.id
+                     WHERE l.client_id = $1${lDateFilter}
+                     ORDER BY l.created_at DESC LIMIT $${lParams.length}`,
+                    lParams
+                ));
+
+                const [er, lr] = await Promise.all(promises);
                 eventsRows = er.rows;
                 logsRows = lr.rows;
             } else {
                 const pattern = `%${cleanQuery}%`;
-                const [er, lr] = await Promise.all([
-                    this.query(
+                const promises = [];
+
+                if (includeEvents) {
+                    const eParams = [pattern, cleanQuery];
+                    const eDateFilter = buildDateFilter('w', eParams);
+                    eParams.push(resultLimit);
+                    promises.push(this.query(
                         `SELECT w.*, c.name as client_name FROM webhook_events w
                          LEFT JOIN clients c ON w.client_id = c.id
-                         WHERE w.phone ILIKE $1 OR w.instance_id = $2
-                         ORDER BY w.created_at DESC LIMIT 20`,
-                        [pattern, cleanQuery]
-                    ),
-                    this.query(
-                        `SELECT l.*, c.name as client_name FROM leads_log l
-                         LEFT JOIN clients c ON l.client_id = c.id
-                         WHERE l.phone ILIKE $1 OR l.lead_name ILIKE $1
-                         ORDER BY l.created_at DESC LIMIT 20`,
-                        [pattern]
-                    ),
-                ]);
+                         WHERE (w.phone ILIKE $1 OR w.instance_id = $2)${eDateFilter}
+                         ORDER BY w.created_at DESC LIMIT $${eParams.length}`,
+                        eParams
+                    ));
+                } else {
+                    promises.push(Promise.resolve({ rows: [] }));
+                }
+
+                const lParams = [pattern];
+                const lDateFilter = buildDateFilter('l', lParams);
+                lParams.push(resultLimit);
+                promises.push(this.query(
+                    `SELECT l.*, c.name as client_name FROM leads_log l
+                     LEFT JOIN clients c ON l.client_id = c.id
+                     WHERE (l.phone ILIKE $1 OR l.lead_name ILIKE $1)${lDateFilter}
+                     ORDER BY l.created_at DESC LIMIT $${lParams.length}`,
+                    lParams
+                ));
+
+                const [er, lr] = await Promise.all(promises);
                 eventsRows = er.rows;
                 logsRows = lr.rows;
             }
@@ -816,6 +878,11 @@ class PgService {
                 client: l.client_name || 'Desconhecido',
                 name: l.lead_name || 'Sem nome',
                 status: l.processing_result === 'success' ? `Processado: ${l.status}` : 'Erro Processamento',
+                result: l.processing_result,
+                event_type: l.event_type,
+                sale_amount: l.sale_amount,
+                origin: l.origin,
+                error_message: l.error_message,
                 type: 'log',
                 payload: {
                     event: l.event_type,
@@ -829,7 +896,7 @@ class PgService {
 
             return [...events, ...logs]
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                .slice(0, 50);
+                .slice(0, resultLimit);
         } catch (error) {
             logger.error('Erro na busca de leads (investigação)', { error: error.message });
             return [];

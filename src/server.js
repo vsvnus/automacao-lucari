@@ -249,6 +249,7 @@ app.get('/admin/status', requireAuth, (_req, res) => {
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
         clients: stats.totalActiveClients,
+        dataSource: stats.dataSource,
     });
 });
 
@@ -270,9 +271,9 @@ app.get('/api/dashboard/activity', requireAuth, async (req, res) => {
 });
 
 app.get('/api/dashboard/investigate', requireAuth, async (req, res) => {
-    const { q, limit } = req.query;
-    const results = await pgService.searchAllEvents(q); // Função unificada de busca (logs + webhooks)
-    res.json(results); // Retorna array misto de eventos e logs
+    const { q, limit, source, from, to } = req.query;
+    const results = await pgService.searchAllEvents(q, { source, from, to, limit: limit || 50 });
+    res.json(results);
 });
 
 app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
