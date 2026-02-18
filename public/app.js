@@ -2251,7 +2251,7 @@ async function loadSdrMessages(conversationId, contactName) {
         container.innerHTML = '';
         sdrState.messages.forEach(msg => {
             const div = document.createElement('div');
-            const isOutgoing = msg.direction === 'outgoing' || msg.from_bot === true || msg.role === 'assistant';
+            const isOutgoing = msg.direction === 'outbound' || msg.direction === 'outgoing' || msg.from_bot === true || msg.role === 'assistant';
             div.className = `sdr-msg ${isOutgoing ? 'sdr-msg-outgoing' : 'sdr-msg-incoming'}`;
 
             const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
