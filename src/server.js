@@ -45,7 +45,13 @@ app.set('trust proxy', 1);
 // Middlewares
 // ====================================================
 
-app.use(express.json({ limit: '1mb' }));
+// Skip JSON body parsing for SDR knowledge upload (multipart/form-data)
+app.use((req, res, next) => {
+    if (req.path.match(/^\/api\/sdr\/tenants\/[^/]+\/knowledge$/) && req.method === 'POST') {
+        return next();
+    }
+    express.json({ limit: '1mb' })(req, res, next);
+});
 
 // Security Headers
 app.use((_req, res, next) => {
@@ -349,8 +355,12 @@ async function startServer() {
         // 2. Carregar clientes (PostgreSQL → fallback JSON)
         await clientManager.loadClients();
 
-        // 3. Inicializar Google Sheets
-        await sheetsService.initialize();
+        // 3. Inicializar Google Sheets (opcional no dev)
+        try {
+            await sheetsService.initialize();
+        } catch (err) {
+            logger.warn(`Google Sheets não disponível: ${err.message}`);
+        }
 
         app.listen(PORT, () => {
             const stats = clientManager.getStats();
@@ -368,7 +378,7 @@ async function startServer() {
         const CALC_URL = process.env.CALC_API_URL || 'http://localhost:3002';
 
         // Generic proxy helper
-        const proxyRequest = async (targetBase, subPath, req, res) => {
+        const proxyRequest = async (targetBase, subPath, req, res, { raw = false } = {}) => {
             try {
                 const http = require('http');
                 const https = require('https');
@@ -382,16 +392,25 @@ async function startServer() {
                 }
 
                 const proto = url.protocol === 'https:' ? https : http;
+                const headers = {};
+                if (raw) {
+                    // Forward original headers for multipart/form-data
+                    if (req.headers['content-type']) headers['content-type'] = req.headers['content-type'];
+                    if (req.headers['content-length']) headers['content-length'] = req.headers['content-length'];
+                } else {
+                    headers['Content-Type'] = 'application/json';
+                }
+                if (process.env.INTERNAL_API_KEY) {
+                    headers['X-Internal-Key'] = process.env.INTERNAL_API_KEY;
+                }
+
                 const options = {
                     hostname: url.hostname,
                     port: url.port,
                     path: url.pathname + url.search,
                     method: req.method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        // Forward session data if needed? No, separate services handles their auth or trust network
-                    },
-                    timeout: 15000,
+                    headers,
+                    timeout: 30000,
                 };
 
                 const proxyReq = proto.request(options, (proxyRes) => {
@@ -401,19 +420,33 @@ async function startServer() {
 
                 proxyReq.on('error', (err) => {
                     logger.debug(`Proxy error (${targetBase}): ${err.message}`);
-                    res.status(502).json({ error: 'Serviço indisponível' });
+                    if (!res.headersSent) {
+                        res.status(502).json({ error: 'Serviço indisponível' });
+                    }
                 });
 
-                if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
-                    proxyReq.write(JSON.stringify(req.body));
+                if (raw) {
+                    // Pipe raw request body (multipart/form-data)
+                    req.pipe(proxyReq);
+                } else {
+                    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body) {
+                        proxyReq.write(JSON.stringify(req.body));
+                    }
+                    proxyReq.end();
                 }
-                proxyReq.end();
             } catch (err) {
                 res.status(502).json({ error: 'Serviço indisponível' });
             }
         };
 
-        // SDR Proxy
+        // SDR Knowledge Upload — raw proxy BEFORE express.json() would interfere
+        // This route must pipe raw multipart body directly to the SDR backend
+        app.post('/api/sdr/tenants/:id/knowledge', requireAuth, (req, res) => {
+            const subPath = `/api/tenants/${req.params.id}/knowledge`;
+            proxyRequest(SDR_URL, subPath, req, res, { raw: true });
+        });
+
+        // SDR Proxy (general)
         app.all('/api/sdr/*', requireAuth, (req, res) => {
             const subPath = req.path.replace('/api/sdr', '/api');
             proxyRequest(SDR_URL, subPath, req, res);

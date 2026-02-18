@@ -575,48 +575,165 @@
 
         <!-- ===== SECTION: SDR de IA ===== -->
         <section class="page-section" id="section-sdr">
-            <div class="page-header">
-                <div>
-                    <h2 class="page-title">SDR de IA</h2>
-                    <p class="page-subtitle">Atendimento automatizado via WhatsApp</p>
-                </div>
-                <button class="btn-primary" id="btn-add-sdr-tenant">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    <span>Novo Tenant</span>
-                </button>
-            </div>
-
-            <div id="sdr-tenants-list" class="clients-grid">
-                <div class="card" style="grid-column:1/-1">
-                    <div class="activity-empty">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
-                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                        </svg>
-                        <p>Nenhum tenant SDR configurado</p>
-                        <small>Configure um tenant para começar a usar o SDR de IA</small>
+            <!-- List View -->
+            <div id="sdr-list-view">
+                <div class="page-header">
+                    <div>
+                        <h2 class="page-title">SDR de IA</h2>
+                        <p class="page-subtitle">Atendimento automatizado via WhatsApp</p>
                     </div>
+                    <button class="btn-primary" id="btn-add-sdr-tenant">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <span>Novo Cliente</span>
+                    </button>
                 </div>
-            </div>
 
-            <div class="dashboard-grid" style="margin-top: 24px;">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Conversas Recentes</h3>
-                    </div>
-                    <div class="activity-feed" id="sdr-conversations">
+                <div id="sdr-tenants-list" class="clients-grid">
+                    <div class="card" style="grid-column:1/-1">
                         <div class="activity-empty">
-                            <p>Aguardando conversas...</p>
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                            <p>Nenhum cliente SDR configurado</p>
+                            <small>Clique em "Novo Cliente" para começar</small>
                         </div>
                     </div>
                 </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Knowledge Base</h3>
+            </div>
+
+            <!-- Detail View (hidden by default) -->
+            <div id="sdr-detail-view" style="display:none;">
+                <div class="page-header">
+                    <div>
+                        <button class="btn-text" id="btn-sdr-back" style="margin-bottom: 8px; padding-left: 0; color: var(--text-secondary);">
+                            ← Voltar para Clientes SDR
+                        </button>
+                        <h2 class="page-title" id="sdr-detail-title">Detalhes do Cliente</h2>
+                        <p class="page-subtitle" id="sdr-detail-subtitle"></p>
                     </div>
-                    <div class="activity-feed" id="sdr-knowledge">
-                        <div class="activity-empty">
-                            <p>Nenhum documento carregado</p>
-                            <small>Faça upload de PDFs ou textos para o SDR usar como base de conhecimento</small>
+                    <div class="header-actions">
+                        <button class="btn-primary" id="btn-sdr-edit-detail">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            <span>Editar</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Row -->
+                <div class="stats-grid" id="sdr-detail-stats" style="margin-bottom: 24px;">
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-clients"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-conversations">0</span><span class="stat-label">Conversas</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-status"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><line x1="9" y1="10" x2="15" y2="10"></line></svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-messages">0</span><span class="stat-label">Mensagens</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-sale"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-leads">0</span><span class="stat-label">Leads</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon stat-icon-webhook"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line></svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-tokens">0</span><span class="stat-label">Tokens Usados</span></div>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="sdr-tabs">
+                    <button class="sdr-tab active" data-tab="config">Configuração</button>
+                    <button class="sdr-tab" data-tab="whatsapp">WhatsApp</button>
+                    <button class="sdr-tab" data-tab="knowledge">Knowledge Base</button>
+                    <button class="sdr-tab" data-tab="conversations">Conversas</button>
+                    <button class="sdr-tab" data-tab="leads">Leads</button>
+                </div>
+
+                <!-- Tab: Config -->
+                <div class="sdr-tab-content active" id="sdr-tab-config">
+                    <div class="card">
+                        <div class="settings-list" id="sdr-config-list"></div>
+                    </div>
+                </div>
+
+                <!-- Tab: WhatsApp -->
+                <div class="sdr-tab-content" id="sdr-tab-whatsapp">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Status da Conexão</h3>
+                            <button class="btn-secondary btn-sm" id="btn-whatsapp-refresh-status">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                <span>Verificar</span>
+                            </button>
+                        </div>
+                        <div class="settings-list">
+                            <div class="setting-row">
+                                <span class="setting-label">Instância</span>
+                                <span class="setting-value" id="wa-detail-instance">—</span>
+                            </div>
+                            <div class="setting-row">
+                                <span class="setting-label">Status</span>
+                                <span class="setting-value" id="wa-detail-status">
+                                    <span class="badge" id="wa-detail-status-badge">Verificando...</span>
+                                </span>
+                            </div>
+                        </div>
+                        <!-- Reconnect QR Code area -->
+                        <div id="wa-detail-qr-area" style="display:none;padding:24px;text-align:center;border-top:1px solid var(--border-subtle);">
+                            <p style="margin-bottom:12px;color:var(--text-secondary);font-size:0.85rem;">Escaneie o QR Code com o WhatsApp para reconectar</p>
+                            <div style="background:#fff;display:inline-block;padding:16px;border-radius:12px;">
+                                <img id="wa-detail-qr-img" src="" alt="QR Code" style="width:256px;height:256px;">
+                            </div>
+                        </div>
+                        <div style="padding:16px;border-top:1px solid var(--border-subtle);">
+                            <button class="btn-primary btn-sm" id="btn-whatsapp-reconnect" style="display:none;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                <span>Reconectar</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Knowledge Base -->
+                <div class="sdr-tab-content" id="sdr-tab-knowledge">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Documentos</h3>
+                            <label class="btn-primary btn-sm" style="cursor:pointer;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                <span>Upload</span>
+                                <input type="file" id="sdr-kb-file-input" accept=".pdf,.txt,.md" style="display:none;">
+                            </label>
+                        </div>
+                        <div id="sdr-kb-list" class="activity-feed">
+                            <div class="activity-empty"><p>Nenhum documento carregado</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Conversations -->
+                <div class="sdr-tab-content" id="sdr-tab-conversations">
+                    <div class="sdr-chat-layout">
+                        <div class="card sdr-conversations-list-card">
+                            <div class="card-header"><h3>Conversas</h3></div>
+                            <div id="sdr-conversations-list" class="activity-feed">
+                                <div class="activity-empty"><p>Nenhuma conversa</p></div>
+                            </div>
+                        </div>
+                        <div class="card sdr-messages-card">
+                            <div class="card-header"><h3 id="sdr-chat-title">Selecione uma conversa</h3></div>
+                            <div id="sdr-messages-list" class="sdr-messages-container">
+                                <div class="activity-empty"><p>Selecione uma conversa à esquerda</p></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Leads -->
+                <div class="sdr-tab-content" id="sdr-tab-leads">
+                    <div class="card">
+                        <div class="card-header"><h3>Leads Qualificados</h3></div>
+                        <div id="sdr-leads-list" class="activity-feed">
+                            <div class="activity-empty"><p>Nenhum lead encontrado</p></div>
                         </div>
                     </div>
                 </div>
@@ -699,6 +816,147 @@
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
+                        <span>Salvar Cliente</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal SDR Tenant (full-screen scrollable) -->
+    <div id="modal-sdr-tenant" class="modal-overlay">
+        <div class="modal-content sdr-modal-fullpage">
+            <div class="modal-header" style="position:sticky;top:0;background:var(--bg-elevated);z-index:10;border-bottom:1px solid var(--border-subtle);">
+                <h2 id="sdr-modal-title">Novo Cliente SDR</h2>
+                <button class="btn-modal-close" onclick="closeSdrModal()" aria-label="Fechar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <form id="form-sdr-tenant" autocomplete="off">
+                <input type="hidden" id="sdr-tenant-id">
+
+                <!-- Section: Identificação -->
+                <div class="sdr-form-section-title">Identificação</div>
+                <div class="sdr-form-grid">
+                    <div class="form-group">
+                        <label for="sdr-tenant-name">Nome</label>
+                        <input type="text" id="sdr-tenant-name" placeholder="Nome do cliente" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-tenant-slug">Slug</label>
+                        <input type="text" id="sdr-tenant-slug" placeholder="meu-cliente" required>
+                        <small class="form-hint">Identificador único, sem espaços</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-tenant-niche">Nicho</label>
+                        <input type="text" id="sdr-tenant-niche" placeholder="Ex: Imobiliário, Advocacia...">
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-tenant-tone">Tom</label>
+                        <select id="sdr-tenant-tone" class="setting-input">
+                            <option value="profissional">Profissional</option>
+                            <option value="casual">Casual</option>
+                            <option value="formal">Formal</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Section: Conexão WhatsApp -->
+                <div class="sdr-form-section-title">Conexão WhatsApp</div>
+                <div class="sdr-form-grid">
+                    <div class="form-group">
+                        <label for="sdr-tenant-whatsapp">Número WhatsApp</label>
+                        <input type="text" id="sdr-tenant-whatsapp" placeholder="5511999999999">
+                        <small class="form-hint">Número completo com DDI+DDD</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-tenant-evolution">Instância Evolution</label>
+                        <div style="display:flex;gap:8px;align-items:flex-start;">
+                            <select id="sdr-tenant-evolution" class="setting-input" style="flex:1;">
+                                <option value="">Carregando instâncias...</option>
+                            </select>
+                            <button type="button" class="btn-secondary btn-sm" id="btn-refresh-instances" title="Recarregar" style="height:40px;padding:0 10px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                            </button>
+                        </div>
+                        <small class="form-hint">Selecione uma instância existente ou crie uma nova abaixo</small>
+                    </div>
+                </div>
+
+                <!-- Criar Nova Instância -->
+                <div id="evolution-create-section" style="margin-top:8px;padding:16px;background:var(--bg-surface);border-radius:8px;border:1px solid var(--border-subtle);">
+                    <div style="display:flex;gap:8px;align-items:flex-end;">
+                        <div class="form-group" style="flex:1;margin-bottom:0;">
+                            <label for="evolution-new-name" style="font-size:0.8rem;">Criar Nova Instância</label>
+                            <input type="text" id="evolution-new-name" placeholder="Nome da nova instância">
+                        </div>
+                        <button type="button" class="btn-primary btn-sm" id="btn-create-evolution-instance" style="height:40px;padding:0 16px;white-space:nowrap;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Criar
+                        </button>
+                    </div>
+                    <!-- QR Code Area -->
+                    <div id="evolution-qr-area" style="display:none;margin-top:16px;text-align:center;">
+                        <div id="evolution-qr-status" style="margin-bottom:8px;">
+                            <span class="badge" id="evolution-connection-badge" style="font-size:0.8rem;">Aguardando...</span>
+                        </div>
+                        <div id="evolution-qr-container" style="background:#fff;display:inline-block;padding:16px;border-radius:12px;">
+                            <img id="evolution-qr-img" src="" alt="QR Code" style="width:256px;height:256px;display:none;">
+                            <div id="evolution-qr-loading" style="width:256px;height:256px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">
+                                Gerando QR Code...
+                            </div>
+                        </div>
+                        <p style="margin-top:8px;font-size:0.8rem;color:var(--text-secondary);">Escaneie com o WhatsApp para conectar</p>
+                    </div>
+                </div>
+
+                <!-- Section: IA -->
+                <div class="sdr-form-section-title">Inteligência Artificial</div>
+                <div class="sdr-form-grid">
+                    <div class="form-group">
+                        <label for="sdr-tenant-model">Modelo LLM</label>
+                        <select id="sdr-tenant-model" class="setting-input">
+                            <option value="gpt-4o-mini">gpt-4o-mini</option>
+                            <option value="gpt-4o">gpt-4o</option>
+                            <option value="gpt-4-turbo">gpt-4-turbo</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-tenant-tokens">Max Tokens</label>
+                        <input type="number" id="sdr-tenant-tokens" placeholder="500" value="500">
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label for="sdr-tenant-prompt">System Prompt</label>
+                        <textarea id="sdr-tenant-prompt" class="setting-input" rows="5" placeholder="Você é um SDR virtual da empresa X. Seu objetivo é qualificar leads e agendar reuniões..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Section: Horário de Atendimento -->
+                <div class="sdr-form-section-title">Horário de Atendimento</div>
+                <div class="sdr-form-grid sdr-form-grid-3">
+                    <div class="form-group">
+                        <label for="sdr-tenant-hours-start">Início</label>
+                        <input type="time" id="sdr-tenant-hours-start" value="08:00">
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-tenant-hours-end">Fim</label>
+                        <input type="time" id="sdr-tenant-hours-end" value="18:00">
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-tenant-days">Dias Úteis</label>
+                        <input type="text" id="sdr-tenant-days" placeholder="1,2,3,4,5" value="1,2,3,4,5">
+                        <small class="form-hint">1=Seg ... 7=Dom</small>
+                    </div>
+                    <div class="form-group" style="grid-column:1/-1;">
+                        <label for="sdr-tenant-ooh-msg">Mensagem Fora do Horário</label>
+                        <textarea id="sdr-tenant-ooh-msg" class="setting-input" rows="2" placeholder="Obrigado pelo contato! Estamos fora do horário de atendimento..."></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-actions" style="position:sticky;bottom:0;background:var(--bg-elevated);padding:16px 0 0;border-top:1px solid var(--border-subtle);margin-top:24px;">
+                    <button type="button" class="btn-secondary" onclick="closeSdrModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="sdr-modal-submit-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         <span>Salvar Cliente</span>
                     </button>
                 </div>

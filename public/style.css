@@ -1929,3 +1929,267 @@ kbd {
     color: #94a3b8;
     border: 1px solid rgba(148, 163, 184, 0.15);
 }
+
+/* ============================================
+   SDR de IA — Specific Styles
+   ============================================ */
+
+/* SDR Full-Page Modal */
+.sdr-modal-fullpage {
+    max-width: 680px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.sdr-form-section-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    margin: 20px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.sdr-form-section-title:first-of-type {
+    margin-top: 0;
+}
+
+/* SDR Form Grid */
+.sdr-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+}
+
+.sdr-form-grid-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
+.sdr-form-grid .form-group textarea {
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-family: inherit;
+    resize: vertical;
+    transition: var(--transition-fast);
+}
+
+.sdr-form-grid .form-group textarea:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-subtle);
+}
+
+.sdr-form-grid .form-group select {
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.sdr-form-grid .form-group select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-primary-subtle);
+}
+
+@media (max-width: 600px) {
+    .sdr-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* SDR Tabs */
+.sdr-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 0;
+}
+
+.sdr-tab {
+    padding: 10px 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: inherit;
+    margin-bottom: -1px;
+}
+
+.sdr-tab:hover {
+    color: var(--text-primary);
+}
+
+.sdr-tab.active {
+    color: var(--accent-primary-hover);
+    border-bottom-color: var(--accent-primary);
+}
+
+.sdr-tab-content {
+    display: none;
+}
+
+.sdr-tab-content.active {
+    display: block;
+    animation: page-enter 0.3s var(--ease-out);
+}
+
+/* SDR Chat Layout */
+.sdr-chat-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 16px;
+    min-height: 500px;
+}
+
+@media (max-width: 900px) {
+    .sdr-chat-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sdr-conversations-list-card .activity-feed {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.sdr-conversations-list-card .activity-item {
+    cursor: pointer;
+}
+
+.sdr-conversations-list-card .activity-item.selected {
+    background: var(--accent-primary-subtle);
+}
+
+/* SDR Messages Container */
+.sdr-messages-container {
+    padding: 20px;
+    max-height: 500px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Chat Bubbles */
+.sdr-msg {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    word-wrap: break-word;
+    position: relative;
+}
+
+.sdr-msg-incoming {
+    align-self: flex-start;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-bottom-left-radius: 4px;
+    color: var(--text-primary);
+}
+
+.sdr-msg-outgoing {
+    align-self: flex-end;
+    background: var(--accent-primary);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.sdr-msg-time {
+    font-size: 0.65rem;
+    opacity: 0.6;
+    margin-top: 4px;
+    display: block;
+}
+
+.sdr-msg-outgoing .sdr-msg-time {
+    text-align: right;
+}
+
+/* Lead Qualification Badges */
+.badge-lead-hot {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.badge-lead-warm {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.badge-lead-cold {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* SDR KB Document Row */
+.sdr-kb-doc {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.sdr-kb-doc:last-child {
+    border-bottom: none;
+}
+
+.sdr-kb-doc-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.sdr-kb-doc-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-cyan-subtle);
+    color: var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sdr-kb-doc-name {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sdr-kb-doc-meta {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.sdr-kb-doc-actions {
+    flex-shrink: 0;
+}

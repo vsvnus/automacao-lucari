@@ -1404,11 +1404,30 @@ closeModal = function () {
 // SDR de IA Section
 // ============================================
 
-const SDR_API_BASE = '/api/sdr'; // proxied through this server
+const SDR_API_BASE = '/api/sdr';
 
+const sdrState = {
+    tenants: [],
+    selectedTenantId: null,
+    selectedTenant: null,
+    activeTab: 'config',
+    knowledge: [],
+    conversations: [],
+    messages: [],
+    leads: [],
+    selectedConversationId: null,
+};
+
+// --- SDR: Load Tenant List ---
 async function loadSDRSection() {
     const container = $('#sdr-tenants-list');
     if (!container) return;
+
+    // Ensure we show the list view
+    const listView = $('#sdr-list-view');
+    const detailView = $('#sdr-detail-view');
+    if (listView) listView.style.display = '';
+    if (detailView) detailView.style.display = 'none';
 
     try {
         const res = await fetch(`${SDR_API_BASE}/tenants`);
@@ -1417,16 +1436,17 @@ async function loadSDRSection() {
             return;
         }
         const tenants = await res.json();
+        sdrState.tenants = tenants || [];
 
-        if (!tenants || tenants.length === 0) {
+        if (sdrState.tenants.length === 0) {
             container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty">
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                <p>Nenhum tenant SDR configurado</p><small>Clique em "Novo Tenant" para começar</small></div></div>`;
+                <p>Nenhum cliente SDR configurado</p><small>Clique em "Novo Cliente" para começar</small></div></div>`;
             return;
         }
 
         container.innerHTML = '';
-        tenants.forEach(tenant => {
+        sdrState.tenants.forEach(tenant => {
             const card = document.createElement('div');
             card.className = 'client-card';
             const initial = getInitials(tenant.name);
@@ -1439,9 +1459,9 @@ async function loadSDRSection() {
                             <span style="font-size:0.75rem;color:var(--text-tertiary);">${escapeHtml(tenant.slug)} · ${escapeHtml(tenant.niche || 'Geral')}</span>
                         </div>
                     </div>
-                    <span class="client-status ${tenant.active ? 'active' : 'inactive'}">
-                        <span class="status-indicator ${tenant.active ? 'online' : 'offline'}" style="width:6px;height:6px;"></span>
-                        ${tenant.active ? 'Ativo' : 'Inativo'}
+                    <span class="client-status ${tenant.active !== false ? 'active' : 'inactive'}">
+                        <span class="status-indicator ${tenant.active !== false ? 'online' : 'offline'}" style="width:6px;height:6px;"></span>
+                        ${tenant.active !== false ? 'Ativo' : 'Inativo'}
                     </span>
                 </div>
                 <div class="client-meta">
@@ -1457,11 +1477,855 @@ async function loadSDRSection() {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5.09 3h3"></path></svg>
                         WhatsApp: <code>${escapeHtml(tenant.whatsapp_number || 'Não configurado')}</code>
                     </div>
+                </div>
+                <div class="client-card-footer">
+                    <div style="flex:1"></div>
+                    <button class="btn-text" onclick="handleEditSdrTenant('${tenant.id}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        Editar
+                    </button>
+                    <button class="btn-text" onclick="openSdrDetail('${tenant.id}')" style="color:var(--accent-cyan);">
+                        Detalhes →
+                    </button>
                 </div>`;
             container.appendChild(card);
         });
     } catch (err) {
         container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>Erro ao carregar SDR</p><small>${escapeHtml(err.message)}</small></div></div>`;
+    }
+}
+
+// --- Evolution API Functions ---
+let evolutionPollingInterval = null;
+
+async function fetchEvolutionInstances() {
+    try {
+        const res = await fetch(`${SDR_API_BASE}/evolution/instances`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+    } catch {
+        return [];
+    }
+}
+
+async function createEvolutionInstance(name) {
+    const res = await fetch(`${SDR_API_BASE}/evolution/instances`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instanceName: name }),
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao criar instância');
+    }
+    return await res.json();
+}
+
+async function getInstanceStatus(name) {
+    try {
+        const res = await fetch(`${SDR_API_BASE}/evolution/instances/${encodeURIComponent(name)}/status`);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function getInstanceQRCode(name) {
+    try {
+        const res = await fetch(`${SDR_API_BASE}/evolution/instances/${encodeURIComponent(name)}/qrcode`);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+async function deleteEvolutionInstance(name) {
+    const res = await fetch(`${SDR_API_BASE}/evolution/instances/${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+    });
+    if (!res.ok && res.status !== 204) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao deletar instância');
+    }
+}
+
+async function loadEvolutionInstancesSelect(selectedValue) {
+    const select = $('#sdr-tenant-evolution');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Carregando...</option>';
+    const instances = await fetchEvolutionInstances();
+
+    if (instances.length === 0) {
+        select.innerHTML = '<option value="">— Nenhuma instância (Evolution offline?) —</option>';
+        // Allow manual typing: if there's a saved value, add it as option
+        if (selectedValue) {
+            const opt = document.createElement('option');
+            opt.value = selectedValue;
+            opt.textContent = `${selectedValue} (salvo)`;
+            select.appendChild(opt);
+            select.value = selectedValue;
+        }
+        return;
+    }
+
+    select.innerHTML = '<option value="">— Selecione uma instância —</option>';
+    instances.forEach(inst => {
+        const name = inst.instance?.instanceName || inst.instanceName || inst.name || '';
+        if (!name) return;
+        const state = inst.instance?.status || inst.state || '';
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = `${name}${state ? ` (${state})` : ''}`;
+        select.appendChild(opt);
+    });
+
+    if (selectedValue) {
+        // If saved value is not in the list, add it
+        if (!select.querySelector(`option[value="${CSS.escape(selectedValue)}"]`)) {
+            const opt = document.createElement('option');
+            opt.value = selectedValue;
+            opt.textContent = `${selectedValue} (salvo)`;
+            select.appendChild(opt);
+        }
+        select.value = selectedValue;
+    }
+}
+
+function stopEvolutionPolling() {
+    if (evolutionPollingInterval) {
+        clearInterval(evolutionPollingInterval);
+        evolutionPollingInterval = null;
+    }
+}
+
+function startEvolutionPolling(instanceName) {
+    stopEvolutionPolling();
+
+    const badge = $('#evolution-connection-badge');
+    const qrImg = $('#evolution-qr-img');
+    const qrArea = $('#evolution-qr-area');
+
+    evolutionPollingInterval = setInterval(async () => {
+        const status = await getInstanceStatus(instanceName);
+        if (!status) return;
+
+        const state = status.instance?.state || status.state || '';
+        if (state === 'open' || state === 'connected') {
+            stopEvolutionPolling();
+            if (badge) {
+                badge.textContent = 'Conectado';
+                badge.style.background = 'var(--accent-green-subtle)';
+                badge.style.color = 'var(--accent-green)';
+            }
+            if (qrImg) qrImg.style.display = 'none';
+            const loading = $('#evolution-qr-loading');
+            if (loading) loading.innerHTML = '<span style="color:var(--accent-green);font-weight:600;">WhatsApp Conectado!</span>';
+
+            // Auto-select in dropdown
+            const select = $('#sdr-tenant-evolution');
+            if (select) select.value = instanceName;
+
+            showToast('WhatsApp conectado com sucesso!', 'success');
+        }
+    }, 5000);
+}
+
+async function showEvolutionQRCode(instanceName) {
+    const qrArea = $('#evolution-qr-area');
+    const qrImg = $('#evolution-qr-img');
+    const qrLoading = $('#evolution-qr-loading');
+    const badge = $('#evolution-connection-badge');
+
+    if (qrArea) qrArea.style.display = '';
+    if (qrImg) qrImg.style.display = 'none';
+    if (qrLoading) {
+        qrLoading.style.display = 'flex';
+        qrLoading.textContent = 'Gerando QR Code...';
+    }
+    if (badge) {
+        badge.textContent = 'Aguardando leitura...';
+        badge.style.background = 'var(--accent-orange-subtle)';
+        badge.style.color = 'var(--accent-orange)';
+    }
+
+    const result = await getInstanceQRCode(instanceName);
+
+    if (result) {
+        const base64 = result.base64 || result.qrcode?.base64 || '';
+        if (base64) {
+            const src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
+            if (qrImg) {
+                qrImg.src = src;
+                qrImg.style.display = '';
+            }
+            if (qrLoading) qrLoading.style.display = 'none';
+        } else {
+            if (qrLoading) qrLoading.textContent = 'QR Code não disponível. A instância pode já estar conectada.';
+        }
+    } else {
+        if (qrLoading) qrLoading.textContent = 'Erro ao gerar QR Code';
+    }
+
+    startEvolutionPolling(instanceName);
+}
+
+// Event: Create new instance
+$('#btn-create-evolution-instance')?.addEventListener('click', async () => {
+    const nameInput = $('#evolution-new-name');
+    const name = nameInput?.value?.trim();
+    if (!name) {
+        showToast('Digite um nome para a instância', 'error');
+        return;
+    }
+
+    try {
+        showToast('Criando instância...', 'info');
+        await createEvolutionInstance(name);
+        showToast(`Instância "${name}" criada!`, 'success');
+
+        // Reload select and auto-select
+        await loadEvolutionInstancesSelect(name);
+
+        // Show QR code
+        await showEvolutionQRCode(name);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+});
+
+// Event: Refresh instances
+$('#btn-refresh-instances')?.addEventListener('click', () => {
+    const current = $('#sdr-tenant-evolution')?.value;
+    loadEvolutionInstancesSelect(current);
+});
+
+// --- SDR: Modal CRUD ---
+function openSdrModal(tenant = null) {
+    const modal = $('#modal-sdr-tenant');
+    const title = $('#sdr-modal-title');
+    const submitBtn = $('#sdr-modal-submit-btn span');
+
+    // Reset QR area
+    const qrArea = $('#evolution-qr-area');
+    if (qrArea) qrArea.style.display = 'none';
+    stopEvolutionPolling();
+
+    if (tenant) {
+        title.textContent = 'Editar Cliente SDR';
+        submitBtn.textContent = 'Salvar Alterações';
+        $('#sdr-tenant-id').value = tenant.id;
+        $('#sdr-tenant-name').value = tenant.name || '';
+        $('#sdr-tenant-slug').value = tenant.slug || '';
+        $('#sdr-tenant-slug').disabled = true;
+        $('#sdr-tenant-niche').value = tenant.niche || '';
+        $('#sdr-tenant-tone').value = tenant.tone || 'profissional';
+        $('#sdr-tenant-whatsapp').value = tenant.whatsapp_number || '';
+        $('#sdr-tenant-model').value = tenant.llm_model || 'gpt-4o-mini';
+        $('#sdr-tenant-tokens').value = tenant.max_tokens_per_response || tenant.max_tokens || 500;
+        $('#sdr-tenant-hours-start').value = tenant.business_hours_start || '08:00';
+        $('#sdr-tenant-hours-end').value = tenant.business_hours_end || '18:00';
+        $('#sdr-tenant-days').value = tenant.business_days || '1,2,3,4,5';
+        $('#sdr-tenant-prompt').value = tenant.system_prompt || '';
+        $('#sdr-tenant-ooh-msg').value = tenant.out_of_hours_message || '';
+        // Load instances select and set current value
+        loadEvolutionInstancesSelect(tenant.evolution_instance_id || '');
+    } else {
+        title.textContent = 'Novo Cliente SDR';
+        submitBtn.textContent = 'Salvar Cliente';
+        $('#form-sdr-tenant').reset();
+        $('#sdr-tenant-id').value = '';
+        $('#sdr-tenant-slug').disabled = false;
+        $('#sdr-tenant-tokens').value = 500;
+        $('#sdr-tenant-hours-start').value = '08:00';
+        $('#sdr-tenant-hours-end').value = '18:00';
+        $('#sdr-tenant-days').value = '1,2,3,4,5';
+        // Load instances select
+        loadEvolutionInstancesSelect('');
+    }
+
+    modal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeSdrModal() {
+    const modal = $('#modal-sdr-tenant');
+    modal.classList.remove('visible');
+    document.body.style.overflow = '';
+    $('#sdr-tenant-slug').disabled = false;
+    stopEvolutionPolling();
+}
+
+$('#btn-add-sdr-tenant')?.addEventListener('click', () => openSdrModal());
+
+$('#modal-sdr-tenant')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSdrModal();
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('#modal-sdr-tenant')?.classList.contains('visible')) {
+        closeSdrModal();
+    }
+});
+
+$('#form-sdr-tenant')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const id = $('#sdr-tenant-id').value;
+    const data = {
+        name: $('#sdr-tenant-name').value.trim(),
+        slug: $('#sdr-tenant-slug').value.trim(),
+        niche: $('#sdr-tenant-niche').value.trim(),
+        tone: $('#sdr-tenant-tone').value,
+        whatsapp_number: $('#sdr-tenant-whatsapp').value.trim(),
+        evolution_instance_id: $('#sdr-tenant-evolution').value.trim(),
+        llm_model: $('#sdr-tenant-model').value,
+        max_tokens_per_response: parseInt($('#sdr-tenant-tokens').value) || 500,
+        business_hours_start: $('#sdr-tenant-hours-start').value,
+        business_hours_end: $('#sdr-tenant-hours-end').value,
+        business_days: $('#sdr-tenant-days').value.trim(),
+        system_prompt: $('#sdr-tenant-prompt').value.trim(),
+        out_of_hours_message: $('#sdr-tenant-ooh-msg').value.trim(),
+    };
+
+    try {
+        let res;
+        if (id) {
+            res = await fetch(`${SDR_API_BASE}/tenants/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+        } else {
+            res = await fetch(`${SDR_API_BASE}/tenants`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+        }
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Erro ao salvar');
+        }
+
+        showToast(id ? 'Cliente atualizado!' : 'Cliente criado!', 'success');
+        closeSdrModal();
+        loadSDRSection();
+
+        // If we're viewing this tenant's details, reload them
+        if (sdrState.selectedTenantId === id) {
+            openSdrDetail(id);
+        }
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+});
+
+window.handleEditSdrTenant = function (tenantId) {
+    const tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
+    if (!tenant) {
+        showToast('Cliente não encontrado', 'error');
+        return;
+    }
+    openSdrModal(tenant);
+};
+
+// --- SDR: Detail Panel ---
+window.openSdrDetail = async function (tenantId) {
+    const tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
+    if (!tenant) {
+        showToast('Cliente não encontrado', 'error');
+        return;
+    }
+
+    sdrState.selectedTenantId = tenantId;
+    sdrState.selectedTenant = tenant;
+
+    // Toggle views
+    const listView = $('#sdr-list-view');
+    const detailView = $('#sdr-detail-view');
+    if (listView) listView.style.display = 'none';
+    if (detailView) detailView.style.display = '';
+
+    // Set header
+    $('#sdr-detail-title').textContent = tenant.name;
+    $('#sdr-detail-subtitle').textContent = `${tenant.slug} · ${tenant.niche || 'Geral'}`;
+
+    // Load stats
+    loadSdrStats(tenantId);
+
+    // Setup tabs
+    switchSdrTab('config');
+    renderSdrConfig(tenant);
+};
+
+$('#btn-sdr-back')?.addEventListener('click', () => {
+    closeSdrDetail();
+});
+
+$('#btn-sdr-edit-detail')?.addEventListener('click', () => {
+    if (sdrState.selectedTenant) {
+        openSdrModal(sdrState.selectedTenant);
+    }
+});
+
+function closeSdrDetail() {
+    sdrState.selectedTenantId = null;
+    sdrState.selectedTenant = null;
+    if (waDetailPollingInterval) {
+        clearInterval(waDetailPollingInterval);
+        waDetailPollingInterval = null;
+    }
+    const listView = $('#sdr-list-view');
+    const detailView = $('#sdr-detail-view');
+    if (listView) listView.style.display = '';
+    if (detailView) detailView.style.display = 'none';
+    loadSDRSection();
+}
+
+// --- SDR: Tabs ---
+$$('.sdr-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        switchSdrTab(tab.dataset.tab);
+    });
+});
+
+function switchSdrTab(tabName) {
+    sdrState.activeTab = tabName;
+
+    $$('.sdr-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
+    $$('.sdr-tab-content').forEach(c => c.classList.toggle('active', c.id === `sdr-tab-${tabName}`));
+
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    if (tabName === 'config') renderSdrConfig(sdrState.selectedTenant);
+    if (tabName === 'whatsapp') loadSdrWhatsAppStatus(sdrState.selectedTenant);
+    if (tabName === 'knowledge') loadSdrKnowledge(tenantId);
+    if (tabName === 'conversations') loadSdrConversations(tenantId);
+    if (tabName === 'leads') loadSdrLeads(tenantId);
+}
+
+// --- SDR: Stats ---
+async function loadSdrStats(tenantId) {
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/stats`);
+        if (!res.ok) return;
+        const stats = await res.json();
+        $('#sdr-stat-conversations').textContent = stats.conversations || 0;
+        $('#sdr-stat-messages').textContent = stats.messages || 0;
+        $('#sdr-stat-leads').textContent = stats.leads || 0;
+        $('#sdr-stat-tokens').textContent = stats.tokens_used ? stats.tokens_used.toLocaleString() : '0';
+    } catch { /* silent */ }
+}
+
+// --- SDR: WhatsApp Tab ---
+let waDetailPollingInterval = null;
+
+async function loadSdrWhatsAppStatus(tenant) {
+    if (!tenant) return;
+
+    const instanceName = tenant.evolution_instance_id;
+    const instanceEl = $('#wa-detail-instance');
+    const badge = $('#wa-detail-status-badge');
+    const reconnectBtn = $('#btn-whatsapp-reconnect');
+    const qrArea = $('#wa-detail-qr-area');
+
+    // Stop any previous polling
+    if (waDetailPollingInterval) {
+        clearInterval(waDetailPollingInterval);
+        waDetailPollingInterval = null;
+    }
+
+    if (instanceEl) instanceEl.textContent = instanceName || 'Não configurado';
+    if (qrArea) qrArea.style.display = 'none';
+
+    if (!instanceName) {
+        if (badge) {
+            badge.textContent = 'Sem instância';
+            badge.style.background = 'var(--accent-orange-subtle)';
+            badge.style.color = 'var(--accent-orange)';
+        }
+        if (reconnectBtn) reconnectBtn.style.display = 'none';
+        return;
+    }
+
+    if (badge) {
+        badge.textContent = 'Verificando...';
+        badge.style.background = 'var(--bg-surface)';
+        badge.style.color = 'var(--text-secondary)';
+    }
+
+    const status = await getInstanceStatus(instanceName);
+    const state = status?.instance?.state || status?.state || 'unknown';
+
+    if (state === 'open' || state === 'connected') {
+        if (badge) {
+            badge.textContent = 'Conectado';
+            badge.style.background = 'var(--accent-green-subtle)';
+            badge.style.color = 'var(--accent-green)';
+        }
+        if (reconnectBtn) reconnectBtn.style.display = 'none';
+    } else {
+        if (badge) {
+            badge.textContent = state === 'close' ? 'Desconectado' : (state || 'Desconhecido');
+            badge.style.background = 'var(--accent-red-subtle, #fef2f2)';
+            badge.style.color = 'var(--accent-red, #ef4444)';
+        }
+        if (reconnectBtn) reconnectBtn.style.display = '';
+    }
+}
+
+$('#btn-whatsapp-refresh-status')?.addEventListener('click', () => {
+    if (sdrState.selectedTenant) loadSdrWhatsAppStatus(sdrState.selectedTenant);
+});
+
+$('#btn-whatsapp-reconnect')?.addEventListener('click', async () => {
+    const tenant = sdrState.selectedTenant;
+    if (!tenant?.evolution_instance_id) return;
+
+    const instanceName = tenant.evolution_instance_id;
+    const qrArea = $('#wa-detail-qr-area');
+    const qrImg = $('#wa-detail-qr-img');
+    const badge = $('#wa-detail-status-badge');
+
+    if (badge) {
+        badge.textContent = 'Gerando QR Code...';
+        badge.style.background = 'var(--accent-orange-subtle)';
+        badge.style.color = 'var(--accent-orange)';
+    }
+
+    const result = await getInstanceQRCode(instanceName);
+
+    if (result) {
+        const base64 = result.base64 || result.qrcode?.base64 || '';
+        if (base64 && qrImg && qrArea) {
+            qrImg.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
+            qrArea.style.display = '';
+
+            if (badge) {
+                badge.textContent = 'Aguardando leitura...';
+            }
+
+            // Poll for connection
+            waDetailPollingInterval = setInterval(async () => {
+                const status = await getInstanceStatus(instanceName);
+                const state = status?.instance?.state || status?.state || '';
+                if (state === 'open' || state === 'connected') {
+                    clearInterval(waDetailPollingInterval);
+                    waDetailPollingInterval = null;
+                    if (qrArea) qrArea.style.display = 'none';
+                    if (badge) {
+                        badge.textContent = 'Conectado';
+                        badge.style.background = 'var(--accent-green-subtle)';
+                        badge.style.color = 'var(--accent-green)';
+                    }
+                    const reconnectBtn = $('#btn-whatsapp-reconnect');
+                    if (reconnectBtn) reconnectBtn.style.display = 'none';
+                    showToast('WhatsApp reconectado!', 'success');
+                }
+            }, 5000);
+        } else {
+            if (badge) badge.textContent = 'QR Code não disponível';
+        }
+    } else {
+        if (badge) badge.textContent = 'Erro ao gerar QR Code';
+    }
+});
+
+// --- SDR: Config Tab ---
+function renderSdrConfig(tenant) {
+    const container = $('#sdr-config-list');
+    if (!container || !tenant) return;
+
+    const fields = [
+        ['Nome', tenant.name],
+        ['Slug', tenant.slug],
+        ['Nicho', tenant.niche || '—'],
+        ['Tom', tenant.tone || 'profissional'],
+        ['WhatsApp', tenant.whatsapp_number || '—'],
+        ['Evolution Instance', tenant.evolution_instance_id || '—'],
+        ['Modelo LLM', tenant.llm_model || 'gpt-4o-mini'],
+        ['Max Tokens', tenant.max_tokens_per_response || tenant.max_tokens || 500],
+        ['Horário', `${tenant.business_hours_start || '08:00'} — ${tenant.business_hours_end || '18:00'}`],
+        ['Dias Úteis', tenant.business_days || '1,2,3,4,5'],
+        ['System Prompt', tenant.system_prompt || '—'],
+        ['Msg Fora do Horário', tenant.out_of_hours_message || '—'],
+    ];
+
+    container.innerHTML = fields.map(([label, value]) => `
+        <div class="setting-row">
+            <span class="setting-label">${escapeHtml(label)}</span>
+            <span class="setting-value" style="max-width:60%;text-align:right;word-break:break-word;white-space:pre-wrap;">${escapeHtml(String(value))}</span>
+        </div>
+    `).join('');
+}
+
+// --- SDR: Knowledge Base Tab ---
+async function loadSdrKnowledge(tenantId) {
+    const container = $('#sdr-kb-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/knowledge`);
+        if (!res.ok) throw new Error('Erro ao carregar');
+        const docs = await res.json();
+        sdrState.knowledge = docs || [];
+
+        if (sdrState.knowledge.length === 0) {
+            container.innerHTML = '<div class="activity-empty"><p>Nenhum documento carregado</p><small>Use o botão Upload para adicionar PDFs ou textos</small></div>';
+            return;
+        }
+
+        // Group by source_file
+        const grouped = {};
+        sdrState.knowledge.forEach(doc => {
+            const key = doc.source_file || doc.source || 'Sem nome';
+            if (!grouped[key]) grouped[key] = { chunks: 0, id: doc.id, created: doc.created_at };
+            grouped[key].chunks++;
+        });
+
+        container.innerHTML = '';
+        Object.entries(grouped).forEach(([filename, info]) => {
+            const div = document.createElement('div');
+            div.className = 'sdr-kb-doc';
+            div.innerHTML = `
+                <div class="sdr-kb-doc-info">
+                    <div class="sdr-kb-doc-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                    </div>
+                    <div>
+                        <div class="sdr-kb-doc-name">${escapeHtml(filename)}</div>
+                        <div class="sdr-kb-doc-meta">${info.chunks} chunk${info.chunks !== 1 ? 's' : ''}</div>
+                    </div>
+                </div>
+                <div class="sdr-kb-doc-actions">
+                    <button class="btn-client-delete" onclick="handleDeleteSdrKnowledge('${escapeHtml(filename)}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Remover
+                    </button>
+                </div>`;
+            container.appendChild(div);
+        });
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar documentos</p><small>${escapeHtml(err.message)}</small></div>`;
+    }
+}
+
+// File upload handler
+$('#sdr-kb-file-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !sdrState.selectedTenantId) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        showToast('Enviando arquivo...', 'info');
+        const res = await fetch(`${SDR_API_BASE}/tenants/${sdrState.selectedTenantId}/knowledge`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Erro no upload');
+        }
+
+        showToast('Arquivo processado com sucesso!', 'success');
+        loadSdrKnowledge(sdrState.selectedTenantId);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+
+    // Reset input
+    e.target.value = '';
+});
+
+window.handleDeleteSdrKnowledge = async function (filename) {
+    if (!sdrState.selectedTenantId) return;
+    if (!confirm(`Remover "${filename}" da Knowledge Base?`)) return;
+
+    try {
+        // Find doc IDs for this filename
+        const docIds = sdrState.knowledge
+            .filter(d => (d.source_file || d.source) === filename)
+            .map(d => d.id);
+
+        for (const docId of docIds) {
+            await fetch(`${SDR_API_BASE}/tenants/${sdrState.selectedTenantId}/knowledge/${docId}`, {
+                method: 'DELETE',
+            });
+        }
+
+        showToast('Documento removido!', 'success');
+        loadSdrKnowledge(sdrState.selectedTenantId);
+    } catch (err) {
+        showToast('Erro ao remover documento', 'error');
+    }
+};
+
+// --- SDR: Conversations Tab ---
+async function loadSdrConversations(tenantId) {
+    const container = $('#sdr-conversations-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+    $('#sdr-messages-list').innerHTML = '<div class="activity-empty"><p>Selecione uma conversa à esquerda</p></div>';
+    $('#sdr-chat-title').textContent = 'Selecione uma conversa';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/conversations`);
+        if (!res.ok) throw new Error('Erro ao carregar');
+        const conversations = await res.json();
+        sdrState.conversations = conversations || [];
+
+        if (sdrState.conversations.length === 0) {
+            container.innerHTML = '<div class="activity-empty"><p>Nenhuma conversa</p></div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        sdrState.conversations.forEach(conv => {
+            const div = document.createElement('div');
+            div.className = 'activity-item';
+            div.style.cursor = 'pointer';
+            div.dataset.convId = conv.id;
+
+            const time = conv.last_message_at ? new Date(conv.last_message_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+            const phone = conv.phone || conv.remote_jid || '';
+            const name = conv.contact_name || formatPhoneDisplay(phone) || 'Sem identificação';
+
+            div.innerHTML = `
+                <div class="activity-icon-wrapper" style="background:var(--accent-cyan-subtle);color:var(--accent-cyan);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div class="activity-content">
+                    <div class="activity-title">${escapeHtml(name)}</div>
+                    <div class="activity-subtitle">${escapeHtml(phone)} · ${conv.message_count || 0} msgs</div>
+                </div>
+                <div class="activity-meta">
+                    <span class="activity-time">${escapeHtml(time)}</span>
+                </div>`;
+
+            div.addEventListener('click', () => {
+                // Deselect all
+                container.querySelectorAll('.activity-item').forEach(i => i.classList.remove('selected'));
+                div.classList.add('selected');
+                sdrState.selectedConversationId = conv.id;
+                loadSdrMessages(conv.id, name);
+            });
+
+            container.appendChild(div);
+        });
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar</p><small>${escapeHtml(err.message)}</small></div>`;
+    }
+}
+
+async function loadSdrMessages(conversationId, contactName) {
+    const container = $('#sdr-messages-list');
+    const titleEl = $('#sdr-chat-title');
+    if (!container) return;
+
+    titleEl.textContent = contactName || 'Conversa';
+    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/conversations/${conversationId}/messages`);
+        if (!res.ok) throw new Error('Erro ao carregar');
+        const messages = await res.json();
+        sdrState.messages = messages || [];
+
+        if (sdrState.messages.length === 0) {
+            container.innerHTML = '<div class="activity-empty"><p>Nenhuma mensagem</p></div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        sdrState.messages.forEach(msg => {
+            const div = document.createElement('div');
+            const isOutgoing = msg.direction === 'outgoing' || msg.from_bot === true || msg.role === 'assistant';
+            div.className = `sdr-msg ${isOutgoing ? 'sdr-msg-outgoing' : 'sdr-msg-incoming'}`;
+
+            const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+            div.innerHTML = `
+                <div>${escapeHtml(msg.content || msg.body || '')}</div>
+                <span class="sdr-msg-time">${escapeHtml(time)}</span>`;
+            container.appendChild(div);
+        });
+
+        // Scroll to bottom
+        container.scrollTop = container.scrollHeight;
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar mensagens</p></div>`;
+    }
+}
+
+// --- SDR: Leads Tab ---
+async function loadSdrLeads(tenantId) {
+    const container = $('#sdr-leads-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads`);
+        if (!res.ok) throw new Error('Erro ao carregar');
+        const leads = await res.json();
+        sdrState.leads = leads || [];
+
+        if (sdrState.leads.length === 0) {
+            container.innerHTML = '<div class="activity-empty"><p>Nenhum lead encontrado</p><small>Leads são criados automaticamente a partir das conversas</small></div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        sdrState.leads.forEach(lead => {
+            const div = document.createElement('div');
+            div.className = 'activity-item';
+
+            const qual = (lead.qualification || lead.score || '').toLowerCase();
+            let badgeClass = 'badge-lead-cold';
+            let badgeLabel = 'Frio';
+            if (qual.includes('quente') || qual.includes('hot') || qual === 'hot') {
+                badgeClass = 'badge-lead-hot';
+                badgeLabel = 'Quente';
+            } else if (qual.includes('morno') || qual.includes('warm') || qual === 'warm') {
+                badgeClass = 'badge-lead-warm';
+                badgeLabel = 'Morno';
+            }
+
+            const phone = lead.phone || lead.remote_jid || '';
+            const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
+            const interest = lead.interest || lead.notes || '';
+            const createdAt = lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : '';
+
+            div.innerHTML = `
+                <div class="activity-icon-wrapper" style="background:var(--accent-green-subtle);color:var(--accent-green);">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                </div>
+                <div class="activity-content">
+                    <div class="activity-title">
+                        ${escapeHtml(name)}
+                        <span class="badge-status ${badgeClass}">${badgeLabel}</span>
+                    </div>
+                    <div class="activity-subtitle">${escapeHtml(formatPhoneDisplay(phone))}${interest ? ` · ${escapeHtml(interest)}` : ''}</div>
+                </div>
+                <div class="activity-meta">
+                    <span class="activity-time">${escapeHtml(createdAt)}</span>
+                </div>`;
+            container.appendChild(div);
+        });
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar leads</p><small>${escapeHtml(err.message)}</small></div>`;
     }
 }
 
