@@ -35,7 +35,7 @@ function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs', 'sdr', 'calculadora'];
+    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -74,6 +74,7 @@ function navigateTo(section, replace = false) {
     }
     if (section === 'sdr') loadSDRSection();
     if (section === 'calculadora') loadCalcSection();
+    if (section === 'alerts') loadAlertsSection();
 }
 
 // Handle Browser Back/Forward
@@ -387,6 +388,20 @@ async function updateDashboard() {
         }
         if (integrationAlert) {
             integrationAlert.style.display = sheetsConnected ? 'none' : 'flex';
+        }
+
+        // Evolution API status
+        const evoIndicator = document.getElementById('evolution-status-indicator');
+        const evoText = document.getElementById('evolution-status-text');
+        const evoConnected = health.integrations?.evolution === 'connected';
+
+        if (evoIndicator) {
+            evoIndicator.classList.toggle('online', evoConnected);
+            evoIndicator.classList.toggle('offline', !evoConnected);
+        }
+        if (evoText) {
+            evoText.textContent = evoConnected ? 'Conectado' : 'Desconectado';
+            evoText.style.color = evoConnected ? '' : 'var(--accent-red)';
         }
 
         // Env badge
