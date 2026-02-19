@@ -413,7 +413,7 @@ app.get("/api/alerts/errors", requireAuth, async (req, res) => {
 
 app.get("/api/alerts/trail/:traceId", requireAuth, async (req, res) => {
     const trail = await pgService.getTrailByTrace(req.params.traceId);
-    if (\!trail || trail.length === 0) {
+    if (!trail || trail.length === 0) {
         return res.status(404).json({ error: "Trail não encontrado" });
     }
     res.json(trail);
@@ -422,7 +422,7 @@ app.get("/api/alerts/trail/:traceId", requireAuth, async (req, res) => {
 app.post("/api/alerts/retry/:traceId", requireAuth, async (req, res) => {
     const traceId = req.params.traceId;
     const payload = await pgService.getPayloadByTraceId(traceId);
-    if (\!payload) {
+    if (!payload) {
         return res.status(404).json({ error: "Payload original não encontrado para este trace" });
     }
 

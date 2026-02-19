@@ -1040,7 +1040,7 @@ class PgService {
     // ============================================================
 
     async addTrailStep(traceId, stepOrder, stepName, status, detail, metadata, durationMs) {
-        if (\!this.isAvailable()) return;
+        if (!this.isAvailable()) return;
         try {
             await this.query(
                 `INSERT INTO lead_trail (trace_id, step_order, step_name, status, detail, metadata, duration_ms)
@@ -1053,7 +1053,7 @@ class PgService {
     }
 
     async getTrailByTrace(traceId) {
-        if (\!this.isAvailable()) return [];
+        if (!this.isAvailable()) return [];
         try {
             const { rows } = await this.query(
                 `SELECT * FROM lead_trail WHERE trace_id = $1 ORDER BY step_order ASC`,
@@ -1067,7 +1067,7 @@ class PgService {
     }
 
     async getTrailErrors(limit = 50) {
-        if (\!this.isAvailable()) return [];
+        if (!this.isAvailable()) return [];
         try {
             const { rows } = await this.query(`
                 SELECT t.trace_id, t.step_name, t.detail, t.metadata, t.created_at,
@@ -1086,7 +1086,7 @@ class PgService {
     }
 
     async getTrailErrorStats() {
-        if (\!this.isAvailable()) return { today: 0, lastHour: 0, totalToday: 0, successToday: 0 };
+        if (!this.isAvailable()) return { today: 0, lastHour: 0, totalToday: 0, successToday: 0 };
         try {
             const nowSP = new Date(new Date().toLocaleString(en-US, { timeZone: America/Sao_Paulo }));
             const todayStart = new Date(nowSP);
@@ -1114,7 +1114,7 @@ class PgService {
     }
 
     async getPayloadByTraceId(traceId) {
-        if (\!this.isAvailable()) return null;
+        if (!this.isAvailable()) return null;
         try {
             const { rows } = await this.query(
                 `SELECT metadata FROM lead_trail WHERE trace_id = $1 AND step_name = webhook_received LIMIT 1`,

@@ -44,7 +44,7 @@ const SALE_STATUS_KEYWORDS = [
 ];
 
 function isSaleStatus(statusName) {
-    if (\!statusName) return false;
+    if (!statusName) return false;
     const normalized = statusName.toLowerCase().trim();
     return SALE_STATUS_KEYWORDS.some(kw => normalized.includes(kw));
 }
@@ -170,7 +170,7 @@ class WebhookHandler {
 
         // Step 3: payload_validated
         const validation = validateTintimPayload(rawPayload);
-        if (\!validation.valid) {
+        if (!validation.valid) {
             logger.warn("Payload inválido", { errors: validation.errors });
             await trail.step("payload_validated", "error", `Payload inválido: ${validation.errors.join(", ")}`, { errors: validation.errors });
             pgService.logWebhookEvent(rawPayload, null, "invalid");
@@ -189,7 +189,7 @@ class WebhookHandler {
 
         // Filter unknown event types
         const KNOWN_EVENTS = ["lead.create", "lead.update"];
-        if (payload.event_type && \!KNOWN_EVENTS.includes(payload.event_type)) {
+        if (payload.event_type && !KNOWN_EVENTS.includes(payload.event_type)) {
             logger.warn(`Evento ignorado pelo sistema: ${payload.event_type}`);
             await trail.step("payload_validated", "skipped", `Evento desconhecido ignorado: ${payload.event_type}`, { eventType: payload.event_type });
             pgService.logWebhookEvent(payload, null, "ignored_type");
@@ -198,7 +198,7 @@ class WebhookHandler {
 
         // Step 4: client_matched
         const client = clientManager.findByInstanceId(payload.instanceId);
-        if (\!client) {
+        if (!client) {
             logger.warn("Nenhum cliente para instanceId", { instanceId: payload.instanceId });
             await trail.step("client_matched", "error", `Nenhum cliente encontrado para instanceId: ${payload.instanceId}`, { instanceId: payload.instanceId });
             logLead(payload, "NO_CLIENT", { instanceId: payload.instanceId });
@@ -215,7 +215,7 @@ class WebhookHandler {
             result = await this.processNewLead(payload, client, trail);
         }
 
-        if (result.type \!== "filtered") {
+        if (result.type !== "filtered") {
             pgService.logWebhookEvent(payload, client.id, result.success ? "success" : "failed");
         }
 
@@ -234,7 +234,7 @@ class WebhookHandler {
 
         // organic_filtered
         const PAID_CHANNELS = ["Meta Ads", "Google Ads"];
-        if (\!PAID_CHANNELS.includes(origin.channel)) {
+        if (!PAID_CHANNELS.includes(origin.channel)) {
             logger.info(`🚫 Lead orgânico ignorado: ${payload.chatName || phone} — origem: ${origin.channel}`);
             await trail.step("organic_filtered", "skipped", `Lead orgânico filtrado (${origin.channel})`, { phone, channel: origin.channel, client: client.name });
 
@@ -346,10 +346,10 @@ class WebhookHandler {
         // sale_recovered — se lead não encontrado
         const isNotFound = result.error && (result.error.includes("Lead não encontrado") || result.error.includes("não encontrado na planilha"));
 
-        if (\!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
+        if (!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
             const recoveryOrigin = detectOrigin(payload);
             const PAID_CHANNELS = ["Meta Ads", "Google Ads"];
-            if (\!PAID_CHANNELS.includes(recoveryOrigin.channel)) {
+            if (!PAID_CHANNELS.includes(recoveryOrigin.channel)) {
                 logger.info(`🚫 Recuperação de venda ignorada (lead orgânico): ${payload.chatName || payload.phone}`);
                 await trail.step("organic_filtered", "skipped", "Venda orgânica ignorada (sem campanha)", { phone: payload.phone, channel: recoveryOrigin.channel });
                 return { success: true, message: "Venda orgânica ignorada (sem campanha)", type: "filtered" };
@@ -379,7 +379,7 @@ class WebhookHandler {
             }
 
             if (insertResult.success) {
-                logger.info(`✅ Venda recuperada\! Lead inserido: ${recoveryLeadData.name}`);
+                logger.info(`✅ Venda recuperada! Lead inserido: ${recoveryLeadData.name}`);
                 await trail.step("lead_inserted", "ok", `Venda recuperada e inserida em ${insertResult.sheetName}`, { leadName: recoveryLeadData.name, recovered: true });
                 result = { success: true, sheetName: insertResult.sheetName, row: insertResult.row, recovered: true };
             } else {
