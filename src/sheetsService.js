@@ -69,22 +69,28 @@ class SheetsService {
                 // Prefer base64-encoded credentials (avoids Docker build issues with newlines)
                 try {
                     const decoded = Buffer.from(process.env.GOOGLE_CREDENTIALS_B64, 'base64').toString('utf-8');
-                    authConfig.credentials = JSON.parse(decoded);
+                    const parsed = JSON.parse(decoded);
+                    if (!parsed.client_email) throw new Error('client_email ausente');
+                    authConfig.credentials = parsed;
                     logger.info('Usando credenciais do Google via GOOGLE_CREDENTIALS_B64');
                 } catch (e) {
-                    logger.error('Erro ao decodificar GOOGLE_CREDENTIALS_B64', { error: e.message });
-                    throw new Error('GOOGLE_CREDENTIALS_B64 inválido');
+                    logger.warn('GOOGLE_CREDENTIALS_B64 inv\u00e1lido, tentando fallback...', { error: e.message });
                 }
-            } else if (process.env.GOOGLE_CREDENTIALS_JSON) {
+            }
+
+            if (!authConfig.credentials && process.env.GOOGLE_CREDENTIALS_JSON) {
                 // Fallback: JSON string (may have issues with newlines in Docker builds)
                 try {
-                    authConfig.credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+                    const parsed = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+                    if (!parsed.client_email) throw new Error('client_email ausente');
+                    authConfig.credentials = parsed;
                     logger.info('Usando credenciais do Google via GOOGLE_CREDENTIALS_JSON');
                 } catch (e) {
-                    logger.error('Erro ao fazer parse do GOOGLE_CREDENTIALS_JSON', { error: e.message });
-                    throw new Error('GOOGLE_CREDENTIALS_JSON inválido');
+                    logger.warn('GOOGLE_CREDENTIALS_JSON inv\u00e1lido, tentando fallback...', { error: e.message });
                 }
-            } else {
+            }
+
+            if (!authConfig.credentials) {
                 // Em desenvolvimento, usamos o arquivo
                 const keyFilePath = path.resolve(
                     process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || 'config/google-credentials.json'
