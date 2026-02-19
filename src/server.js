@@ -126,7 +126,16 @@ function requireAuth(req, res, next) {
 
 app.get('/health', (_req, res) => {
     const stats = clientManager.getStats();
-    res.json({ status: 'ok', uptime: process.uptime(), clients: stats.totalActiveClients });
+    const sheetsOk = sheetsService.sheets !== null;
+    res.json({
+        status: sheetsOk ? 'ok' : 'degraded',
+        uptime: process.uptime(),
+        clients: stats.totalActiveClients,
+        integrations: {
+            googleSheets: sheetsOk ? 'connected' : 'disconnected',
+            postgresql: pgService.isAvailable() ? 'connected' : 'disconnected',
+        }
+    });
 });
 
 // Webhook Principal
@@ -344,6 +353,49 @@ app.post('/admin/settings/webhook-url', requireAuth, async (req, res) => {
 
 // ====================================================
 // Inicialização
+
+// ====================================================
+// Alertas de Clientes Sem Leads
+// ====================================================
+
+app.get("/api/alerts/clients-without-leads", requireAuth, async (req, res) => {
+    const daysThreshold = parseInt(req.query.days || "2", 10);
+    const alerts = await pgService.getClientsWithoutLeads(daysThreshold);
+    res.json(alerts);
+});
+
+app.get("/api/alerts/client/:id/webhook-errors", requireAuth, async (req, res) => {
+    const clientId = req.params.id;
+    const limit = parseInt(req.query.limit || "20", 10);
+    const errors = await pgService.getClientWebhookErrors(clientId, limit);
+    res.json(errors);
+});
+
+app.get("/api/alerts/webhook/:id", requireAuth, async (req, res) => {
+    const webhookId = req.params.id;
+    const webhook = await pgService.getWebhookById(webhookId);
+    if (!webhook) return res.status(404).json({ error: "Webhook não encontrado" });
+    res.json(webhook);
+});
+
+app.post("/api/alerts/webhook/:id/resend", requireAuth, async (req, res) => {
+    const webhookId = req.params.id;
+    const webhook = await pgService.getWebhookById(webhookId);
+    
+    if (!webhook) {
+        return res.status(404).json({ error: "Webhook não encontrado" });
+    }
+
+    try {
+        const webhookHandler = require("./webhookHandler");
+        const result = await webhookHandler.processWebhook(webhook.payload);
+        res.json({ success: true, result });
+        logger.info(`Webhook reenviado com sucesso: ${webhookId}`);
+    } catch (error) {
+        logger.error("Erro ao reenviar webhook", { webhookId, error: error.message });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ====================================================
 async function startServer() {
     try {

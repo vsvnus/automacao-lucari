@@ -115,6 +115,13 @@
                     <span class="status-value" id="server-status-text">Online</span>
                 </div>
             </div>
+            <div class="server-status" id="sheets-status" style="margin-top: 0.5rem;">
+                <span class="status-indicator" id="sheets-status-indicator"></span>
+                <div class="status-info">
+                    <span class="status-label">Google Sheets</span>
+                    <span class="status-value" id="sheets-status-text">...</span>
+                </div>
+            </div>
             <button class="btn-text" id="btn-logout"
                 style="margin-top: 1rem; width: 100%; justify-content: flex-start; color: var(--text-secondary);">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -188,6 +195,24 @@
                     <span>Copiar</span>
                 </button>
             </div>
+n            <!-- Client Alerts -->
+            <div id="dashboard-alerts" style="display: none;"></div>
+
+            <!-- Integration Status Banner -->
+            <div id="integration-alert" class="integration-alert" style="display: none;">
+                <div class="integration-alert-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                </div>
+                <div class="integration-alert-content">
+                    <strong>Google Sheets desconectado</strong>
+                    <span id="integration-alert-detail">Leads não estão sendo enviados para as planilhas. Verifique as credenciais do Google.</span>
+                </div>
+            </div>
+
 
             <!-- Period Selector -->
             <div class="period-selector" id="period-selector">
@@ -639,6 +664,12 @@
                     </div>
                 </div>
 
+                <!-- Pipeline Bar -->
+                <div class="card" style="margin-bottom: 24px; padding: 16px;">
+                    <div style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);margin-bottom:10px;">Funil de Leads</div>
+                    <div id="sdr-pipeline-bar" class="pipeline-bar"></div>
+                </div>
+
                 <!-- Tabs -->
                 <div class="sdr-tabs">
                     <button class="sdr-tab active" data-tab="config">Configuração</button>
@@ -728,13 +759,10 @@
                     </div>
                 </div>
 
-                <!-- Tab: Leads -->
+                <!-- Tab: Leads (Kanban) -->
                 <div class="sdr-tab-content" id="sdr-tab-leads">
-                    <div class="card">
-                        <div class="card-header"><h3>Leads Qualificados</h3></div>
-                        <div id="sdr-leads-list" class="activity-feed">
-                            <div class="activity-empty"><p>Nenhum lead encontrado</p></div>
-                        </div>
+                    <div id="sdr-leads-list">
+                        <div class="activity-empty"><p>Nenhum lead encontrado</p></div>
                     </div>
                 </div>
             </div>
@@ -968,6 +996,7 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script src="app.js"></script>
+    <script src="alerts.js"></script>
 </body>
 
 </html>

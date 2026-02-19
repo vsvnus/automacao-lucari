@@ -221,11 +221,17 @@ class PgService {
         try {
             let clientUuid = null;
             if (clientId) {
-                const { rows } = await this.query(
-                    'SELECT id FROM clients WHERE slug = $1',
-                    [clientId]
-                );
-                clientUuid = rows[0]?.id || null;
+                // Resolver clientId: pode ser UUID direto ou slug
+                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId);
+                if (isUuid) {
+                    clientUuid = clientId;
+                } else {
+                    const { rows } = await this.query(
+                        'SELECT id FROM clients WHERE slug = $1',
+                        [clientId]
+                    );
+                    clientUuid = rows[0]?.id || null;
+                }
             }
 
             await this.query(
@@ -602,11 +608,17 @@ class PgService {
         try {
             let clientUuid = null;
             if (clientSlug) {
-                const { rows } = await this.query(
-                    'SELECT id FROM clients WHERE slug = $1',
-                    [clientSlug]
-                );
-                clientUuid = rows[0]?.id || null;
+                // Resolver clientSlug: pode ser UUID direto ou slug
+                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientSlug);
+                if (isUuid) {
+                    clientUuid = clientSlug;
+                } else {
+                    const { rows } = await this.query(
+                        'SELECT id FROM clients WHERE slug = $1',
+                        [clientSlug]
+                    );
+                    clientUuid = rows[0]?.id || null;
+                }
             }
 
             await this.query(

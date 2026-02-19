@@ -371,6 +371,24 @@ async function updateDashboard() {
         statusIndicator?.classList.remove('offline');
         if (statusText) statusText.textContent = 'Online';
 
+        // Google Sheets integration status
+        const sheetsIndicator = document.getElementById('sheets-status-indicator');
+        const sheetsText = document.getElementById('sheets-status-text');
+        const integrationAlert = document.getElementById('integration-alert');
+        const sheetsConnected = health.integrations?.googleSheets === 'connected';
+
+        if (sheetsIndicator) {
+            sheetsIndicator.classList.toggle('online', sheetsConnected);
+            sheetsIndicator.classList.toggle('offline', !sheetsConnected);
+        }
+        if (sheetsText) {
+            sheetsText.textContent = sheetsConnected ? 'Conectado' : 'Desconectado';
+            sheetsText.style.color = sheetsConnected ? '' : 'var(--accent-red)';
+        }
+        if (integrationAlert) {
+            integrationAlert.style.display = sheetsConnected ? 'none' : 'flex';
+        }
+
         // Env badge
         const badge = $('#env-badge');
         if (badge) {
@@ -1415,6 +1433,7 @@ const sdrState = {
     conversations: [],
     messages: [],
     leads: [],
+    pipeline: {},
     selectedConversationId: null,
 };
 
@@ -1919,8 +1938,47 @@ async function loadSdrStats(tenantId) {
         $('#sdr-stat-conversations').textContent = stats.conversations || 0;
         $('#sdr-stat-messages').textContent = stats.messages || 0;
         $('#sdr-stat-leads').textContent = stats.leads || 0;
-        $('#sdr-stat-tokens').textContent = stats.tokens_used ? stats.tokens_used.toLocaleString() : '0';
+        $('#sdr-stat-tokens').textContent = stats.totalTokens ? stats.totalTokens.toLocaleString() : '0';
     } catch { /* silent */ }
+
+    // Load pipeline bar
+    loadSdrPipeline(tenantId);
+}
+
+const STAGE_CONFIG = {
+    new:        { label: 'Novo',        color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+    interested: { label: 'Interessado', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)' },
+    qualified:  { label: 'Qualificado', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+    proposal:   { label: 'Proposta',    color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
+    won:        { label: 'Ganho',       color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+    lost:       { label: 'Perdido',     color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+};
+
+async function loadSdrPipeline(tenantId) {
+    const bar = $('#sdr-pipeline-bar');
+    if (!bar) return;
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads/pipeline`);
+        if (!res.ok) { bar.innerHTML = ''; return; }
+        const pipeline = await res.json();
+        sdrState.pipeline = pipeline;
+
+        const total = Object.values(pipeline).reduce((a, b) => a + b, 0);
+        if (total === 0) {
+            bar.innerHTML = '<div class="pipeline-empty">Nenhum lead no funil ainda</div>';
+            return;
+        }
+
+        bar.innerHTML = Object.entries(STAGE_CONFIG).map(([key, cfg]) => {
+            const count = pipeline[key] || 0;
+            const pct = Math.max(total > 0 ? (count / total * 100) : 0, count > 0 ? 8 : 0);
+            return `<div class="pipeline-segment" style="flex:${pct};background:${cfg.bg};border-left:3px solid ${cfg.color};" title="${cfg.label}: ${count}">
+                <span class="pipeline-count" style="color:${cfg.color}">${count}</span>
+                <span class="pipeline-label">${cfg.label}</span>
+            </div>`;
+        }).join('');
+    } catch { bar.innerHTML = ''; }
 }
 
 // --- SDR: WhatsApp Tab ---
@@ -2198,17 +2256,24 @@ async function loadSdrConversations(tenantId) {
             div.style.cursor = 'pointer';
             div.dataset.convId = conv.id;
 
-            const time = conv.last_message_at ? new Date(conv.last_message_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-            const phone = conv.phone || conv.remote_jid || '';
+            const time = conv.updated_at ? new Date(conv.updated_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+            const phone = conv.contact_phone || conv.phone || conv.remote_jid || '';
             const name = conv.contact_name || formatPhoneDisplay(phone) || 'Sem identificação';
+
+            const ctx = conv.context || {};
+            const stage = ctx.stage || '';
+            const stageCfg = STAGE_CONFIG[stage];
+            const stageBadge = stageCfg ? `<span class="badge-status badge-stage" style="background:${stageCfg.bg};color:${stageCfg.color};border:1px solid ${stageCfg.color}30;">${stageCfg.label}</span>` : '';
+            const score = conv.lead_score || 0;
+            const scoreBar = score > 0 ? `<div class="score-bar-mini"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div>` : '';
 
             div.innerHTML = `
                 <div class="activity-icon-wrapper" style="background:var(--accent-cyan-subtle);color:var(--accent-cyan);">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                 </div>
                 <div class="activity-content">
-                    <div class="activity-title">${escapeHtml(name)}</div>
-                    <div class="activity-subtitle">${escapeHtml(phone)} · ${conv.message_count || 0} msgs</div>
+                    <div class="activity-title">${escapeHtml(name)} ${stageBadge}</div>
+                    <div class="activity-subtitle">${escapeHtml(phone)} · ${conv.message_count || 0} msgs ${scoreBar}</div>
                 </div>
                 <div class="activity-meta">
                     <span class="activity-time">${escapeHtml(time)}</span>
@@ -2269,7 +2334,7 @@ async function loadSdrMessages(conversationId, contactName) {
     }
 }
 
-// --- SDR: Leads Tab ---
+// --- SDR: Leads Tab (Kanban) ---
 async function loadSdrLeads(tenantId) {
     const container = $('#sdr-leads-list');
     if (!container) return;
@@ -2287,43 +2352,45 @@ async function loadSdrLeads(tenantId) {
             return;
         }
 
-        container.innerHTML = '';
+        // Group leads by stage
+        const grouped = {};
+        for (const key of Object.keys(STAGE_CONFIG)) grouped[key] = [];
         sdrState.leads.forEach(lead => {
-            const div = document.createElement('div');
-            div.className = 'activity-item';
-
-            const qual = (lead.qualification || lead.score || '').toLowerCase();
-            let badgeClass = 'badge-lead-cold';
-            let badgeLabel = 'Frio';
-            if (qual.includes('quente') || qual.includes('hot') || qual === 'hot') {
-                badgeClass = 'badge-lead-hot';
-                badgeLabel = 'Quente';
-            } else if (qual.includes('morno') || qual.includes('warm') || qual === 'warm') {
-                badgeClass = 'badge-lead-warm';
-                badgeLabel = 'Morno';
-            }
-
-            const phone = lead.phone || lead.remote_jid || '';
-            const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
-            const interest = lead.interest || lead.notes || '';
-            const createdAt = lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : '';
-
-            div.innerHTML = `
-                <div class="activity-icon-wrapper" style="background:var(--accent-green-subtle);color:var(--accent-green);">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
-                </div>
-                <div class="activity-content">
-                    <div class="activity-title">
-                        ${escapeHtml(name)}
-                        <span class="badge-status ${badgeClass}">${badgeLabel}</span>
-                    </div>
-                    <div class="activity-subtitle">${escapeHtml(formatPhoneDisplay(phone))}${interest ? ` · ${escapeHtml(interest)}` : ''}</div>
-                </div>
-                <div class="activity-meta">
-                    <span class="activity-time">${escapeHtml(createdAt)}</span>
-                </div>`;
-            container.appendChild(div);
+            const stage = lead.stage || 'new';
+            if (!grouped[stage]) grouped[stage] = [];
+            grouped[stage].push(lead);
         });
+
+        container.innerHTML = `<div class="kanban-board">${
+            Object.entries(STAGE_CONFIG).map(([key, cfg]) => {
+                const items = grouped[key] || [];
+                return `<div class="kanban-column">
+                    <div class="kanban-column-header" style="border-top:3px solid ${cfg.color};">
+                        <span class="kanban-column-title">${cfg.label}</span>
+                        <span class="kanban-column-count" style="background:${cfg.bg};color:${cfg.color}">${items.length}</span>
+                    </div>
+                    <div class="kanban-column-body">
+                        ${items.length === 0 ? '<div class="kanban-empty">—</div>' : items.map(lead => {
+                            const phone = lead.phone || '';
+                            const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
+                            const interest = lead.interest || '';
+                            const score = lead.lead_score || 0;
+                            const date = lead.updated_at || lead.created_at;
+                            const dateStr = date ? new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+                            return `<div class="kanban-card">
+                                <div class="kanban-card-name">${escapeHtml(name)}</div>
+                                <div class="kanban-card-phone">${escapeHtml(formatPhoneDisplay(phone))}</div>
+                                ${interest ? `<div class="kanban-card-interest">${escapeHtml(interest)}</div>` : ''}
+                                <div class="kanban-card-footer">
+                                    <div class="score-bar-mini"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div>
+                                    <span class="kanban-card-date">${escapeHtml(dateStr)}</span>
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>`;
+            }).join('')
+        }</div>`;
     } catch (err) {
         container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar leads</p><small>${escapeHtml(err.message)}</small></div>`;
     }
