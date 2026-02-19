@@ -977,6 +977,63 @@ class PgService {
     }
 
     // ============================================================
+    // ============================================================
+    // ALERTAS
+    // ============================================================
+
+    async getClientsWithoutLeads(daysThreshold = 2) {
+        if (!this.isAvailable()) return [];
+        try {
+            const result = await this.query(`
+                SELECT c.id, c.name, c.slug,
+                       MAX(ll.created_at) as last_lead_at
+                FROM clients c
+                LEFT JOIN leads_log ll ON ll.client_id = c.id
+                WHERE c.active = true
+                GROUP BY c.id, c.name, c.slug
+                HAVING MAX(ll.created_at) < NOW() - INTERVAL '1 day' * $1
+                   OR MAX(ll.created_at) IS NULL
+                ORDER BY last_lead_at ASC NULLS FIRST
+            `, [daysThreshold]);
+            return result.rows;
+        } catch (error) {
+            logger.error("Erro ao buscar clientes sem leads", { error: error.message });
+            return [];
+        }
+    }
+
+    async getClientWebhookErrors(clientId, limit = 20) {
+        if (!this.isAvailable()) return [];
+        try {
+            const result = await this.query(`
+                SELECT we.id, we.event_type, we.received_at, we.processing_result,
+                       we.error_message, we.payload
+                FROM webhook_events we
+                WHERE we.client_id = $1
+                  AND (we.processing_result = 'error' OR we.error_message IS NOT NULL)
+                ORDER BY we.received_at DESC
+                LIMIT $2
+            `, [clientId, limit]);
+            return result.rows;
+        } catch (error) {
+            logger.error("Erro ao buscar erros de webhook", { error: error.message });
+            return [];
+        }
+    }
+
+    async getWebhookById(webhookId) {
+        if (!this.isAvailable()) return null;
+        try {
+            const result = await this.query(`
+                SELECT * FROM webhook_events WHERE id = $1
+            `, [webhookId]);
+            return result.rows[0] || null;
+        } catch (error) {
+            logger.error("Erro ao buscar webhook", { error: error.message });
+            return null;
+        }
+    }
+
     // SCHEMA MIGRATION (auto-create tables on first run)
     // ============================================================
 
