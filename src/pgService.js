@@ -1034,6 +1034,99 @@ class PgService {
         }
     }
 
+
+    // ============================================================
+    // LEAD TRAIL (rastreamento passo-a-passo)
+    // ============================================================
+
+    async addTrailStep(traceId, stepOrder, stepName, status, detail, metadata, durationMs) {
+        if (\!this.isAvailable()) return;
+        try {
+            await this.query(
+                `INSERT INTO lead_trail (trace_id, step_order, step_name, status, detail, metadata, duration_ms)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [traceId, stepOrder, stepName, status, detail || null, metadata ? JSON.stringify(metadata) : null, durationMs || null]
+            );
+        } catch (error) {
+            logger.warn("Erro ao registrar trail step", { error: error.message, traceId, stepName });
+        }
+    }
+
+    async getTrailByTrace(traceId) {
+        if (\!this.isAvailable()) return [];
+        try {
+            const { rows } = await this.query(
+                `SELECT * FROM lead_trail WHERE trace_id = $1 ORDER BY step_order ASC`,
+                [traceId]
+            );
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar trail", { error: error.message });
+            return [];
+        }
+    }
+
+    async getTrailErrors(limit = 50) {
+        if (\!this.isAvailable()) return [];
+        try {
+            const { rows } = await this.query(`
+                SELECT t.trace_id, t.step_name, t.detail, t.metadata, t.created_at,
+                       (SELECT lt2.detail FROM lead_trail lt2 WHERE lt2.trace_id = t.trace_id AND lt2.step_name = webhook_received LIMIT 1) as webhook_detail,
+                       (SELECT lt3.metadata FROM lead_trail lt3 WHERE lt3.trace_id = t.trace_id AND lt3.step_name = webhook_received LIMIT 1) as webhook_metadata
+                FROM lead_trail t
+                WHERE t.status = error
+                ORDER BY t.created_at DESC
+                LIMIT $1
+            `, [limit]);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar trail errors", { error: error.message });
+            return [];
+        }
+    }
+
+    async getTrailErrorStats() {
+        if (\!this.isAvailable()) return { today: 0, lastHour: 0, totalToday: 0, successToday: 0 };
+        try {
+            const nowSP = new Date(new Date().toLocaleString(en-US, { timeZone: America/Sao_Paulo }));
+            const todayStart = new Date(nowSP);
+            todayStart.setHours(0, 0, 0, 0);
+            const todayISO = new Date(todayStart.getTime() + 3 * 60 * 60 * 1000).toISOString();
+            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+            const [errToday, errHour, totalToday, successToday] = await Promise.all([
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = error AND created_at >= $1`, [todayISO]),
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = error AND created_at >= $1`, [oneHourAgo]),
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1`, [todayISO]),
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1 AND trace_id NOT IN (SELECT DISTINCT trace_id FROM lead_trail WHERE status = error AND created_at >= $1)`, [todayISO, todayISO]),
+            ]);
+
+            return {
+                today: parseInt(errToday.rows[0].count, 10),
+                lastHour: parseInt(errHour.rows[0].count, 10),
+                totalToday: parseInt(totalToday.rows[0].count, 10),
+                successToday: parseInt(successToday.rows[0].count, 10),
+            };
+        } catch (error) {
+            logger.error("Erro ao buscar stats de trail", { error: error.message });
+            return { today: 0, lastHour: 0, totalToday: 0, successToday: 0 };
+        }
+    }
+
+    async getPayloadByTraceId(traceId) {
+        if (\!this.isAvailable()) return null;
+        try {
+            const { rows } = await this.query(
+                `SELECT metadata FROM lead_trail WHERE trace_id = $1 AND step_name = webhook_received LIMIT 1`,
+                [traceId]
+            );
+            return rows[0]?.metadata?.payload || null;
+        } catch (error) {
+            logger.error("Erro ao buscar payload por trace_id", { error: error.message });
+            return null;
+        }
+    }
+
     // SCHEMA MIGRATION (auto-create tables on first run)
     // ============================================================
 

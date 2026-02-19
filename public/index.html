@@ -70,6 +70,17 @@
                 <span>Logs do Sistema</span>
             </a>
 
+            <a href="#" class="nav-item" data-section="alerts">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                <span>Avisos</span>
+                <span class="nav-badge" id="alerts-badge" style="display:none;">0</span>
+            </a>
+
             <div class="nav-divider"></div>
 
             <a href="#" class="nav-item" data-section="sdr">
@@ -460,6 +471,82 @@ n            <!-- Client Alerts -->
         </section>
 
         <!-- ===== SECTION: Settings ===== -->
+        <!-- ===== SECTION: Avisos ===== -->
+        <section class="page-section" id="section-alerts">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Avisos & Erros</h2>
+                    <p class="page-subtitle">Rastreamento de processamento de leads</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-icon" id="btn-refresh-alerts" title="Atualizar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid" id="alerts-stats">
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Erros Hoje</span>
+                    </div>
+                    <div class="stat-value" id="alert-errors-today">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Ultima Hora</span>
+                    </div>
+                    <div class="stat-value" id="alert-errors-hour">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Total Processados</span>
+                    </div>
+                    <div class="stat-value" id="alert-total-today">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-header">
+                        <span class="stat-label">Taxa de Sucesso</span>
+                    </div>
+                    <div class="stat-value" id="alert-success-rate">-</div>
+                </div>
+            </div>
+
+            <!-- Errors List -->
+            <div class="card" style="margin-top: 1.5rem;">
+                <div class="card-header">
+                    <h3>Erros Recentes</h3>
+                </div>
+                <div class="card-body">
+                    <div id="alerts-error-list" class="alerts-error-list">
+                        <p class="empty-state">Carregando...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Trail Modal -->
+        <div class="modal-overlay" id="trail-modal" style="display:none;">
+            <div class="modal trail-modal">
+                <div class="modal-header">
+                    <h3>Trail do Webhook</h3>
+                    <button class="btn-icon modal-close" id="trail-modal-close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+                <div class="modal-body" id="trail-modal-body">
+                    <div class="trail-timeline" id="trail-timeline"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" id="trail-retry-btn">Reenviar Webhook</button>
+                </div>
+            </div>
+        </div>
+
         <section class="page-section" id="section-settings">
             <div class="page-header">
                 <div>

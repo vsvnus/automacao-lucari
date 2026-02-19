@@ -397,6 +397,51 @@ app.post("/api/alerts/webhook/:id/resend", requireAuth, async (req, res) => {
     }
 });
 // ====================================================
+
+// ====================================================
+// Trail & Alerts API (novo sistema de rastreamento)
+// ====================================================
+
+app.get("/api/alerts/errors", requireAuth, async (req, res) => {
+    const limit = parseInt(req.query.limit || "50", 10);
+    const [errors, stats] = await Promise.all([
+        pgService.getTrailErrors(limit),
+        pgService.getTrailErrorStats(),
+    ]);
+    res.json({ errors, stats });
+});
+
+app.get("/api/alerts/trail/:traceId", requireAuth, async (req, res) => {
+    const trail = await pgService.getTrailByTrace(req.params.traceId);
+    if (\!trail || trail.length === 0) {
+        return res.status(404).json({ error: "Trail não encontrado" });
+    }
+    res.json(trail);
+});
+
+app.post("/api/alerts/retry/:traceId", requireAuth, async (req, res) => {
+    const traceId = req.params.traceId;
+    const payload = await pgService.getPayloadByTraceId(traceId);
+    if (\!payload) {
+        return res.status(404).json({ error: "Payload original não encontrado para este trace" });
+    }
+
+    try {
+        const result = await webhookHandler.processWebhook(payload);
+        logger.info(`Webhook reenviado via trail: ${traceId}`, { newTraceId: result.traceId });
+        res.json({ success: true, result });
+    } catch (error) {
+        logger.error("Erro ao reenviar webhook via trail", { traceId, error: error.message });
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get("/api/alerts/error-count", requireAuth, async (_req, res) => {
+    const stats = await pgService.getTrailErrorStats();
+    res.json(stats);
+});
+
+
 async function startServer() {
     try {
         // 1.5. Rodar migrations se necessário

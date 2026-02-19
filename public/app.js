@@ -2448,3 +2448,218 @@ async function loadCalcSection() {
         container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>Erro ao carregar</p><small>${escapeHtml(err.message)}</small></div></div>`;
     }
 }
+
+
+// ============================================
+// ALERTS / TRAIL SYSTEM
+// ============================================
+
+async function loadAlertsSection() {
+    try {
+        const res = await fetch("/api/alerts/errors?limit=50");
+        if (!res.ok) throw new Error("Falha ao carregar alertas");
+        const data = await res.json();
+        renderAlertsStats(data.stats);
+        renderAlertErrors(data.errors);
+    } catch (err) {
+        console.error("Erro ao carregar alertas:", err);
+        const list = document.getElementById("alerts-error-list");
+        if (list) list.innerHTML = '<p class="empty-state">Erro ao carregar alertas</p>';
+    }
+}
+
+function renderAlertsStats(stats) {
+    const elToday = document.getElementById("alert-errors-today");
+    const elHour = document.getElementById("alert-errors-hour");
+    const elTotal = document.getElementById("alert-total-today");
+    const elRate = document.getElementById("alert-success-rate");
+    if (elToday) elToday.textContent = stats.today || 0;
+    if (elHour) elHour.textContent = stats.lastHour || 0;
+    if (elTotal) elTotal.textContent = stats.totalToday || 0;
+    if (elRate) {
+        const total = stats.totalToday || 0;
+        const success = stats.successToday || 0;
+        elRate.textContent = total > 0 ? Math.round((success / total) * 100) + "%" : "-";
+    }
+}
+
+function renderAlertErrors(errors) {
+    const list = document.getElementById("alerts-error-list");
+    if (!list) return;
+
+    if (!errors || errors.length === 0) {
+        list.innerHTML = '<p class="empty-state">Nenhum erro recente. Tudo funcionando!</p>';
+        return;
+    }
+
+    list.innerHTML = errors.map(function(err) {
+        var meta = err.webhook_metadata || err.metadata || {};
+        var payload = meta.payload || {};
+        var phone = payload.phone || payload.phone_e164 || "";
+        var name = payload.chatName || payload.name || phone || "Desconhecido";
+        var client = (err.metadata && err.metadata.clientName) || "";
+        var stepLabel = formatStepName(err.step_name);
+        var timeAgo = formatTimeAgo(err.created_at);
+
+        return '<div class="alert-error-item" onclick="openTrailModal(\'' + err.trace_id + '\')">' +
+            '<div class="alert-error-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>' +
+            '<div class="alert-error-info">' +
+                '<div class="lead-name">' + escapeHtml(name) + (client ? ' - ' + escapeHtml(client) : '') + '</div>' +
+                '<div class="error-detail">' + escapeHtml(err.detail || "") + '</div>' +
+                '<div class="error-step">Falhou em: ' + stepLabel + '</div>' +
+            '</div>' +
+            '<div class="alert-error-meta">' +
+                '<div class="error-time">' + timeAgo + '</div>' +
+                '<div class="error-badge">' + escapeHtml(err.step_name) + '</div>' +
+            '</div>' +
+        '</div>';
+    }).join("");
+}
+
+function formatStepName(step) {
+    var names = {
+        webhook_received: "Recebimento",
+        duplicate_check: "Verificacao duplicata",
+        payload_validated: "Validacao payload",
+        client_matched: "Identificacao cliente",
+        origin_detected: "Deteccao origem",
+        organic_filtered: "Filtro organico",
+        product_detected: "Deteccao produto",
+        sheet_resolved: "Resolucao aba",
+        tab_created: "Criacao de aba",
+        lead_inserted: "Insercao do lead",
+        status_updated: "Atualizacao status",
+        sale_recovered: "Recuperacao venda",
+    };
+    return names[step] || step;
+}
+
+function formatTimeAgo(dateStr) {
+    var now = new Date();
+    var d = new Date(dateStr);
+    var diff = Math.floor((now - d) / 1000);
+    if (diff < 60) return "agora";
+    if (diff < 3600) return Math.floor(diff / 60) + "min";
+    if (diff < 86400) return Math.floor(diff / 3600) + "h";
+    return Math.floor(diff / 86400) + "d";
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function openTrailModal(traceId) {
+    var modal = document.getElementById("trail-modal");
+    var timeline = document.getElementById("trail-timeline");
+    var retryBtn = document.getElementById("trail-retry-btn");
+    if (!modal || !timeline) return;
+
+    modal.style.display = "flex";
+    timeline.innerHTML = '<p class="empty-state">Carregando trail...</p>';
+    retryBtn.onclick = function() { retryWebhook(traceId); };
+
+    try {
+        var res = await fetch("/api/alerts/trail/" + traceId);
+        if (!res.ok) throw new Error("Trail nao encontrado");
+        var steps = await res.json();
+        renderTrailTimeline(steps);
+    } catch (err) {
+        timeline.innerHTML = '<p class="empty-state">Erro ao carregar trail</p>';
+    }
+}
+
+function renderTrailTimeline(steps) {
+    var timeline = document.getElementById("trail-timeline");
+    if (!timeline) return;
+
+    timeline.innerHTML = steps.map(function(step, i) {
+        var dotClass = step.status;
+        var isLast = i === steps.length - 1;
+        var stepLabel = formatStepName(step.step_name);
+        var detailClass = step.status === "error" ? "trail-step-detail error-detail" : "trail-step-detail";
+        var timeStr = step.duration_ms != null ? step.duration_ms + "ms" : "";
+        var createdTime = new Date(step.created_at).toLocaleTimeString("pt-BR");
+
+        return '<div class="trail-step">' +
+            '<div class="trail-step-dot ' + dotClass + '">' + step.step_order + '</div>' +
+            (!isLast ? '<div class="trail-step-line"></div>' : '') +
+            '<div class="trail-step-content">' +
+                '<div class="trail-step-name">' + stepLabel + ' (' + escapeHtml(step.step_name) + ')</div>' +
+                '<div class="' + detailClass + '">' + escapeHtml(step.detail || "") + '</div>' +
+                '<div class="trail-step-time">' + createdTime + (timeStr ? ' - ' + timeStr : '') + '</div>' +
+            '</div>' +
+        '</div>';
+    }).join("");
+}
+
+function closeTrailModal() {
+    var modal = document.getElementById("trail-modal");
+    if (modal) modal.style.display = "none";
+}
+
+async function retryWebhook(traceId) {
+    var retryBtn = document.getElementById("trail-retry-btn");
+    if (retryBtn) {
+        retryBtn.disabled = true;
+        retryBtn.textContent = "Reenviando...";
+    }
+
+    try {
+        var res = await fetch("/api/alerts/retry/" + traceId, { method: "POST" });
+        var data = await res.json();
+        if (data.success) {
+            if (retryBtn) retryBtn.textContent = "Reenviado!";
+            setTimeout(function() {
+                closeTrailModal();
+                loadAlertsSection();
+                if (retryBtn) {
+                    retryBtn.disabled = false;
+                    retryBtn.textContent = "Reenviar Webhook";
+                }
+            }, 1500);
+        } else {
+            if (retryBtn) {
+                retryBtn.textContent = "Erro: " + (data.error || "falha");
+                retryBtn.disabled = false;
+            }
+        }
+    } catch (err) {
+        if (retryBtn) {
+            retryBtn.textContent = "Erro de conexao";
+            retryBtn.disabled = false;
+        }
+    }
+}
+
+// Trail modal close handlers
+document.addEventListener("DOMContentLoaded", function() {
+    var closeBtn = document.getElementById("trail-modal-close");
+    if (closeBtn) closeBtn.addEventListener("click", closeTrailModal);
+
+    var overlay = document.getElementById("trail-modal");
+    if (overlay) overlay.addEventListener("click", function(e) {
+        if (e.target === overlay) closeTrailModal();
+    });
+
+    var refreshBtn = document.getElementById("btn-refresh-alerts");
+    if (refreshBtn) refreshBtn.addEventListener("click", loadAlertsSection);
+
+    // Update badge periodically
+    updateAlertsBadge();
+    setInterval(updateAlertsBadge, 60000);
+});
+
+async function updateAlertsBadge() {
+    try {
+        var res = await fetch("/api/alerts/error-count");
+        if (!res.ok) return;
+        var stats = await res.json();
+        var badge = document.getElementById("alerts-badge");
+        if (badge) {
+            var count = stats.today || 0;
+            badge.textContent = count;
+            badge.style.display = count > 0 ? "inline-block" : "none";
+        }
+    } catch(e) {}
+}

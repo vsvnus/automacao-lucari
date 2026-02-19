@@ -18,99 +18,75 @@
  *   N: Comentários       ← Registro automático
  */
 
-const { v4: uuidv4 } = require('uuid');
-const { logger, logLead } = require('./utils/logger');
-const { validateTintimPayload } = require('./utils/validator');
-const { formatPhoneBR, formatDateBR } = require('./utils/formatter');
-const clientManager = require('./clientManager');
-const sheetsService = require('./sheetsService');
-const pgService = require('./pgService');
+const { v4: uuidv4 } = require("uuid");
+const { logger, logLead } = require("./utils/logger");
+const { validateTintimPayload } = require("./utils/validator");
+const { formatPhoneBR, formatDateBR } = require("./utils/formatter");
+const clientManager = require("./clientManager");
+const sheetsService = require("./sheetsService");
+const pgService = require("./pgService");
 
 /**
  * Regras de detecção de produto.
  */
 const PRODUCT_KEYWORDS = [
-    { product: 'BPC/LOAS', keywords: ['bpc', 'loas', 'benefício', 'beneficio', 'deficiência', 'deficiencia', 'idoso'] },
-    { product: 'SALÁRIO-MATERNIDADE', keywords: ['maternidade', 'gestante', 'grávida', 'gravida', 'bebê', 'bebe', 'salário-maternidade', 'salario maternidade'] },
-    { product: 'AUXÍLIO-DOENÇA', keywords: ['auxílio-doença', 'auxilio doenca', 'doença', 'doenca', 'afastamento', 'incapacidade'] },
-    { product: 'APOSENTADORIA', keywords: ['aposentadoria', 'aposentar', 'inss', 'tempo de contribuição'] },
+    { product: "BPC/LOAS", keywords: ["bpc", "loas", "benefício", "beneficio", "deficiência", "deficiencia", "idoso"] },
+    { product: "SALÁRIO-MATERNIDADE", keywords: ["maternidade", "gestante", "grávida", "gravida", "bebê", "bebe", "salário-maternidade", "salario maternidade"] },
+    { product: "AUXÍLIO-DOENÇA", keywords: ["auxílio-doença", "auxilio doenca", "doença", "doenca", "afastamento", "incapacidade"] },
+    { product: "APOSENTADORIA", keywords: ["aposentadoria", "aposentar", "inss", "tempo de contribuição"] },
 ];
 
-/**
- * Status do Tintim que indicam VENDA/FECHAMENTO.
- * Quando o Tintim envia esses status, atualizamos a planilha com data e valor.
- */
 const SALE_STATUS_KEYWORDS = [
-    'venda', 'vendido', 'fechou', 'fechado', 'ganho', 'ganhou',
-    'convertido', 'contrato', 'assinado', 'pago', 'pagou',
-    'comprou', 'comprado',
-    'sale', 'won', 'closed',
+    "venda", "vendido", "fechou", "fechado", "ganho", "ganhou",
+    "convertido", "contrato", "assinado", "pago", "pagou",
+    "comprou", "comprado",
+    "sale", "won", "closed",
 ];
 
 function isSaleStatus(statusName) {
-    if (!statusName) return false;
+    if (\!statusName) return false;
     const normalized = statusName.toLowerCase().trim();
     return SALE_STATUS_KEYWORDS.some(kw => normalized.includes(kw));
 }
 
-/**
- * Detecta a ORIGEM/CANAL do lead a partir do payload do Tintim.
- * Retorna { channel, comment } onde:
- *   channel = "Meta Ads" | "Google Ads" | "WhatsApp Orgânico" | "WhatsApp"
- *   comment = texto descritivo para a coluna Comentários da planilha
- */
 function detectOrigin(payload) {
-    // Campos do Tintim que indicam a origem
-    const source = (payload.source || '').toLowerCase();
-    const channel = (payload.channel || '').toLowerCase();
-    const medium = (payload.medium || '').toLowerCase();
-    const utmSource = (payload.utmSource || payload.utm_source || '').toLowerCase();
-    const utmMedium = (payload.utmMedium || payload.utm_medium || '').toLowerCase();
-    const allFields = [source, channel, medium, utmSource, utmMedium].join(' ');
+    const source = (payload.source || "").toLowerCase();
+    const channel = (payload.channel || "").toLowerCase();
+    const medium = (payload.medium || "").toLowerCase();
+    const utmSource = (payload.utmSource || payload.utm_source || "").toLowerCase();
+    const utmMedium = (payload.utmMedium || payload.utm_medium || "").toLowerCase();
+    const allFields = [source, channel, medium, utmSource, utmMedium].join(" ");
 
-    // Google Ads
     if (allFields.match(/google|gclid|g_ads|googleads|search|pmax|performance.max/)) {
-        return { channel: 'Google Ads', comment: 'Lead chegou pelo Google Ads' };
+        return { channel: "Google Ads", comment: "Lead chegou pelo Google Ads" };
     }
-
-    // Meta / Facebook / Instagram Ads
     if (allFields.match(/meta|facebook|instagram|fb|ig|fbclid|meta_ads/)) {
-        return { channel: 'Meta Ads', comment: 'Lead chegou no Wpp pelo Meta' };
+        return { channel: "Meta Ads", comment: "Lead chegou no Wpp pelo Meta" };
     }
-
-    // Tráfego pago genérico (CPC/CPM mas sem identificar a plataforma)
     if (allFields.match(/cpc|cpm|paid|ads|ppc/)) {
-        return { channel: 'Tráfego Pago', comment: 'Lead chegou via tráfego pago' };
+        return { channel: "Tráfego Pago", comment: "Lead chegou via tráfego pago" };
     }
 
-    // Checar UTM params como fallback adicional
     const campaignFields = [
         payload.utmCampaign, payload.utm_campaign, payload.campaign,
         payload.adName, payload.ad_name, payload.adSetName, payload.adset_name,
-    ].filter(Boolean).join(' ').toLowerCase();
+    ].filter(Boolean).join(" ").toLowerCase();
 
     if (campaignFields.match(/google|gclid|search|pmax/)) {
-        return { channel: 'Google Ads', comment: 'Lead chegou pelo Google Ads' };
+        return { channel: "Google Ads", comment: "Lead chegou pelo Google Ads" };
     }
     if (campaignFields.match(/meta|facebook|instagram|fb|ig/)) {
-        return { channel: 'Meta Ads', comment: 'Lead chegou no Wpp pelo Meta' };
+        return { channel: "Meta Ads", comment: "Lead chegou no Wpp pelo Meta" };
     }
 
-    // WhatsApp orgânico (default)
-    return { channel: 'WhatsApp', comment: 'Lead chegou via WhatsApp' };
+    return { channel: "WhatsApp", comment: "Lead chegou via WhatsApp" };
 }
 
 function detectProduct(payload) {
-    // 1. Tentar por dados de campanha/UTM (se o Tintim enviar)
     const campaignFields = [
-        payload.utmCampaign,
-        payload.utm_campaign,
-        payload.campaign,
-        payload.adName,
-        payload.ad_name,
-        payload.adSetName,
-        payload.adset_name,
-    ].filter(Boolean).join(' ').toLowerCase();
+        payload.utmCampaign, payload.utm_campaign, payload.campaign,
+        payload.adName, payload.ad_name, payload.adSetName, payload.adset_name,
+    ].filter(Boolean).join(" ").toLowerCase();
 
     if (campaignFields) {
         for (const rule of PRODUCT_KEYWORDS) {
@@ -121,8 +97,7 @@ function detectProduct(payload) {
         }
     }
 
-    // 2. Tentar por mensagem do lead
-    const message = (payload.text?.message || '').toLowerCase();
+    const message = (payload.text?.message || "").toLowerCase();
     if (message) {
         for (const rule of PRODUCT_KEYWORDS) {
             if (rule.keywords.some(kw => message.includes(kw))) {
@@ -132,91 +107,79 @@ function detectProduct(payload) {
         }
     }
 
-    // 3. Não identificado
-    return '';
+    return "";
 }
 
-/**
- * Detecta se o webhook é uma ATUALIZAÇÃO DE STATUS ou um NOVO LEAD.
- * 
- * Confirmado pela documentação do Tintim:
- *   event_type: "lead.update" → conversa alterada (atualização de status)
- *   event_type: "lead.create" → conversa criada (novo lead)
- * 
- * IMPORTANTE: O payload de lead.create TAMBÉM tem campo status (ex: "Fez Contato"),
- * por isso devemos checar event_type PRIMEIRO antes de usar heurísticas.
- */
 function isStatusUpdate(payload) {
-    // Método principal: campo event_type (prioridade máxima)
-    if (payload.event_type === 'lead.create') {
-        return false; // Explicitamente NÃO é update
-    }
-    if (payload.event_type === 'lead.update') {
-        return true;
-    }
-
-    // Fallback (sem event_type): heurísticas para formato legado
-    // Só considerar update se tem sale_amount > 0 (indicando venda)
-    if (payload.sale_amount && parseFloat(payload.sale_amount) > 0) {
-        return true;
-    }
+    if (payload.event_type === "lead.create") return false;
+    if (payload.event_type === "lead.update") return true;
+    if (payload.sale_amount && parseFloat(payload.sale_amount) > 0) return true;
     return false;
 }
 
-/**
- * Extrai o nome do status do payload.
- * Formato confirmado do Tintim: { status: { id: 123, name: "Nome" } }
- */
 function extractStatusName(payload) {
-    if (payload.status && typeof payload.status === 'object') {
-        return payload.status.name || null;
-    }
-    if (payload.status && typeof payload.status === 'string') {
-        return payload.status;
-    }
+    if (payload.status && typeof payload.status === "object") return payload.status.name || null;
+    if (payload.status && typeof payload.status === "string") return payload.status;
     return null;
 }
 
-/**
- * Extrai o ID do status (útil para mapeamento futuro)
- */
 function extractStatusId(payload) {
-    if (payload.status && typeof payload.status === 'object') {
-        return payload.status.id || null;
-    }
+    if (payload.status && typeof payload.status === "object") return payload.status.id || null;
     return null;
+}
+
+// Helper: trail tracker para um webhook
+class TrailTracker {
+    constructor(traceId) {
+        this.traceId = traceId;
+        this.stepCount = 0;
+        this.lastTime = Date.now();
+    }
+
+    async step(stepName, status, detail, metadata) {
+        this.stepCount++;
+        const now = Date.now();
+        const durationMs = now - this.lastTime;
+        this.lastTime = now;
+        await pgService.addTrailStep(this.traceId, this.stepCount, stepName, status, detail, metadata, durationMs);
+    }
 }
 
 class WebhookHandler {
     async processWebhook(rawPayload) {
-        // LOG COMPLETO do payload (para debug e entender o que o Tintim manda)
-        logger.info('📦 Payload COMPLETO do Tintim:', {
-            fullPayload: JSON.stringify(rawPayload),
-        });
+        const traceId = uuidv4();
+        const trail = new TrailTracker(traceId);
 
-        // 0. Verificação de idempotência — evitar reprocessamento de webhooks duplicados
-        const phone = rawPayload.phone || rawPayload.phone_e164 || '';
-        const eventType = rawPayload.event_type || '';
+        logger.info("📦 Payload COMPLETO do Tintim:", { fullPayload: JSON.stringify(rawPayload) });
+
+        // Step 1: webhook_received
+        const phone = rawPayload.phone || rawPayload.phone_e164 || "";
+        const eventType = rawPayload.event_type || "";
+        await trail.step("webhook_received", "ok", `Webhook recebido: ${eventType || "sem tipo"} | ${phone || "sem telefone"}`, { payload: rawPayload });
+
+        // Step 2: duplicate_check
         if (phone && eventType) {
             const isDuplicate = await pgService.checkDuplicateWebhook(phone, eventType, 30);
             if (isDuplicate) {
-                logger.info('⚡ Webhook duplicado ignorado (idempotência)', { phone, eventType });
-                return { success: true, message: 'Duplicado ignorado' };
+                logger.info("⚡ Webhook duplicado ignorado (idempotência)", { phone, eventType });
+                await trail.step("duplicate_check", "skipped", "Webhook duplicado ignorado (idempotência)", { phone, eventType });
+                return { success: true, message: "Duplicado ignorado", traceId };
             }
         }
+        await trail.step("duplicate_check", "ok", "Não é duplicado", { phone, eventType });
 
-        // 1. Validar e NORMALIZAR payload
+        // Step 3: payload_validated
         const validation = validateTintimPayload(rawPayload);
-        if (!validation.valid) {
-            logger.warn('Payload inválido', { errors: validation.errors });
-            pgService.logWebhookEvent(rawPayload, null, 'invalid');
-            return { success: false, errors: validation.errors };
+        if (\!validation.valid) {
+            logger.warn("Payload inválido", { errors: validation.errors });
+            await trail.step("payload_validated", "error", `Payload inválido: ${validation.errors.join(", ")}`, { errors: validation.errors });
+            pgService.logWebhookEvent(rawPayload, null, "invalid");
+            return { success: false, errors: validation.errors, traceId };
         }
-
-        // Usar payload normalizado (campos canônicos injetados)
         const payload = validation.payload;
+        await trail.step("payload_validated", "ok", "Payload válido e normalizado", { instanceId: payload.instanceId, chatName: payload.chatName });
 
-        logger.info('📋 Payload normalizado:', {
+        logger.info("📋 Payload normalizado:", {
             instanceId: payload.instanceId,
             chatName: payload.chatName,
             phone: payload.phone || payload.phone_e164,
@@ -224,242 +187,191 @@ class WebhookHandler {
             moment: payload.moment,
         });
 
-        // 1.5. Filtrar eventos desconhecidos (evitar ruído)
-        // Se event_type existir, DEVE ser um dos conhecidos. Se não existir (legado), passa.
-        const KNOWN_EVENTS = ['lead.create', 'lead.update'];
-        if (payload.event_type && !KNOWN_EVENTS.includes(payload.event_type)) {
+        // Filter unknown event types
+        const KNOWN_EVENTS = ["lead.create", "lead.update"];
+        if (payload.event_type && \!KNOWN_EVENTS.includes(payload.event_type)) {
             logger.warn(`Evento ignorado pelo sistema: ${payload.event_type}`);
-            pgService.logWebhookEvent(payload, null, 'ignored_type');
-            return { success: true, message: `Evento ${payload.event_type} ignorado` };
+            await trail.step("payload_validated", "skipped", `Evento desconhecido ignorado: ${payload.event_type}`, { eventType: payload.event_type });
+            pgService.logWebhookEvent(payload, null, "ignored_type");
+            return { success: true, message: `Evento ${payload.event_type} ignorado`, traceId };
         }
 
-        // 2. Identificar cliente pela instanceId (normalizado de account.code)
+        // Step 4: client_matched
         const client = clientManager.findByInstanceId(payload.instanceId);
-        if (!client) {
-            logger.warn('Nenhum cliente para instanceId', { instanceId: payload.instanceId });
-            logLead(payload, 'NO_CLIENT', { instanceId: payload.instanceId });
-            pgService.logWebhookEvent(payload, null, 'no_client');
-            return { success: false, error: 'Cliente não encontrado' };
+        if (\!client) {
+            logger.warn("Nenhum cliente para instanceId", { instanceId: payload.instanceId });
+            await trail.step("client_matched", "error", `Nenhum cliente encontrado para instanceId: ${payload.instanceId}`, { instanceId: payload.instanceId });
+            logLead(payload, "NO_CLIENT", { instanceId: payload.instanceId });
+            pgService.logWebhookEvent(payload, null, "no_client");
+            return { success: false, error: "Cliente não encontrado", traceId };
         }
+        await trail.step("client_matched", "ok", `Cliente identificado: ${client.name}`, { clientSlug: client.slug, clientName: client.name });
 
-        // 3. Decidir: é novo lead ou atualização de status?
+        // Step 5+: processar
         let result;
         if (isStatusUpdate(payload)) {
-            result = await this.processStatusUpdate(payload, client);
+            result = await this.processStatusUpdate(payload, client, trail);
         } else {
-            result = await this.processNewLead(payload, client);
+            result = await this.processNewLead(payload, client, trail);
         }
 
-        // 4. Salvar evento no Supabase (async, não bloqueia)
-        // Nota: leads filtrados já logam dentro de processNewLead/processStatusUpdate
-        if (result.type !== 'filtered') {
-            pgService.logWebhookEvent(payload, client.id, result.success ? 'success' : 'failed');
+        if (result.type \!== "filtered") {
+            pgService.logWebhookEvent(payload, client.id, result.success ? "success" : "failed");
         }
 
+        result.traceId = traceId;
         return result;
     }
 
-    /**
-     * Processa um NOVO LEAD (conversa criada)
-     */
-    async processNewLead(payload, client) {
-        const phone = payload.phone || payload.phone_e164?.replace('+', '') || '';
+    async processNewLead(payload, client, trail) {
+        const phone = payload.phone || payload.phone_e164?.replace("+", "") || "";
 
-        logger.info(`📥 Novo lead recebido para: ${client.name}`, {
-            phone: phone,
-            chatName: payload.chatName,
-            eventType: payload.event_type,
-        });
+        logger.info(`📥 Novo lead recebido para: ${client.name}`, { phone, chatName: payload.chatName, eventType: payload.event_type });
 
-        // Etapa 1: Detecção de Produto
-        let product = '';
+        // origin_detected
+        const origin = detectOrigin(payload);
+        await trail.step("origin_detected", "ok", `Origem: ${origin.channel}`, { channel: origin.channel, source: payload.source, utmSource: payload.utm_source || payload.utmSource });
+
+        // organic_filtered
+        const PAID_CHANNELS = ["Meta Ads", "Google Ads"];
+        if (\!PAID_CHANNELS.includes(origin.channel)) {
+            logger.info(`🚫 Lead orgânico ignorado: ${payload.chatName || phone} — origem: ${origin.channel}`);
+            await trail.step("organic_filtered", "skipped", `Lead orgânico filtrado (${origin.channel})`, { phone, channel: origin.channel, client: client.name });
+
+            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName || phone, status: "Ignorado (Orgânico)", origin: origin.channel, result: "filtered", error: null });
+            pgService.logWebhookEvent(payload, client.id, "filtered_organic");
+
+            return { success: true, message: "Lead orgânico ignorado (sem campanha)", type: "filtered" };
+        }
+
+        // product_detected
+        let product = "";
         try {
             product = detectProduct(payload);
         } catch (err) {
-            logger.warn('Falha na detecção de produto', { error: err.message });
-            pgService.logLead(client.id, {
-                eventType: 'new_lead',
-                phone: phone,
-                name: payload.chatName,
-                status: 'Erro',
-                result: 'failed',
-                error: `Falha técnica: Detecção de produto (${err.message})`
-            });
+            logger.warn("Falha na detecção de produto", { error: err.message });
+            await trail.step("product_detected", "error", `Falha na detecção de produto: ${err.message}`, { error: err.message });
+            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName, status: "Erro", result: "failed", error: `Falha técnica: Detecção de produto (${err.message})` });
+            return { success: false, error: err.message, type: "new_lead" };
+        }
+        await trail.step("product_detected", "ok", product ? `Produto: ${product}` : "Produto não identificado", { product });
+
+        // sheet_resolved
+        let sheetName;
+        try {
+            sheetName = await sheetsService.resolveSheetName(client, trail.traceId);
+            await trail.step("sheet_resolved", "ok", `Aba determinada: ${sheetName}`, { sheetName, spreadsheetId: client.spreadsheet_id });
+        } catch (err) {
+            await trail.step("sheet_resolved", "error", `Falha ao resolver aba: ${err.message}`, { error: err.message });
+            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName, status: "Erro", result: "failed", error: `Falha ao resolver aba: ${err.message}` });
+            return { success: false, error: err.message, type: "new_lead" };
         }
 
-        // Etapa 2: Detecção de Origem (Meta, Google, WhatsApp orgânico)
-        const origin = detectOrigin(payload);
-        logger.info(`📡 Origem detectada: ${origin.channel}`, { source: payload.source, utmSource: payload.utm_source || payload.utmSource });
-
-        // Etapa 2.5: FILTRO — Apenas leads de tráfego pago vão para a planilha
-        // Conversas orgânicas do WhatsApp (sem tracking de campanha) são ignoradas
-        const PAID_CHANNELS = ['Meta Ads', 'Google Ads'];
-        if (!PAID_CHANNELS.includes(origin.channel)) {
-            logger.info(`🚫 Lead orgânico ignorado (sem campanha): ${payload.chatName || phone} — origem: ${origin.channel}`, {
-                phone: phone,
-                channel: origin.channel,
-                client: client.name,
-            });
-
-            pgService.logLead(client.id, {
-                eventType: 'new_lead',
-                phone: phone,
-                name: payload.chatName || phone,
-                status: 'Ignorado (Orgânico)',
-                origin: origin.channel,
-                result: 'filtered',
-                error: null,
-            });
-
-            pgService.logWebhookEvent(payload, client.id, 'filtered_organic');
-
-            return { success: true, message: 'Lead orgânico ignorado (sem campanha)', type: 'filtered' };
-        }
-
-        // Etapa 3: Preparação de Dados
+        // lead_inserted
         const leadId = uuidv4();
         const leadData = {
-            name: (payload.chatName || formatPhoneBR(phone)) + ' (Auto)',
+            name: (payload.chatName || formatPhoneBR(phone)) + " (Auto)",
             phone: formatPhoneBR(phone),
             origin: origin.channel,
             originComment: origin.comment,
             date: formatDateBR(payload.moment),
             product: product,
-            status: extractStatusName(payload) || 'Lead Gerado',
+            status: extractStatusName(payload) || "Lead Gerado",
             phoneRaw: phone,
-            message: payload.text?.message || '',
-            messageId: payload.messageId || '',
+            message: payload.text?.message || "",
+            messageId: payload.messageId || "",
             leadId,
         };
 
-        // Etapa 3: Inserção na Planilha
-        let result = { success: false, error: 'Iniciado' };
+        let result = { success: false, error: "Iniciado" };
         try {
             result = await sheetsService.insertLead(client, leadData);
         } catch (err) {
-            // Captura erros de rede/api do Google
             result = { success: false, error: `Erro de conexão com Google Sheets: ${err.message}` };
         }
 
-        // Etapa 4: Logging do Resultado
         if (result.success) {
-            logLead(leadData, 'SUCCESS', { client: client.name, sheet: result.sheetName });
-            logger.info(`✅ Lead inserido: ${leadData.name} → ${client.name} (${result.sheetName})${product ? ` [${product}]` : ''}`);
-
-            pgService.logLead(client.id, {
-                eventType: 'new_lead',
-                phone: payload.phone,
-                name: leadData.name,
-                status: 'Lead Gerado',
-                product: product,
-                origin: origin.channel,
-                sheetName: result.sheetName,
-                result: 'success',
-                error: null,
-            });
+            await trail.step("lead_inserted", "ok", `Lead inserido na linha da aba ${result.sheetName}`, { leadName: leadData.name, phone: leadData.phone, sheetName: result.sheetName });
+            logLead(leadData, "SUCCESS", { client: client.name, sheet: result.sheetName });
+            logger.info(`✅ Lead inserido: ${leadData.name} → ${client.name} (${result.sheetName})${product ? ` [${product}]` : ""}`);
+            pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Lead Gerado", product, origin: origin.channel, sheetName: result.sheetName, result: "success", error: null });
         } else {
-            const errorMsg = result.error || 'Erro desconhecido na inserção';
-            logLead(leadData, 'FAILED', { client: client.name, error: errorMsg });
-            logger.error(`❌ Falha ao inserir lead`, { error: errorMsg });
-
-            pgService.logLead(client.id, {
-                eventType: 'new_lead',
-                phone: payload.phone,
-                name: leadData.name,
-                status: 'Erro',
-                product: product,
-                origin: origin.channel,
-                result: 'failed',
-                error: `Falha Planilha: ${errorMsg}`,
-            });
+            const errorMsg = result.error || "Erro desconhecido na inserção";
+            await trail.step("lead_inserted", "error", `Falha ao inserir lead: ${errorMsg}`, { error: errorMsg, client: client.name });
+            logLead(leadData, "FAILED", { client: client.name, error: errorMsg });
+            logger.error("❌ Falha ao inserir lead", { error: errorMsg });
+            pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Erro", product, origin: origin.channel, result: "failed", error: `Falha Planilha: ${errorMsg}` });
         }
 
-        return { success: result.success, leadId, client: client.name, type: 'new_lead' };
+        return { success: result.success, leadId, client: client.name, type: "new_lead" };
     }
 
-    /**
-     * Processa uma ATUALIZAÇÃO DE STATUS (conversa alterada)
-     */
-    async processStatusUpdate(payload, client) {
+    async processStatusUpdate(payload, client, trail) {
         const statusName = extractStatusName(payload);
         const statusId = extractStatusId(payload);
         const saleAmount = payload.sale_amount || null;
-        const leadName = payload.name || payload.chatName || 'Desconhecido';
+        const leadName = payload.name || payload.chatName || "Desconhecido";
 
-        logger.info(`🔄 Atualização de status para: ${client.name}`, {
-            phone: payload.phone,
-            leadName: leadName,
-            eventType: payload.event_type,
-            statusId: statusId,
-            newStatus: statusName,
-            saleAmount: saleAmount,
-            source: payload.source,
-        });
+        logger.info(`🔄 Atualização de status para: ${client.name}`, { phone: payload.phone, leadName, eventType: payload.event_type, statusId, newStatus: statusName, saleAmount, source: payload.source });
 
-        // Preparar dados de atualização
+        // origin_detected
+        const origin = detectOrigin(payload);
+        await trail.step("origin_detected", "ok", `Origem: ${origin.channel}`, { channel: origin.channel });
+
         const updateData = {
-            phone: payload.phone, // Usar telefone bruto para busca flexível
+            phone: payload.phone,
             status: statusName,
-            name: payload.chatName ? (payload.chatName + ' (Auto)') : undefined,
+            name: payload.chatName ? (payload.chatName + " (Auto)") : undefined,
         };
 
-        // Se é status de VENDA, adicionar data de fechamento e valor
         if (isSaleStatus(statusName) || saleAmount) {
             updateData.closeDate = formatDateBR(new Date().toISOString());
             updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
-
             if (saleAmount) {
                 updateData.saleAmount = parseFloat(saleAmount);
-                updateData.comment += ` | Valor: R$ ${parseFloat(saleAmount).toFixed(2).replace('.', ',')}`;
+                updateData.comment += ` | Valor: R$ ${parseFloat(saleAmount).toFixed(2).replace(".", ",")}`;
             }
         } else {
-            // Qualquer outro status (ex: "em atendimento", "sem interesse")
             updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
         }
 
-        // Atualizar na planilha
-        let result = { success: false, error: 'Iniciado' };
+        // status_updated
+        let result = { success: false, error: "Iniciado" };
         try {
             result = await sheetsService.updateLeadStatus(client, updateData);
         } catch (err) {
             result = { success: false, error: `Erro conexão Google Sheets: ${err.message}` };
         }
 
-        // 2. Se falhar porque o lead não existe, TENTAR INSERIR COMO NOVO (Recuperação de Venda)
-        // Check robusto para erro de "não encontrado"
-        const isNotFound = result.error && (
-            result.error.includes('Lead não encontrado') ||
-            result.error.includes('não encontrado na planilha')
-        );
+        // sale_recovered — se lead não encontrado
+        const isNotFound = result.error && (result.error.includes("Lead não encontrado") || result.error.includes("não encontrado na planilha"));
 
-        if (!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
-            // Verificar origem antes de recuperar — só inserir se for tráfego pago
+        if (\!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
             const recoveryOrigin = detectOrigin(payload);
-            const PAID_CHANNELS = ['Meta Ads', 'Google Ads'];
-            if (!PAID_CHANNELS.includes(recoveryOrigin.channel)) {
-                logger.info(`🚫 Recuperação de venda ignorada (lead orgânico): ${payload.chatName || payload.phone}`, {
-                    phone: payload.phone,
-                    channel: recoveryOrigin.channel,
-                });
-                return { success: true, message: 'Venda orgânica ignorada (sem campanha)', type: 'filtered' };
+            const PAID_CHANNELS = ["Meta Ads", "Google Ads"];
+            if (\!PAID_CHANNELS.includes(recoveryOrigin.channel)) {
+                logger.info(`🚫 Recuperação de venda ignorada (lead orgânico): ${payload.chatName || payload.phone}`);
+                await trail.step("organic_filtered", "skipped", "Venda orgânica ignorada (sem campanha)", { phone: payload.phone, channel: recoveryOrigin.channel });
+                return { success: true, message: "Venda orgânica ignorada (sem campanha)", type: "filtered" };
             }
 
-            logger.warn(`⚠️ Lead não encontrado para atualização de venda. Tentando inserir como novo...`, { phone: payload.phone });
+            logger.warn("⚠️ Lead não encontrado para atualização de venda. Tentando inserir como novo...", { phone: payload.phone });
+            await trail.step("sale_recovered", "ok", "Tentando recuperar venda (lead não encontrado na planilha)", { phone: payload.phone });
 
             const recoveryLeadData = {
-                name: (payload.chatName || formatPhoneBR(payload.phone)) + ' (Recuperado)',
+                name: (payload.chatName || formatPhoneBR(payload.phone)) + " (Recuperado)",
                 phone: formatPhoneBR(payload.phone),
                 origin: recoveryOrigin.channel,
-                date: formatDateBR(new Date().toISOString()), // Data atual
-                product: detectProduct(payload) || 'Indefinido',
-                status: `Venda (Cliente não encontrado)`, // Status especial
+                date: formatDateBR(new Date().toISOString()),
+                product: detectProduct(payload) || "Indefinido",
+                status: "Venda (Cliente não encontrado)",
                 phoneRaw: payload.phone,
                 leadId: uuidv4(),
                 saleAmount: saleAmount ? parseFloat(saleAmount) : 0,
                 closeDate: formatDateBR(new Date().toISOString()),
             };
 
-            let insertResult = { success: false, error: 'Iniciado recovery' };
+            let insertResult = { success: false, error: "Iniciado recovery" };
             try {
                 insertResult = await sheetsService.insertLead(client, recoveryLeadData);
             } catch (err) {
@@ -467,60 +379,29 @@ class WebhookHandler {
             }
 
             if (insertResult.success) {
-                logger.info(`✅ Venda recuperada! Lead inserido: ${recoveryLeadData.name}`);
-
-                // Sobrescrever resultado para sucesso (com ressalva)
+                logger.info(`✅ Venda recuperada\! Lead inserido: ${recoveryLeadData.name}`);
+                await trail.step("lead_inserted", "ok", `Venda recuperada e inserida em ${insertResult.sheetName}`, { leadName: recoveryLeadData.name, recovered: true });
                 result = { success: true, sheetName: insertResult.sheetName, row: insertResult.row, recovered: true };
-
-                // Ajustar status para log
-                // statusName = `Venda (Recuperada)`;
             } else {
-                logger.error(`❌ Falha ao tentar recuperar venda`, { error: insertResult.error });
+                logger.error("❌ Falha ao tentar recuperar venda", { error: insertResult.error });
+                await trail.step("lead_inserted", "error", `Falha ao recuperar venda: ${insertResult.error}`, { error: insertResult.error });
             }
         }
 
         if (result.success) {
-            logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ''} [linha ${result.row}]`);
+            logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ""} [linha ${result.row}]`);
+            await trail.step("status_updated", "ok", `Status "${statusName}" atualizado com sucesso${result.recovered ? " (venda recuperada)" : ""}`, { status: statusName, row: result.row, sheetName: result.sheetName, recovered: result.recovered || false });
 
-            pgService.logLead(client.id, {
-                eventType: 'status_update',
-                phone: payload.phone,
-                name: leadName,
-                status: statusName,
-                saleAmount: saleAmount ? parseFloat(saleAmount) : null,
-                sheetName: result.sheetName,
-                sheetRow: result.row,
-                result: 'success',
-                error: null,
-                details: result.recovered ? 'Venda inserida pois lead não existia na planilha' : null
-            });
-
+            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : null, sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null });
         } else {
-            const errorMsg = result.error || 'Erro desconhecido na atualização';
-            logger.warn(`⚠️ Não foi possível atualizar status`, {
-                error: errorMsg,
-                phone: payload.phone,
-            });
+            const errorMsg = result.error || "Erro desconhecido na atualização";
+            logger.warn("⚠️ Não foi possível atualizar status", { error: errorMsg, phone: payload.phone });
+            await trail.step("status_updated", "error", `Falha ao atualizar status: ${errorMsg}`, { error: errorMsg, phone: payload.phone, status: statusName });
 
-            pgService.logLead(client.id, {
-                eventType: 'status_update',
-                phone: payload.phone,
-                name: leadName,
-                status: 'Erro Update',
-                saleAmount: saleAmount ? parseFloat(saleAmount) : null,
-                result: 'failed',
-                error: `Falha Planilha: ${errorMsg}`,
-            });
+            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: "Erro Update", saleAmount: saleAmount ? parseFloat(saleAmount) : null, result: "failed", error: `Falha Planilha: ${errorMsg}` });
         }
 
-        return {
-            success: result.success,
-            client: client.name,
-            type: 'status_update',
-            status: statusName,
-            saleAmount,
-            recovered: result.recovered
-        };
+        return { success: result.success, client: client.name, type: "status_update", status: statusName, saleAmount, recovered: result.recovered };
     }
 }
 

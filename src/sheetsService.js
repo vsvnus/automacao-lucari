@@ -11,6 +11,7 @@
 const { google } = require('googleapis');
 const path = require('path');
 const { logger } = require('./utils/logger');
+const pgService = require('./pgService');
 
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || '3', 10);
 const RETRY_DELAY = parseInt(process.env.RETRY_DELAY || '2000', 10);
@@ -128,10 +129,10 @@ class SheetsService {
      * Se sheet_name == "auto", procura uma aba existente do mês atual.
      * Se não encontrar, cria uma nova no formato "Mês-AA".
      */
-    async resolveSheetName(client) {
+    async resolveSheetName(client, traceId) {
         if (client.sheet_name !== 'auto') {
             const name = client.sheet_name || 'Leads';
-            await this.ensureSheet(client.spreadsheet_id, name);
+            await this.ensureSheet(client.spreadsheet_id, name, undefined, traceId);
             return name;
         }
 
@@ -170,7 +171,7 @@ class SheetsService {
         }
 
         // Nenhuma aba do mês encontrada — criar nova
-        await this.ensureSheet(client.spreadsheet_id, targetName, existingSheets);
+        await this.ensureSheet(client.spreadsheet_id, targetName, existingSheets, traceId);
 
         // Copiar leads ativos do mês anterior para a nova aba
         const previousSheet = this.findPreviousMonthSheet(existingSheets);
@@ -186,7 +187,7 @@ class SheetsService {
      * Garante que a aba existe. Se não, cria com cabeçalhos formatados.
      * Pode receber a lista de abas existentes para evitar re-fetch.
      */
-    async ensureSheet(spreadsheetId, sheetName, existingSheetsList) {
+    async ensureSheet(spreadsheetId, sheetName, existingSheetsList, traceId) {
         const cacheKey = `${spreadsheetId}:${sheetName}`;
         if (this.spreadsheetCache.has(cacheKey)) return;
 
@@ -283,6 +284,11 @@ class SheetsService {
 
             this.spreadsheetCache.set(cacheKey, true);
             logger.info(`✅ Aba "${sheetName}" criada com cabeçalhos do padrão do cliente`);
+
+            // Registrar criação de aba no trail
+            if (traceId) {
+                pgService.addTrailStep(traceId, 0, "tab_created", "ok", "Nova aba criada: " + sheetName, { sheetName, spreadsheetId }, null);
+            }
 
         } catch (error) {
             logger.error(`Erro ao garantir aba "${sheetName}"`, { error: error.message });

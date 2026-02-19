@@ -80,3 +80,19 @@ CREATE INDEX IF NOT EXISTS idx_leads_log_client ON leads_log(client_id);
 CREATE INDEX IF NOT EXISTS idx_leads_log_phone ON leads_log(phone);
 CREATE INDEX IF NOT EXISTS idx_webhook_events_created ON webhook_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_clients_slug ON clients(slug);
+
+-- Lead Trail (rastreamento passo-a-passo do processamento)
+CREATE TABLE IF NOT EXISTS lead_trail (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    trace_id UUID NOT NULL,
+    step_order INTEGER NOT NULL,
+    step_name VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    detail TEXT,
+    metadata JSONB,
+    duration_ms INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lead_trail_trace ON lead_trail(trace_id);
+CREATE INDEX IF NOT EXISTS idx_lead_trail_created ON lead_trail(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lead_trail_status ON lead_trail(status) WHERE status = 'error';
