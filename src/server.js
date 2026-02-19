@@ -124,9 +124,27 @@ function requireAuth(req, res, next) {
 // Rotas Públicas
 // ====================================================
 
-app.get('/health', (_req, res) => {
+app.get('/health', async (_req, res) => {
     const stats = clientManager.getStats();
     const sheetsOk = sheetsService.sheets !== null;
+
+    // Check Evolution API via SDR health
+    let evolutionOk = false;
+    try {
+        const http = require('http');
+        const sdrUrl = process.env.SDR_API_URL || 'http://localhost:3001';
+        const sdrHealth = await new Promise((resolve) => {
+            const req = http.get(sdrUrl + '/health', { timeout: 3000 }, (resp) => {
+                let data = '';
+                resp.on('data', (chunk) => data += chunk);
+                resp.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+            });
+            req.on('error', () => resolve(null));
+            req.on('timeout', () => { req.destroy(); resolve(null); });
+        });
+        evolutionOk = sdrHealth && sdrHealth.evolution === true;
+    } catch(e) { }
+
     res.json({
         status: sheetsOk ? 'ok' : 'degraded',
         uptime: process.uptime(),
@@ -134,6 +152,7 @@ app.get('/health', (_req, res) => {
         integrations: {
             googleSheets: sheetsOk ? 'connected' : 'disconnected',
             postgresql: pgService.isAvailable() ? 'connected' : 'disconnected',
+            evolution: evolutionOk ? 'connected' : 'disconnected',
         }
     });
 });
