@@ -2859,6 +2859,7 @@ async function openRelatorioModal(client = null) {
     $('#relatorio-client-edit-id').value = client?.id || '';
     $('#rel-semanal-tab').value = client?.semanal_tab_name || 'Atualizar Projeção Semanal';
     $('#rel-mensal-tab').value = client?.mensal_tab_name || 'Métricas Gerenciadores';
+    $('#rel-lead-metric').value = client?.lead_metric || 'fb_ads:actions_lead';
     $('#rel-notes').value = client?.notes || '';
     $('#rel-spreadsheet-url').value = client?.spreadsheet_id || '';
     $('#rel-spreadsheet-id').value = client?.spreadsheet_id || '';
@@ -3005,6 +3006,7 @@ $('#form-relatorio-client')?.addEventListener('submit', async (e) => {
         spreadsheet_id: sheetId,
         semanal_tab_name: $('#rel-semanal-tab').value.trim() || 'Atualizar Projeção Semanal',
         mensal_tab_name: $('#rel-mensal-tab').value.trim() || 'Métricas Gerenciadores',
+        lead_metric: $('#rel-lead-metric').value || 'fb_ads:actions_lead',
         notes: $('#rel-notes').value.trim() || null,
         active: true,
     };

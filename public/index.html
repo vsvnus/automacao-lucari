@@ -1268,6 +1268,15 @@
                             </div>
                         </div>
                         <div class="form-group" style="margin-top:12px;margin-bottom:0;">
+                            <label for="rel-lead-metric">Métrica de Lead/Ação</label>
+                            <select id="rel-lead-metric">
+                                <option value="fb_ads:actions_lead">Leads (padrão)</option>
+                                <option value="fb_ads:actions_onsite_conversion_messaging_conversation_started_7d">Mensagens Iniciadas</option>
+                                <option value="fb_ads:page_follows">Novos Seguidores</option>
+                                <option value="sum_leads_messages">Soma (Leads + Mensagens)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-top:12px;margin-bottom:0;">
                             <label for="rel-notes">Observações</label>
                             <input type="text" id="rel-notes" placeholder="Opcional">
                         </div>
@@ -1279,7 +1288,7 @@
                     <button type="submit" class="btn-primary" id="btn-rel-submit" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         <span>Salvar</span>
->>>>>>> 7b2ca79 (feat: adicionar dashboard de integracao do reportei)
+                    </button>
                 </div>
             </form>
         </div>
