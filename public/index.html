@@ -103,6 +103,15 @@
                 </svg>
                 <span>Calculadora</span>
             </a>
+            <a href="#" class="nav-item" data-section="relatorio">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                </svg>
+                <span>Relatórios</span>
+            </a>
 
             <div class="nav-divider"></div>
 
@@ -862,6 +871,112 @@
             </div>
         </section>
 
+        <!-- ===== SECTION: Relatórios ===== -->
+        <section class="page-section" id="section-relatorio">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Relatórios</h2>
+                    <p class="page-subtitle">Automação de preenchimento de planilhas via Reportei</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-secondary" id="btn-relatorio-run-weekly" title="Executar preenchimento semanal agora">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        <span>Semanal</span>
+                    </button>
+                    <button class="btn-secondary" id="btn-relatorio-run-monthly" title="Executar preenchimento mensal agora">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>
+                        <span>Mensal</span>
+                    </button>
+                    <button class="btn-primary" id="btn-add-relatorio-client">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <span>Novo Cliente</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Settings Card (API Key) -->
+            <div class="card" style="margin-bottom:24px;" id="relatorio-settings-card">
+                <div class="card-header">
+                    <h3>Configuração do Reportei</h3>
+                    <span class="badge" id="rel-api-badge" style="display:none">Configurado</span>
+                </div>
+                <div style="display:flex;gap:10px;align-items:flex-end;">
+                    <div class="form-group" style="flex:1;margin:0;">
+                        <label for="rel-api-key-input" style="font-size:0.8rem;color:var(--text-secondary);">API Key do Reportei</label>
+                        <input type="password" id="rel-api-key-input" placeholder="Cole sua API Key aqui..." style="font-family:monospace;font-size:0.85rem;">
+                    </div>
+                    <button class="btn-primary btn-sm" id="btn-rel-save-apikey">Salvar</button>
+                    <button class="btn-secondary btn-sm" id="btn-rel-toggle-apikey" title="Mostrar/ocultar">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                </div>
+                <small style="color:var(--text-tertiary);margin-top:6px;display:block;">Encontre em <strong>app.reportei.com</strong> → Configurações → API</small>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid" id="relatorio-stats-grid" style="margin-bottom:24px;">
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-status">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="rel-stat-clients">—</span>
+                        <span class="stat-label">Clientes Ativos</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-sale">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="rel-stat-execs">—</span>
+                        <span class="stat-label">Execuções (30d)</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-error">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="rel-stat-errors">—</span>
+                        <span class="stat-label">Erros (30d)</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background:rgba(99,102,241,.12);color:#6366f1;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                    </div>
+                    <div class="stat-data">
+                        <span class="stat-value" id="rel-stat-running">—</span>
+                        <span class="stat-label">Status</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clients List -->
+            <div id="relatorio-clients-list" class="clients-grid">
+                <div class="card" style="grid-column:1/-1">
+                    <div class="activity-empty">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line></svg>
+                        <p>Carregando clientes...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Executions -->
+            <div class="card" style="margin-top:24px;">
+                <div class="card-header">
+                    <h3>Execuções Recentes</h3>
+                    <button class="btn-icon" id="btn-relatorio-refresh-execs" title="Atualizar">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                    </button>
+                </div>
+                <div class="activity-feed" id="relatorio-executions">
+                    <div class="activity-empty"><p>Carregando...</p></div>
+                </div>
+            </div>
+        </section>
+
         <!-- ===== SECTION: Calculadora ===== -->
         <section class="page-section" id="section-calculadora">
             <div class="page-header">
@@ -1080,7 +1195,91 @@
                     <button type="submit" class="btn-primary" id="sdr-modal-submit-btn">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         <span>Salvar Cliente</span>
+                        <span>Salvar Cliente</span>
                     </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-relatorio-client" class="modal-overlay">
+        <div class="modal-content" style="max-width:520px;margin:auto;">
+            <div class="modal-header">
+                <h2 id="modal-relatorio-title">Novo Cliente — Relatório</h2>
+                <button class="btn-modal-close" onclick="closeRelatorioModal()" aria-label="Fechar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <form id="form-relatorio-client" autocomplete="off">
+                <input type="hidden" id="relatorio-client-edit-id">
+                <input type="hidden" id="rel-reportei-id">
+                <input type="hidden" id="rel-client-name">
+                <input type="hidden" id="rel-meta-integration-id">
+                <input type="hidden" id="rel-google-integration-id">
+
+                <!-- Passo 1: Selecionar cliente Reportei -->
+                <div class="form-group" id="rel-step-select">
+                    <label for="rel-reportei-select">Cliente Reportei</label>
+                    <select id="rel-reportei-select" required>
+                        <option value="">Carregando clientes...</option>
+                    </select>
+                    <small class="form-hint" id="rel-select-hint">Selecione o cliente para configurar as integrações</small>
+                </div>
+
+                <!-- Passo 2: Integrações (auto-descobertas) -->
+                <div id="rel-integrations-block" style="display:none;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="rel-meta-select">Meta Ads</label>
+                            <select id="rel-meta-select">
+                                <option value="">Nenhuma</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label for="rel-google-select">Google Ads</label>
+                            <select id="rel-google-select">
+                                <option value="">Nenhuma</option>
+                            </select>
+                        </div>
+                    </div>
+                    <small class="form-hint" style="margin-top:4px;display:block;">Integrações descobertas automaticamente da conta Reportei</small>
+                </div>
+
+                <!-- Passo 3: Planilha -->
+                <div class="form-group" id="rel-sheet-block" style="display:none;margin-top:12px;">
+                    <label for="rel-spreadsheet-url">Planilha Google Sheets</label>
+                    <input type="text" id="rel-spreadsheet-url" placeholder="Cole o link ou ID da planilha" required>
+                    <small class="form-hint">Cole o link completo ou só o ID da URL</small>
+                </div>
+                <input type="hidden" id="rel-spreadsheet-id">
+
+                <!-- Configurações avançadas (colapsáveis) -->
+                <div id="rel-advanced-block" style="display:none;margin-top:12px;">
+                    <details>
+                        <summary style="font-size:0.8rem;color:var(--text-secondary);cursor:pointer;padding:4px 0;">Configurações avançadas</summary>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label for="rel-semanal-tab">Aba Semanal</label>
+                                <input type="text" id="rel-semanal-tab" value="Atualizar Projeção Semanal">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label for="rel-mensal-tab">Aba Mensal</label>
+                                <input type="text" id="rel-mensal-tab" value="Métricas Gerenciadores">
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top:12px;margin-bottom:0;">
+                            <label for="rel-notes">Observações</label>
+                            <input type="text" id="rel-notes" placeholder="Opcional">
+                        </div>
+                    </details>
+                </div>
+
+                <div class="modal-actions" style="margin-top:16px;">
+                    <button type="button" class="btn-secondary" onclick="closeRelatorioModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary" id="btn-rel-submit" disabled>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <span>Salvar</span>
+>>>>>>> 7b2ca79 (feat: adicionar dashboard de integracao do reportei)
                 </div>
             </form>
         </div>

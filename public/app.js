@@ -35,7 +35,7 @@ function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora'];
+    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -75,6 +75,7 @@ function navigateTo(section, replace = false) {
     if (section === 'sdr') loadSDRSection();
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
+    if (section === 'relatorio') loadRelatorioSection();
 }
 
 // Handle Browser Back/Forward
@@ -1961,12 +1962,12 @@ async function loadSdrStats(tenantId) {
 }
 
 const STAGE_CONFIG = {
-    new:        { label: 'Novo',        color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+    new: { label: 'Novo', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
     interested: { label: 'Interessado', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)' },
-    qualified:  { label: 'Qualificado', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-    proposal:   { label: 'Proposta',    color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
-    won:        { label: 'Ganho',       color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-    lost:       { label: 'Perdido',     color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+    qualified: { label: 'Qualificado', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+    proposal: { label: 'Proposta', color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
+    won: { label: 'Ganho', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+    lost: { label: 'Perdido', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
 };
 
 async function loadSdrPipeline(tenantId) {
@@ -2376,23 +2377,22 @@ async function loadSdrLeads(tenantId) {
             grouped[stage].push(lead);
         });
 
-        container.innerHTML = `<div class="kanban-board">${
-            Object.entries(STAGE_CONFIG).map(([key, cfg]) => {
-                const items = grouped[key] || [];
-                return `<div class="kanban-column">
+        container.innerHTML = `<div class="kanban-board">${Object.entries(STAGE_CONFIG).map(([key, cfg]) => {
+            const items = grouped[key] || [];
+            return `<div class="kanban-column">
                     <div class="kanban-column-header" style="border-top:3px solid ${cfg.color};">
                         <span class="kanban-column-title">${cfg.label}</span>
                         <span class="kanban-column-count" style="background:${cfg.bg};color:${cfg.color}">${items.length}</span>
                     </div>
                     <div class="kanban-column-body">
                         ${items.length === 0 ? '<div class="kanban-empty">—</div>' : items.map(lead => {
-                            const phone = lead.phone || '';
-                            const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
-                            const interest = lead.interest || '';
-                            const score = lead.lead_score || 0;
-                            const date = lead.updated_at || lead.created_at;
-                            const dateStr = date ? new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
-                            return `<div class="kanban-card">
+                const phone = lead.phone || '';
+                const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
+                const interest = lead.interest || '';
+                const score = lead.lead_score || 0;
+                const date = lead.updated_at || lead.created_at;
+                const dateStr = date ? new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+                return `<div class="kanban-card">
                                 <div class="kanban-card-name">${escapeHtml(name)}</div>
                                 <div class="kanban-card-phone">${escapeHtml(formatPhoneDisplay(phone))}</div>
                                 ${interest ? `<div class="kanban-card-interest">${escapeHtml(interest)}</div>` : ''}
@@ -2401,11 +2401,11 @@ async function loadSdrLeads(tenantId) {
                                     <span class="kanban-card-date">${escapeHtml(dateStr)}</span>
                                 </div>
                             </div>`;
-                        }).join('')}
+            }).join('')}
                     </div>
                 </div>`;
-            }).join('')
-        }</div>`;
+        }).join('')
+            }</div>`;
     } catch (err) {
         container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar leads</p><small>${escapeHtml(err.message)}</small></div>`;
     }
@@ -2507,7 +2507,7 @@ function renderAlertErrors(errors) {
         return;
     }
 
-    list.innerHTML = errors.map(function(err) {
+    list.innerHTML = errors.map(function (err) {
         var meta = err.webhook_metadata || err.metadata || {};
         var payload = meta.payload || {};
         var phone = payload.phone || payload.phone_e164 || "";
@@ -2519,15 +2519,15 @@ function renderAlertErrors(errors) {
         return '<div class="alert-error-item" onclick="openTrailModal(\'' + err.trace_id + '\')">' +
             '<div class="alert-error-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>' +
             '<div class="alert-error-info">' +
-                '<div class="lead-name">' + escapeHtml(name) + (client ? ' - ' + escapeHtml(client) : '') + '</div>' +
-                '<div class="error-detail">' + escapeHtml(err.detail || "") + '</div>' +
-                '<div class="error-step">Falhou em: ' + stepLabel + '</div>' +
+            '<div class="lead-name">' + escapeHtml(name) + (client ? ' - ' + escapeHtml(client) : '') + '</div>' +
+            '<div class="error-detail">' + escapeHtml(err.detail || "") + '</div>' +
+            '<div class="error-step">Falhou em: ' + stepLabel + '</div>' +
             '</div>' +
             '<div class="alert-error-meta">' +
-                '<div class="error-time">' + timeAgo + '</div>' +
-                '<div class="error-badge">' + escapeHtml(err.step_name) + '</div>' +
+            '<div class="error-time">' + timeAgo + '</div>' +
+            '<div class="error-badge">' + escapeHtml(err.step_name) + '</div>' +
             '</div>' +
-        '</div>';
+            '</div>';
     }).join("");
 }
 
@@ -2572,7 +2572,7 @@ async function openTrailModal(traceId) {
 
     modal.style.display = "flex";
     timeline.innerHTML = '<p class="empty-state">Carregando trail...</p>';
-    retryBtn.onclick = function() { retryWebhook(traceId); };
+    retryBtn.onclick = function () { retryWebhook(traceId); };
 
     try {
         var res = await fetch("/api/alerts/trail/" + traceId);
@@ -2588,7 +2588,7 @@ function renderTrailTimeline(steps) {
     var timeline = document.getElementById("trail-timeline");
     if (!timeline) return;
 
-    timeline.innerHTML = steps.map(function(step, i) {
+    timeline.innerHTML = steps.map(function (step, i) {
         var dotClass = step.status;
         var isLast = i === steps.length - 1;
         var stepLabel = formatStepName(step.step_name);
@@ -2600,11 +2600,11 @@ function renderTrailTimeline(steps) {
             '<div class="trail-step-dot ' + dotClass + '">' + step.step_order + '</div>' +
             (!isLast ? '<div class="trail-step-line"></div>' : '') +
             '<div class="trail-step-content">' +
-                '<div class="trail-step-name">' + stepLabel + ' (' + escapeHtml(step.step_name) + ')</div>' +
-                '<div class="' + detailClass + '">' + escapeHtml(step.detail || "") + '</div>' +
-                '<div class="trail-step-time">' + createdTime + (timeStr ? ' - ' + timeStr : '') + '</div>' +
+            '<div class="trail-step-name">' + stepLabel + ' (' + escapeHtml(step.step_name) + ')</div>' +
+            '<div class="' + detailClass + '">' + escapeHtml(step.detail || "") + '</div>' +
+            '<div class="trail-step-time">' + createdTime + (timeStr ? ' - ' + timeStr : '') + '</div>' +
             '</div>' +
-        '</div>';
+            '</div>';
     }).join("");
 }
 
@@ -2625,7 +2625,7 @@ async function retryWebhook(traceId) {
         var data = await res.json();
         if (data.success) {
             if (retryBtn) retryBtn.textContent = "Reenviado!";
-            setTimeout(function() {
+            setTimeout(function () {
                 closeTrailModal();
                 loadAlertsSection();
                 if (retryBtn) {
@@ -2648,12 +2648,12 @@ async function retryWebhook(traceId) {
 }
 
 // Trail modal close handlers
-document.addEventListener("DOMContentLoaded", function() {
+document.addEventListener("DOMContentLoaded", function () {
     var closeBtn = document.getElementById("trail-modal-close");
     if (closeBtn) closeBtn.addEventListener("click", closeTrailModal);
 
     var overlay = document.getElementById("trail-modal");
-    if (overlay) overlay.addEventListener("click", function(e) {
+    if (overlay) overlay.addEventListener("click", function (e) {
         if (e.target === overlay) closeTrailModal();
     });
 
@@ -2676,5 +2676,402 @@ async function updateAlertsBadge() {
             badge.textContent = count;
             badge.style.display = count > 0 ? "inline-block" : "none";
         }
-    } catch(e) {}
+    } catch (e) { }
 }
+// ============================================
+// Relatórios Section
+// ============================================
+
+const RELATORIO_API_BASE = '/api/relatorio';
+let relatorioEditId = null;
+
+async function loadRelatorioSection() {
+    await Promise.all([
+        loadRelatorioSettings(),
+        loadRelatorioStats(),
+        loadRelatorioClients(),
+        loadRelatorioExecutions(),
+    ]);
+}
+
+// ---- Settings (API Key) ----
+
+async function loadRelatorioSettings() {
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/settings`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const input = $('#rel-api-key-input');
+        const badge = $('#rel-api-badge');
+        if (data.configured) {
+            if (input) input.placeholder = data.reportei_api_key; // mostra mascarado
+            if (badge) { badge.style.display = ''; badge.textContent = '✓ Configurado'; }
+        }
+    } catch { /* serviço offline */ }
+}
+
+$('#btn-rel-save-apikey')?.addEventListener('click', async () => {
+    const val = $('#rel-api-key-input')?.value?.trim();
+    if (!val) return showToast('Cole a API Key primeiro', 'error');
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reportei_api_key: val }),
+        });
+        if (!res.ok) throw new Error('Erro ao salvar');
+        showToast('API Key salva!', 'success');
+        $('#rel-api-key-input').value = '';
+        await loadRelatorioSettings();
+    } catch (err) { showToast(err.message, 'error'); }
+});
+
+$('#btn-rel-toggle-apikey')?.addEventListener('click', () => {
+    const inp = $('#rel-api-key-input');
+    if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+});
+
+// ---- Stats ----
+
+async function loadRelatorioStats() {
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/status`);
+        if (!res.ok) throw new Error('offline');
+        const data = await res.json();
+        $('#rel-stat-clients').textContent = data.activeClients ?? '—';
+        $('#rel-stat-execs').textContent = data.executions30d ?? '—';
+        $('#rel-stat-errors').textContent = data.errors30d ?? '—';
+        $('#rel-stat-running').textContent = data.isRunning ? 'Rodando' : 'Aguardando';
+    } catch {
+        ['#rel-stat-clients', '#rel-stat-execs', '#rel-stat-errors'].forEach(s => { const el = $(s); if (el) el.textContent = '—'; });
+        const sr = $('#rel-stat-running'); if (sr) sr.textContent = 'Offline';
+    }
+}
+
+// ---- Clients list ----
+
+async function loadRelatorioClients() {
+    const container = $('#relatorio-clients-list');
+    if (!container) return;
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/clients`);
+        if (!res.ok) throw new Error('Serviço indisponível');
+        const clients = (await res.json()).data || [];
+
+        if (clients.length === 0) {
+            container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line></svg>
+                <p>Nenhum cliente cadastrado</p><small>Clique em "Novo Cliente" para começar</small></div></div>`;
+            return;
+        }
+
+        container.innerHTML = '';
+        clients.forEach(client => {
+            const card = document.createElement('div');
+            card.className = 'client-card';
+            const statusClass = client.active ? 'active' : 'inactive';
+            const statusDot = client.active ? 'online' : 'offline';
+            card.innerHTML = `
+                <div class="client-card-header">
+                    <div class="client-name-group">
+                        <div class="client-avatar" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);">${escapeHtml(getInitials(client.name))}</div>
+                        <div>
+                            <div class="client-name">${escapeHtml(client.name)}</div>
+                            <span style="font-size:0.75rem;color:var(--text-tertiary);">
+                                ${client.meta_ads_integration_id ? 'Meta Ads ✓' : ''}
+                                ${client.google_ads_integration_id ? ' · Google Ads ✓' : ''}
+                            </span>
+                        </div>
+                    </div>
+                    <span class="client-status ${statusClass}">
+                        <span class="status-indicator ${statusDot}" style="width:6px;height:6px;"></span>
+                        ${client.active ? 'Ativo' : 'Inativo'}
+                    </span>
+                </div>
+                <div class="client-card-footer">
+                    <button class="btn-text" style="color:var(--success);" onclick="triggerClientRun(${client.id}, '${escapeHtml(client.name)}', 'weekly')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Semanal
+                    </button>
+                    <button class="btn-text" style="color:var(--success);" onclick="triggerClientRun(${client.id}, '${escapeHtml(client.name)}', 'monthly')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        Mensal
+                    </button>
+                    <button class="btn-text" onclick="editRelatorioClient(${client.id})">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 1-2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        Editar
+                    </button>
+                    <button class="btn-text" style="color:var(--error);" onclick="deleteRelatorioClient(${client.id}, '${escapeHtml(client.name)}')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14H6L5 6"></path></svg>
+                        Remover
+                    </button>
+                </div>`;
+            container.appendChild(card);
+        });
+    } catch (err) {
+        container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>Relatórios não conectado</p><small>${escapeHtml(err.message)}</small></div></div>`;
+    }
+}
+
+// ---- Executions ----
+
+async function loadRelatorioExecutions() {
+    const container = $('#relatorio-executions');
+    if (!container) return;
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/executions?limit=20`);
+        if (!res.ok) throw new Error('offline');
+        const execs = (await res.json()).data || [];
+
+        if (execs.length === 0) {
+            container.innerHTML = `<div class="activity-empty"><p>Nenhuma execução registrada</p></div>`;
+            return;
+        }
+        container.innerHTML = execs.map(e => {
+            const color = e.status === 'success' ? 'var(--success)' : e.status === 'error' ? 'var(--error)' : 'var(--warning)';
+            const dt = e.created_at ? new Date(e.created_at).toLocaleString('pt-BR') : e.run_date || '—';
+            return `<div class="activity-item">
+                <div class="activity-dot" style="background:${color};"></div>
+                <div class="activity-content">
+                    <span class="activity-title">${escapeHtml(e.client_name || String(e.client_id))} — ${escapeHtml(e.execution_type || '—')}</span>
+                    <span class="activity-meta">${escapeHtml(dt)} · ${escapeHtml(e.status)}</span>
+                </div>
+            </div>`;
+        }).join('');
+    } catch {
+        container.innerHTML = `<div class="activity-empty"><p>Sem dados de execução</p></div>`;
+    }
+}
+
+// ---- Modal (novo/editar) ----
+
+function extractSheetId(value) {
+    // Aceita URL completa ou só o ID
+    const match = value.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    return match ? match[1] : value.trim();
+}
+
+async function openRelatorioModal(client = null) {
+    relatorioEditId = client ? client.id : null;
+    const isEdit = !!client;
+
+    $('#modal-relatorio-title').textContent = isEdit ? 'Editar Cliente' : 'Novo Cliente';
+    $('#relatorio-client-edit-id').value = client?.id || '';
+    $('#rel-semanal-tab').value = client?.semanal_tab_name || 'Atualizar Projeção Semanal';
+    $('#rel-mensal-tab').value = client?.mensal_tab_name || 'Métricas Gerenciadores';
+    $('#rel-notes').value = client?.notes || '';
+    $('#rel-spreadsheet-url').value = client?.spreadsheet_id || '';
+    $('#rel-spreadsheet-id').value = client?.spreadsheet_id || '';
+
+    // Reset blocos
+    const sel = $('#rel-reportei-select');
+    const intBlock = $('#rel-integrations-block');
+    const sheetBlock = $('#rel-sheet-block');
+    const advBlock = $('#rel-advanced-block');
+    const submitBtn = $('#btn-rel-submit');
+
+    if (intBlock) intBlock.style.display = 'none';
+    if (sheetBlock) sheetBlock.style.display = 'none';
+    if (advBlock) advBlock.style.display = 'none';
+    if (submitBtn) submitBtn.disabled = true;
+
+    // Carrega clientes do Reportei
+    if (sel) {
+        sel.innerHTML = '<option value="">Carregando clientes do Reportei...</option>';
+        sel.disabled = true;
+        try {
+            const res = await fetch(`${RELATORIO_API_BASE}/reportei/clients`);
+            const clients = (await res.json()).data || [];
+            sel.innerHTML = '<option value="">Selecione o cliente...</option>' +
+                clients.map(c => `<option value="${c.id}" data-name="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+            sel.disabled = false;
+
+            // Em modo edição, pré-seleciona o cliente
+            if (isEdit && client.reportei_client_id) {
+                sel.value = String(client.reportei_client_id);
+                await onReporteiClientSelected(client.reportei_client_id, client);
+            }
+        } catch (err) {
+            sel.innerHTML = `<option value="">Erro ao carregar: ${escapeHtml(err.message)}</option>`;
+        }
+    }
+
+    $('#modal-relatorio-client').classList.add('visible');
+    document.body.style.overflow = 'hidden';
+}
+
+async function onReporteiClientSelected(reporteiId, existingClient = null) {
+    const intBlock = $('#rel-integrations-block');
+    const sheetBlock = $('#rel-sheet-block');
+    const advBlock = $('#rel-advanced-block');
+    const submitBtn = $('#btn-rel-submit');
+    const metaSel = $('#rel-meta-select');
+    const googleSel = $('#rel-google-select');
+    const hint = $('#rel-select-hint');
+
+    if (!reporteiId) {
+        if (intBlock) intBlock.style.display = 'none';
+        if (sheetBlock) sheetBlock.style.display = 'none';
+        if (advBlock) advBlock.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = true;
+        return;
+    }
+
+    // Atualiza hidden fields com nome e ID
+    const sel = $('#rel-reportei-select');
+    const opt = sel?.querySelector(`option[value="${reporteiId}"]`);
+    $('#rel-reportei-id').value = reporteiId;
+    $('#rel-client-name').value = opt?.dataset?.name || (existingClient?.name || '');
+    if (hint) hint.textContent = `Cliente selecionado: ${opt?.dataset?.name || ''}`;
+
+    // Carrega integrações
+    if (metaSel) metaSel.innerHTML = '<option value="">Carregando...</option>';
+    if (googleSel) googleSel.innerHTML = '<option value="">Carregando...</option>';
+    if (intBlock) intBlock.style.display = '';
+
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/reportei/clients/${reporteiId}/integrations`);
+        const integrations = (await res.json()).data || [];
+
+        const metaOpts = integrations.filter(i => i.integration_name === 'Meta Ads');
+        const googleOpts = integrations.filter(i => i.integration_name === 'Google Ads');
+
+        if (metaSel) {
+            metaSel.innerHTML = '<option value="">Nenhuma</option>' +
+                metaOpts.map(i => `<option value="${i.id}">${escapeHtml(i.full_name)}</option>`).join('');
+            if (existingClient?.meta_ads_integration_id)
+                metaSel.value = String(existingClient.meta_ads_integration_id);
+            else if (metaOpts.length === 1)
+                metaSel.value = String(metaOpts[0].id); // auto-seleciona se só tem 1
+        }
+        if (googleSel) {
+            googleSel.innerHTML = '<option value="">Nenhuma</option>' +
+                googleOpts.map(i => `<option value="${i.id}">${escapeHtml(i.full_name)}</option>`).join('');
+            if (existingClient?.google_ads_integration_id)
+                googleSel.value = String(existingClient.google_ads_integration_id);
+            else if (googleOpts.length === 1)
+                googleSel.value = String(googleOpts[0].id);
+        }
+    } catch {
+        if (metaSel) metaSel.innerHTML = '<option value="">Erro ao carregar</option>';
+        if (googleSel) googleSel.innerHTML = '<option value="">Erro ao carregar</option>';
+    }
+
+    if (sheetBlock) sheetBlock.style.display = '';
+    if (advBlock) advBlock.style.display = '';
+    if (submitBtn) submitBtn.disabled = false;
+}
+
+$('#rel-reportei-select')?.addEventListener('change', (e) => {
+    onReporteiClientSelected(e.target.value);
+});
+
+function closeRelatorioModal() {
+    $('#modal-relatorio-client').classList.remove('visible');
+    document.body.style.overflow = '';
+    relatorioEditId = null;
+}
+
+async function editRelatorioClient(id) {
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/clients`);
+        const client = ((await res.json()).data || []).find(c => c.id === id);
+        if (client) openRelatorioModal(client);
+    } catch { showToast('Erro ao carregar cliente', 'error'); }
+}
+
+async function deleteRelatorioClient(id, name) {
+    if (!confirm(`Remover "${name}"?`)) return;
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/clients/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Erro ao remover');
+        showToast(`${name} removido`, 'success');
+        await loadRelatorioClients();
+        await loadRelatorioStats();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+$('#form-relatorio-client')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const sheetRaw = $('#rel-spreadsheet-url')?.value?.trim() || '';
+    const sheetId = extractSheetId(sheetRaw);
+    if (!sheetId) return showToast('Informe o link ou ID da planilha', 'error');
+
+    const payload = {
+        name: $('#rel-client-name').value.trim(),
+        reportei_client_id: parseInt($('#rel-reportei-id').value),
+        meta_ads_integration_id: $('#rel-meta-select')?.value || null,
+        google_ads_integration_id: $('#rel-google-select')?.value || null,
+        spreadsheet_id: sheetId,
+        semanal_tab_name: $('#rel-semanal-tab').value.trim() || 'Atualizar Projeção Semanal',
+        mensal_tab_name: $('#rel-mensal-tab').value.trim() || 'Métricas Gerenciadores',
+        notes: $('#rel-notes').value.trim() || null,
+        active: true,
+    };
+    try {
+        const isEdit = !!relatorioEditId;
+        const url = isEdit ? `${RELATORIO_API_BASE}/clients/${relatorioEditId}` : `${RELATORIO_API_BASE}/clients`;
+        const res = await fetch(url, {
+            method: isEdit ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Erro ao salvar'); }
+        showToast(isEdit ? 'Cliente atualizado' : 'Cliente criado', 'success');
+        closeRelatorioModal();
+        await loadRelatorioClients();
+        await loadRelatorioStats();
+    } catch (err) { showToast(err.message, 'error'); }
+});
+
+$('#btn-add-relatorio-client')?.addEventListener('click', () => openRelatorioModal());
+
+// ---- Automação manual ----
+
+async function triggerClientRun(clientId, clientName, type) {
+    if (!confirm(`Executar automação ${type === 'weekly' ? 'Semanal' : 'Mensal'} para "${clientName}"?`)) return;
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/clients/${clientId}/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro');
+        showToast(data.message, 'success');
+        setTimeout(loadRelatorioExecutions, 6000);
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function triggerRelatorioRun(type) {
+    const btn = type === 'weekly' ? $('#btn-relatorio-run-weekly') : $('#btn-relatorio-run-monthly');
+    if (btn) { btn.disabled = true; btn.querySelector('span').textContent = 'Aguarde...'; }
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/run`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro');
+        showToast(data.message || 'Automação iniciada', 'success');
+        setTimeout(() => Promise.all([loadRelatorioStats(), loadRelatorioExecutions()]), 3000);
+    } catch (err) { showToast(err.message, 'error'); }
+    finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = type === 'weekly'
+                ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>Semanal</span>`
+                : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg><span>Mensal</span>`;
+        }
+    }
+}
+
+$('#btn-relatorio-run-weekly')?.addEventListener('click', () => triggerRelatorioRun('weekly'));
+$('#btn-relatorio-run-monthly')?.addEventListener('click', () => triggerRelatorioRun('monthly'));
+$('#btn-relatorio-refresh-execs')?.addEventListener('click', loadRelatorioExecutions);
+
+$('#modal-relatorio-client')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeRelatorioModal();
+});

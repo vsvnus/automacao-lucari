@@ -143,7 +143,7 @@ app.get('/health', async (_req, res) => {
             req.on('timeout', () => { req.destroy(); resolve(null); });
         });
         evolutionOk = sdrHealth && sdrHealth.evolution === true;
-    } catch(e) { }
+    } catch (e) { }
 
     res.json({
         status: sheetsOk ? 'ok' : 'degraded',
@@ -189,14 +189,14 @@ app.post('/api/auth/login', async (req, res) => {
     // Admin hardcoded fallback removido, agora usa DB
     // Verificar usuário no banco
     const user = await pgService.query('SELECT * FROM users WHERE email = $1', [email]);
-    
+
     if (user && user.rows.length > 0) {
         const userData = user.rows[0];
         // Comparar senha (bcrypt, ou plain text se for migração legado)
         // Por simplificação debug, assumindo plain text se for legado ou bcrypt correto
         // Na criação manual via curl usamos 'admin123', que não é hash bcrypt.
         // Vamos permitir plain text temporariamente para o login manual funcionar.
-        
+
         let validPassword = false;
         const storedHash = userData.password_hash || userData.password;
         if (storedHash && storedHash.startsWith('$2')) {
@@ -208,9 +208,9 @@ app.post('/api/auth/login', async (req, res) => {
         if (validPassword) {
             req.session.userId = userData.id;
             req.session.user = { id: userData.id, email: userData.email, name: userData.name };
-            
+
             logger.info(`Login bem-sucedido: ${email}`);
-            
+
             return req.session.save((err) => {
                 if (err) {
                     logger.error('Erro ao salvar sessão', err);
@@ -321,10 +321,10 @@ app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
     const { from, to } = req.query;
     // Retorna lista de clientes com contagem de leads no período
     const counts = await pgService.getLeadsCountByClient(from, to);
-    
+
     // Pegar nomes dos clientes (ativos)
     const clients = clientManager.clients;
-    
+
     const result = clients.map(c => ({
         slug: c.slug,
         name: c.name,
@@ -400,7 +400,7 @@ app.get("/api/alerts/webhook/:id", requireAuth, async (req, res) => {
 app.post("/api/alerts/webhook/:id/resend", requireAuth, async (req, res) => {
     const webhookId = req.params.id;
     const webhook = await pgService.getWebhookById(webhookId);
-    
+
     if (!webhook) {
         return res.status(404).json({ error: "Webhook não encontrado" });
     }
@@ -471,11 +471,11 @@ async function startServer() {
         // 2. Carregar clientes (PostgreSQL → fallback JSON)
         await clientManager.loadClients();
 
-        // 3. Inicializar Google Sheets (opcional no dev)
+        // 3. Inicializar Google Sheets (opcional no dev / staging pode não ter credenciais)
         try {
             await sheetsService.initialize();
         } catch (err) {
-            logger.warn(`Google Sheets não disponível: ${err.message}`);
+            logger.warn(`Google Sheets não disponível/inicializado: ${err.message}`);
         }
 
         app.listen(PORT, () => {
@@ -492,9 +492,11 @@ async function startServer() {
 
         const SDR_URL = process.env.SDR_API_URL || 'http://localhost:3001';
         const CALC_URL = process.env.CALC_API_URL || 'http://localhost:3002';
+        const RELATORIO_URL = process.env.RELATORIO_API_URL || 'http://relatorio-dev:3003';
+        const RELATORIO_API_KEY = process.env.RELATORIO_API_KEY || 'admin123';
 
         // Generic proxy helper
-        const proxyRequest = async (targetBase, subPath, req, res, { raw = false } = {}) => {
+        const proxyRequest = async (targetBase, subPath, req, res, { raw = false, extraHeaders = {} } = {}) => {
             try {
                 const http = require('http');
                 const https = require('https');
@@ -525,7 +527,10 @@ async function startServer() {
                     port: url.port,
                     path: url.pathname + url.search,
                     method: req.method,
-                    headers,
+                    headers: {
+                        ...headers,
+                        ...extraHeaders,
+                    },
                     timeout: 30000,
                 };
 
@@ -572,6 +577,12 @@ async function startServer() {
         app.all('/api/calc/*', requireAuth, (req, res) => {
             const subPath = req.path.replace('/api/calc', '/api');
             proxyRequest(CALC_URL, subPath, req, res);
+        });
+
+        // Relatório Proxy
+        app.all('/api/relatorio/*', requireAuth, (req, res) => {
+            const subPath = req.path.replace('/api/relatorio', '/api');
+            proxyRequest(RELATORIO_URL, subPath, req, res, { extraHeaders: { 'x-auth': RELATORIO_API_KEY } });
         });
 
         // SPA Fallback
