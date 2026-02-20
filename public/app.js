@@ -2704,7 +2704,11 @@ async function loadRelatorioSettings() {
         const input = $('#rel-api-key-input');
         const badge = $('#rel-api-badge');
         if (data.configured) {
-            if (input) input.placeholder = data.reportei_api_key; // mostra mascarado
+            if (input && data.reportei_api_key) {
+                const key = data.reportei_api_key;
+                const visiblePart = key.length > 4 ? key.slice(-4) : key;
+                input.placeholder = '••••••••••••••••••••' + visiblePart;
+            }
             if (badge) { badge.style.display = ''; badge.textContent = '✓ Configurado'; }
         }
     } catch { /* serviço offline */ }

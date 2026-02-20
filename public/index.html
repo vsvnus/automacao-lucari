@@ -73,7 +73,8 @@
             <a href="#" class="nav-item" data-section="alerts">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                    </path>
                     <line x1="12" y1="9" x2="12" y2="13"></line>
                     <line x1="12" y1="17" x2="12.01" y2="17"></line>
                 </svg>
@@ -229,14 +230,17 @@
             <div id="integration-alert" class="integration-alert" style="display: none;">
                 <div class="integration-alert-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                        </path>
                         <line x1="12" y1="9" x2="12" y2="13"></line>
                         <line x1="12" y1="17" x2="12.01" y2="17"></line>
                     </svg>
                 </div>
                 <div class="integration-alert-content">
                     <strong>Google Sheets desconectado</strong>
-                    <span id="integration-alert-detail">Leads não estão sendo enviados para as planilhas. Verifique as credenciais do Google.</span>
+                    <span id="integration-alert-detail">Leads não estão sendo enviados para as planilhas. Verifique as
+                        credenciais do Google.</span>
                 </div>
             </div>
 
@@ -496,7 +500,8 @@
                 </div>
                 <div class="header-actions">
                     <button class="btn-icon" id="btn-refresh-alerts" title="Atualizar">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="23 4 23 10 17 10"></polyline>
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                         </svg>
@@ -551,7 +556,11 @@
                 <div class="modal-header">
                     <h3>Trail do Webhook</h3>
                     <button class="btn-icon modal-close" id="trail-modal-close">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
                     </button>
                 </div>
                 <div class="modal-body" id="trail-modal-body">
@@ -711,7 +720,11 @@
                         <p class="page-subtitle">Atendimento automatizado via WhatsApp</p>
                     </div>
                     <button class="btn-primary" id="btn-add-sdr-tenant">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
                         <span>Novo Cliente</span>
                     </button>
                 </div>
@@ -719,7 +732,8 @@
                 <div id="sdr-tenants-list" class="clients-grid">
                     <div class="card" style="grid-column:1/-1">
                         <div class="activity-empty">
-                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="1.5" opacity="0.25">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                             </svg>
                             <p>Nenhum cliente SDR configurado</p>
@@ -733,7 +747,8 @@
             <div id="sdr-detail-view" style="display:none;">
                 <div class="page-header">
                     <div>
-                        <button class="btn-text" id="btn-sdr-back" style="margin-bottom: 8px; padding-left: 0; color: var(--text-secondary);">
+                        <button class="btn-text" id="btn-sdr-back"
+                            style="margin-bottom: 8px; padding-left: 0; color: var(--text-secondary);">
                             ← Voltar para Clientes SDR
                         </button>
                         <h2 class="page-title" id="sdr-detail-title">Detalhes do Cliente</h2>
@@ -741,7 +756,11 @@
                     </div>
                     <div class="header-actions">
                         <button class="btn-primary" id="btn-sdr-edit-detail">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
                             <span>Editar</span>
                         </button>
                     </div>
@@ -750,26 +769,47 @@
                 <!-- Stats Row -->
                 <div class="stats-grid" id="sdr-detail-stats" style="margin-bottom: 24px;">
                     <div class="stat-card">
-                        <div class="stat-icon stat-icon-clients"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
-                        <div class="stat-data"><span class="stat-value" id="sdr-stat-conversations">0</span><span class="stat-label">Conversas</span></div>
+                        <div class="stat-icon stat-icon-clients"><svg width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                            </svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-conversations">0</span><span
+                                class="stat-label">Conversas</span></div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon stat-icon-status"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><line x1="9" y1="10" x2="15" y2="10"></line></svg></div>
-                        <div class="stat-data"><span class="stat-value" id="sdr-stat-messages">0</span><span class="stat-label">Mensagens</span></div>
+                        <div class="stat-icon stat-icon-status"><svg width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                <line x1="9" y1="10" x2="15" y2="10"></line>
+                            </svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-messages">0</span><span
+                                class="stat-label">Mensagens</span></div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon stat-icon-sale"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg></div>
-                        <div class="stat-data"><span class="stat-value" id="sdr-stat-leads">0</span><span class="stat-label">Leads</span></div>
+                        <div class="stat-icon stat-icon-sale"><svg width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                            </svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-leads">0</span><span
+                                class="stat-label">Leads</span></div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-icon stat-icon-webhook"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line></svg></div>
-                        <div class="stat-data"><span class="stat-value" id="sdr-stat-tokens">0</span><span class="stat-label">Tokens Usados</span></div>
+                        <div class="stat-icon stat-icon-webhook"><svg width="24" height="24" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                            </svg></div>
+                        <div class="stat-data"><span class="stat-value" id="sdr-stat-tokens">0</span><span
+                                class="stat-label">Tokens Usados</span></div>
                     </div>
                 </div>
 
                 <!-- Pipeline Bar -->
                 <div class="card" style="margin-bottom: 24px; padding: 16px;">
-                    <div style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);margin-bottom:10px;">Funil de Leads</div>
+                    <div
+                        style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);margin-bottom:10px;">
+                        Funil de Leads</div>
                     <div id="sdr-pipeline-bar" class="pipeline-bar"></div>
                 </div>
 
@@ -795,7 +835,11 @@
                         <div class="card-header">
                             <h3>Status da Conexão</h3>
                             <button class="btn-secondary btn-sm" id="btn-whatsapp-refresh-status">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                </svg>
                                 <span>Verificar</span>
                             </button>
                         </div>
@@ -812,15 +856,21 @@
                             </div>
                         </div>
                         <!-- Reconnect QR Code area -->
-                        <div id="wa-detail-qr-area" style="display:none;padding:24px;text-align:center;border-top:1px solid var(--border-subtle);">
-                            <p style="margin-bottom:12px;color:var(--text-secondary);font-size:0.85rem;">Escaneie o QR Code com o WhatsApp para reconectar</p>
+                        <div id="wa-detail-qr-area"
+                            style="display:none;padding:24px;text-align:center;border-top:1px solid var(--border-subtle);">
+                            <p style="margin-bottom:12px;color:var(--text-secondary);font-size:0.85rem;">Escaneie o QR
+                                Code com o WhatsApp para reconectar</p>
                             <div style="background:#fff;display:inline-block;padding:16px;border-radius:12px;">
                                 <img id="wa-detail-qr-img" src="" alt="QR Code" style="width:256px;height:256px;">
                             </div>
                         </div>
                         <div style="padding:16px;border-top:1px solid var(--border-subtle);">
                             <button class="btn-primary btn-sm" id="btn-whatsapp-reconnect" style="display:none;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                </svg>
                                 <span>Reconectar</span>
                             </button>
                         </div>
@@ -833,13 +883,20 @@
                         <div class="card-header">
                             <h3>Documentos</h3>
                             <label class="btn-primary btn-sm" style="cursor:pointer;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="17 8 12 3 7 8"></polyline>
+                                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                                </svg>
                                 <span>Upload</span>
                                 <input type="file" id="sdr-kb-file-input" accept=".pdf,.txt,.md" style="display:none;">
                             </label>
                         </div>
                         <div id="sdr-kb-list" class="activity-feed">
-                            <div class="activity-empty"><p>Nenhum documento carregado</p></div>
+                            <div class="activity-empty">
+                                <p>Nenhum documento carregado</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -848,15 +905,23 @@
                 <div class="sdr-tab-content" id="sdr-tab-conversations">
                     <div class="sdr-chat-layout">
                         <div class="card sdr-conversations-list-card">
-                            <div class="card-header"><h3>Conversas</h3></div>
+                            <div class="card-header">
+                                <h3>Conversas</h3>
+                            </div>
                             <div id="sdr-conversations-list" class="activity-feed">
-                                <div class="activity-empty"><p>Nenhuma conversa</p></div>
+                                <div class="activity-empty">
+                                    <p>Nenhuma conversa</p>
+                                </div>
                             </div>
                         </div>
                         <div class="card sdr-messages-card">
-                            <div class="card-header"><h3 id="sdr-chat-title">Selecione uma conversa</h3></div>
+                            <div class="card-header">
+                                <h3 id="sdr-chat-title">Selecione uma conversa</h3>
+                            </div>
                             <div id="sdr-messages-list" class="sdr-messages-container">
-                                <div class="activity-empty"><p>Selecione uma conversa à esquerda</p></div>
+                                <div class="activity-empty">
+                                    <p>Selecione uma conversa à esquerda</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -865,7 +930,9 @@
                 <!-- Tab: Leads (Kanban) -->
                 <div class="sdr-tab-content" id="sdr-tab-leads">
                     <div id="sdr-leads-list">
-                        <div class="activity-empty"><p>Nenhum lead encontrado</p></div>
+                        <div class="activity-empty">
+                            <p>Nenhum lead encontrado</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -879,16 +946,30 @@
                     <p class="page-subtitle">Automação de preenchimento de planilhas via Reportei</p>
                 </div>
                 <div class="header-actions">
-                    <button class="btn-secondary" id="btn-relatorio-run-weekly" title="Executar preenchimento semanal agora">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <button class="btn-secondary" id="btn-relatorio-run-weekly"
+                        title="Executar preenchimento semanal agora">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
                         <span>Semanal</span>
                     </button>
-                    <button class="btn-secondary" id="btn-relatorio-run-monthly" title="Executar preenchimento mensal agora">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>
+                    <button class="btn-secondary" id="btn-relatorio-run-monthly"
+                        title="Executar preenchimento mensal agora">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                        </svg>
                         <span>Mensal</span>
                     </button>
                     <button class="btn-primary" id="btn-add-relatorio-client">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
                         <span>Novo Cliente</span>
                     </button>
                 </div>
@@ -900,24 +981,39 @@
                     <h3>Configuração do Reportei</h3>
                     <span class="badge" id="rel-api-badge" style="display:none">Configurado</span>
                 </div>
-                <div style="display:flex;gap:10px;align-items:flex-end;">
-                    <div class="form-group" style="flex:1;margin:0;">
-                        <label for="rel-api-key-input" style="font-size:0.8rem;color:var(--text-secondary);">API Key do Reportei</label>
-                        <input type="password" id="rel-api-key-input" placeholder="Cole sua API Key aqui..." style="font-family:monospace;font-size:0.85rem;">
+                <div class="card-body">
+                    <div style="display:flex;gap:10px;align-items:flex-end;">
+                        <div class="form-group" style="flex:1;margin:0;">
+                            <label for="rel-api-key-input" style="font-size:0.8rem;color:var(--text-secondary);">API Key
+                                do Reportei</label>
+                            <input type="password" id="rel-api-key-input" placeholder="Cole sua API Key aqui..."
+                                style="font-family:monospace;font-size:0.85rem;">
+                        </div>
+                        <button class="btn-primary" id="btn-rel-save-apikey"
+                            style="height:42px;padding:0 18px;">Salvar</button>
+                        <button class="btn-secondary" id="btn-rel-toggle-apikey" title="Mostrar/ocultar"
+                            style="height:42px;width:42px;display:flex;align-items:center;justify-content:center;padding:0;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
                     </div>
-                    <button class="btn-primary btn-sm" id="btn-rel-save-apikey">Salvar</button>
-                    <button class="btn-secondary btn-sm" id="btn-rel-toggle-apikey" title="Mostrar/ocultar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                    </button>
+                    <small style="color:var(--text-tertiary);margin-top:6px;display:block;">Encontre em
+                        <strong>app.reportei.com</strong> → Configurações → API</small>
                 </div>
-                <small style="color:var(--text-tertiary);margin-top:6px;display:block;">Encontre em <strong>app.reportei.com</strong> → Configurações → API</small>
             </div>
 
             <!-- Stats -->
             <div class="stats-grid" id="relatorio-stats-grid" style="margin-bottom:24px;">
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-status">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                        </svg>
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="rel-stat-clients">—</span>
@@ -926,7 +1022,10 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-sale">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="rel-stat-execs">—</span>
@@ -935,7 +1034,12 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-error">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="rel-stat-errors">—</span>
@@ -944,7 +1048,12 @@
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon" style="background:rgba(99,102,241,.12);color:#6366f1;">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                            <line x1="9" y1="21" x2="9" y2="9"></line>
+                        </svg>
                     </div>
                     <div class="stat-data">
                         <span class="stat-value" id="rel-stat-running">—</span>
@@ -957,7 +1066,11 @@
             <div id="relatorio-clients-list" class="clients-grid">
                 <div class="card" style="grid-column:1/-1">
                     <div class="activity-empty">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line></svg>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5" opacity="0.25">
+                            <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                            <line x1="3" y1="9" x2="21" y2="9"></line>
+                        </svg>
                         <p>Carregando clientes...</p>
                     </div>
                 </div>
@@ -968,11 +1081,17 @@
                 <div class="card-header">
                     <h3>Execuções Recentes</h3>
                     <button class="btn-icon" id="btn-relatorio-refresh-execs" title="Atualizar">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
                     </button>
                 </div>
                 <div class="activity-feed" id="relatorio-executions">
-                    <div class="activity-empty"><p>Carregando...</p></div>
+                    <div class="activity-empty">
+                        <p>Carregando...</p>
+                    </div>
                 </div>
             </div>
         </section>
@@ -989,7 +1108,8 @@
             <div id="calc-tenants-list" class="clients-grid">
                 <div class="card" style="grid-column:1/-1">
                     <div class="activity-empty">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5" opacity="0.25">
                             <rect x="4" y="2" width="16" height="20" rx="2"></rect>
                             <line x1="8" y1="6" x2="16" y2="6"></line>
                         </svg>
@@ -1063,10 +1183,14 @@
     <!-- Modal SDR Tenant (full-screen scrollable) -->
     <div id="modal-sdr-tenant" class="modal-overlay">
         <div class="modal-content sdr-modal-fullpage">
-            <div class="modal-header" style="position:sticky;top:0;background:var(--bg-elevated);z-index:10;border-bottom:1px solid var(--border-subtle);">
+            <div class="modal-header"
+                style="position:sticky;top:0;background:var(--bg-elevated);z-index:10;border-bottom:1px solid var(--border-subtle);">
                 <h2 id="sdr-modal-title">Novo Cliente SDR</h2>
                 <button class="btn-modal-close" onclick="closeSdrModal()" aria-label="Fechar">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
                 </button>
             </div>
             <form id="form-sdr-tenant" autocomplete="off">
@@ -1112,8 +1236,13 @@
                             <select id="sdr-tenant-evolution" class="setting-input" style="flex:1;">
                                 <option value="">Carregando instâncias...</option>
                             </select>
-                            <button type="button" class="btn-secondary btn-sm" id="btn-refresh-instances" title="Recarregar" style="height:40px;padding:0 10px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                            <button type="button" class="btn-secondary btn-sm" id="btn-refresh-instances"
+                                title="Recarregar" style="height:40px;padding:0 10px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                </svg>
                             </button>
                         </div>
                         <small class="form-hint">Selecione uma instância existente ou crie uma nova abaixo</small>
@@ -1121,29 +1250,40 @@
                 </div>
 
                 <!-- Criar Nova Instância -->
-                <div id="evolution-create-section" style="margin-top:8px;padding:16px;background:var(--bg-surface);border-radius:8px;border:1px solid var(--border-subtle);">
+                <div id="evolution-create-section"
+                    style="margin-top:8px;padding:16px;background:var(--bg-surface);border-radius:8px;border:1px solid var(--border-subtle);">
                     <div style="display:flex;gap:8px;align-items:flex-end;">
                         <div class="form-group" style="flex:1;margin-bottom:0;">
                             <label for="evolution-new-name" style="font-size:0.8rem;">Criar Nova Instância</label>
                             <input type="text" id="evolution-new-name" placeholder="Nome da nova instância">
                         </div>
-                        <button type="button" class="btn-primary btn-sm" id="btn-create-evolution-instance" style="height:40px;padding:0 16px;white-space:nowrap;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        <button type="button" class="btn-primary btn-sm" id="btn-create-evolution-instance"
+                            style="height:40px;padding:0 16px;white-space:nowrap;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
                             Criar
                         </button>
                     </div>
                     <!-- QR Code Area -->
                     <div id="evolution-qr-area" style="display:none;margin-top:16px;text-align:center;">
                         <div id="evolution-qr-status" style="margin-bottom:8px;">
-                            <span class="badge" id="evolution-connection-badge" style="font-size:0.8rem;">Aguardando...</span>
+                            <span class="badge" id="evolution-connection-badge"
+                                style="font-size:0.8rem;">Aguardando...</span>
                         </div>
-                        <div id="evolution-qr-container" style="background:#fff;display:inline-block;padding:16px;border-radius:12px;">
-                            <img id="evolution-qr-img" src="" alt="QR Code" style="width:256px;height:256px;display:none;">
-                            <div id="evolution-qr-loading" style="width:256px;height:256px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">
+                        <div id="evolution-qr-container"
+                            style="background:#fff;display:inline-block;padding:16px;border-radius:12px;">
+                            <img id="evolution-qr-img" src="" alt="QR Code"
+                                style="width:256px;height:256px;display:none;">
+                            <div id="evolution-qr-loading"
+                                style="width:256px;height:256px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">
                                 Gerando QR Code...
                             </div>
                         </div>
-                        <p style="margin-top:8px;font-size:0.8rem;color:var(--text-secondary);">Escaneie com o WhatsApp para conectar</p>
+                        <p style="margin-top:8px;font-size:0.8rem;color:var(--text-secondary);">Escaneie com o WhatsApp
+                            para conectar</p>
                     </div>
                 </div>
 
@@ -1164,7 +1304,8 @@
                     </div>
                     <div class="form-group" style="grid-column:1/-1;">
                         <label for="sdr-tenant-prompt">System Prompt</label>
-                        <textarea id="sdr-tenant-prompt" class="setting-input" rows="5" placeholder="Você é um SDR virtual da empresa X. Seu objetivo é qualificar leads e agendar reuniões..."></textarea>
+                        <textarea id="sdr-tenant-prompt" class="setting-input" rows="5"
+                            placeholder="Você é um SDR virtual da empresa X. Seu objetivo é qualificar leads e agendar reuniões..."></textarea>
                     </div>
                 </div>
 
@@ -1186,14 +1327,19 @@
                     </div>
                     <div class="form-group" style="grid-column:1/-1;">
                         <label for="sdr-tenant-ooh-msg">Mensagem Fora do Horário</label>
-                        <textarea id="sdr-tenant-ooh-msg" class="setting-input" rows="2" placeholder="Obrigado pelo contato! Estamos fora do horário de atendimento..."></textarea>
+                        <textarea id="sdr-tenant-ooh-msg" class="setting-input" rows="2"
+                            placeholder="Obrigado pelo contato! Estamos fora do horário de atendimento..."></textarea>
                     </div>
                 </div>
 
-                <div class="modal-actions" style="position:sticky;bottom:0;background:var(--bg-elevated);padding:16px 0 0;border-top:1px solid var(--border-subtle);margin-top:24px;">
+                <div class="modal-actions"
+                    style="position:sticky;bottom:0;background:var(--bg-elevated);padding:16px 0 0;border-top:1px solid var(--border-subtle);margin-top:24px;">
                     <button type="button" class="btn-secondary" onclick="closeSdrModal()">Cancelar</button>
                     <button type="submit" class="btn-primary" id="sdr-modal-submit-btn">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
                         <span>Salvar Cliente</span>
                         <span>Salvar Cliente</span>
                     </button>
@@ -1207,7 +1353,10 @@
             <div class="modal-header">
                 <h2 id="modal-relatorio-title">Novo Cliente — Relatório</h2>
                 <button class="btn-modal-close" onclick="closeRelatorioModal()" aria-label="Fechar">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
                 </button>
             </div>
             <form id="form-relatorio-client" autocomplete="off">
@@ -1223,7 +1372,8 @@
                     <select id="rel-reportei-select" required>
                         <option value="">Carregando clientes...</option>
                     </select>
-                    <small class="form-hint" id="rel-select-hint">Selecione o cliente para configurar as integrações</small>
+                    <small class="form-hint" id="rel-select-hint">Selecione o cliente para configurar as
+                        integrações</small>
                 </div>
 
                 <!-- Passo 2: Integrações (auto-descobertas) -->
@@ -1242,7 +1392,8 @@
                             </select>
                         </div>
                     </div>
-                    <small class="form-hint" style="margin-top:4px;display:block;">Integrações descobertas automaticamente da conta Reportei</small>
+                    <small class="form-hint" style="margin-top:4px;display:block;">Integrações descobertas
+                        automaticamente da conta Reportei</small>
                 </div>
 
                 <!-- Passo 3: Planilha -->
@@ -1256,7 +1407,8 @@
                 <!-- Configurações avançadas (colapsáveis) -->
                 <div id="rel-advanced-block" style="display:none;margin-top:12px;">
                     <details>
-                        <summary style="font-size:0.8rem;color:var(--text-secondary);cursor:pointer;padding:4px 0;">Configurações avançadas</summary>
+                        <summary style="font-size:0.8rem;color:var(--text-secondary);cursor:pointer;padding:4px 0;">
+                            Configurações avançadas</summary>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
                             <div class="form-group" style="margin-bottom:0;">
                                 <label for="rel-semanal-tab">Aba Semanal</label>
@@ -1271,7 +1423,8 @@
                             <label for="rel-lead-metric">Métrica de Lead/Ação</label>
                             <select id="rel-lead-metric">
                                 <option value="fb_ads:actions_lead">Leads (padrão)</option>
-                                <option value="fb_ads:actions_onsite_conversion_messaging_conversation_started_7d">Mensagens Iniciadas</option>
+                                <option value="fb_ads:actions_onsite_conversion_messaging_conversation_started_7d">
+                                    Mensagens Iniciadas</option>
                                 <option value="fb_ads:page_follows">Novos Seguidores</option>
                                 <option value="sum_leads_messages">Soma (Leads + Mensagens)</option>
                             </select>
@@ -1286,7 +1439,10 @@
                 <div class="modal-actions" style="margin-top:16px;">
                     <button type="button" class="btn-secondary" onclick="closeRelatorioModal()">Cancelar</button>
                     <button type="submit" class="btn-primary" id="btn-rel-submit" disabled>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
                         <span>Salvar</span>
                     </button>
                 </div>
