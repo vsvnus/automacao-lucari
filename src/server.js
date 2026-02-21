@@ -490,7 +490,7 @@ async function startServer() {
         // Cross-Service Proxy (SDR + Calculadora)
         // ====================================================
 
-        const SDR_URL = process.env.SDR_API_URL || 'http://localhost:3001';
+        const SDR_URL = process.env.SDR_API_URL || (process.env.NODE_ENV === 'production' ? 'https://sdr.vin8n.online' : 'http://localhost:3001');
         const CALC_URL = process.env.CALC_API_URL || 'http://localhost:3002';
         const RELATORIO_URL = process.env.RELATORIO_API_URL || 'http://relatorio-dev:3003';
         const RELATORIO_API_KEY = process.env.RELATORIO_API_KEY || 'admin123';
