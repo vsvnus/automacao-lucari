@@ -2977,29 +2977,25 @@ const relWidgetCache = {};
 const REL_COLUMNS = [
     { colIndex: 1, label: 'Valor gasto', col: 'B' },
     { colIndex: 2, label: 'Impressões', col: 'C' },
-    { colIndex: 3, label: 'CPM', col: 'D' },
     { colIndex: 4, label: 'Cliques no link', col: 'E' },
-    { colIndex: 5, label: 'CPC', col: 'F' },
-    { colIndex: 6, label: 'CTR', col: 'G' },
     { colIndex: 7, label: 'Leads / Ação', col: 'H' },
-    { colIndex: 8, label: 'CPA', col: 'I' },
     { colIndex: 9, label: 'Vendas', col: 'J' },
-    { colIndex: 10, label: 'Custo por venda', col: 'K' },
     { colIndex: 11, label: 'Valor em Venda', col: 'L' },
-    { colIndex: 13, label: 'ROAS', col: 'N' },
 ];
+
 const REL_DEFAULT_META = {
-    1: 'fb_ads:spend', 2: 'fb_ads:impressions', 3: 'fb_ads:cpm',
-    4: 'fb_ads:inline_link_clicks', 5: 'fb_ads:cpc', 6: 'fb_ads:ctr',
-    7: 'fb_ads:actions_lead', 8: 'fb_ads:actions_cost_per_lead',
-    9: 'fb_ads:actions_omni_purchase', 10: 'fb_ads:actions_cost_per_purchase',
-    11: 'fb_ads:purchase_conversion_value', 13: 'fb_ads:purchase_roas',
+    1: 'fb_ads:spend', 2: 'fb_ads:impressions',
+    4: 'fb_ads:inline_link_clicks',
+    7: 'fb_ads:actions_lead',
+    9: 'fb_ads:actions_omni_purchase',
+    11: 'fb_ads:purchase_conversion_value',
 };
+
 const REL_DEFAULT_GOOGLE = {
-    1: 'gads:cost_micros', 2: 'gads:impressions', 3: 'gads:cpm',
-    4: 'gads:clicks', 5: 'gads:cpc', 6: 'gads:ctr',
-    7: 'gads:conversions', 8: 'gads:cost_per_conversion',
-    11: 'gads:conversions_value', 13: 'gads:roas',
+    1: 'gads:cost_micros', 2: 'gads:impressions',
+    4: 'gads:clicks',
+    7: 'gads:conversions',
+    11: 'gads:conversions_value',
 };
 
 async function loadRelatorioSection() {
