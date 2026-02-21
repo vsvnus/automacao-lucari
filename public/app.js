@@ -2684,6 +2684,37 @@ async function updateAlertsBadge() {
 
 const RELATORIO_API_BASE = '/api/relatorio';
 let relatorioEditId = null;
+let relCurrentMetricsConfig = null;
+const relWidgetCache = {};
+
+// Column labels for the metrics config UI
+const REL_COLUMNS = [
+    { colIndex: 1, label: 'Valor gasto', col: 'B' },
+    { colIndex: 2, label: 'Impressões', col: 'C' },
+    { colIndex: 3, label: 'CPM', col: 'D' },
+    { colIndex: 4, label: 'Cliques no link', col: 'E' },
+    { colIndex: 5, label: 'CPC', col: 'F' },
+    { colIndex: 6, label: 'CTR', col: 'G' },
+    { colIndex: 7, label: 'Leads / Ação', col: 'H' },
+    { colIndex: 8, label: 'CPA', col: 'I' },
+    { colIndex: 9, label: 'Vendas', col: 'J' },
+    { colIndex: 10, label: 'Custo por venda', col: 'K' },
+    { colIndex: 11, label: 'Valor em Venda', col: 'L' },
+    { colIndex: 13, label: 'ROAS', col: 'N' },
+];
+const REL_DEFAULT_META = {
+    1: 'fb_ads:spend', 2: 'fb_ads:impressions', 3: 'fb_ads:cpm',
+    4: 'fb_ads:inline_link_clicks', 5: 'fb_ads:cpc', 6: 'fb_ads:ctr',
+    7: 'fb_ads:actions_lead', 8: 'fb_ads:actions_cost_per_lead',
+    9: 'fb_ads:actions_omni_purchase', 10: 'fb_ads:actions_cost_per_purchase',
+    11: 'fb_ads:purchase_conversion_value', 13: 'fb_ads:purchase_roas',
+};
+const REL_DEFAULT_GOOGLE = {
+    1: 'gads:cost_micros', 2: 'gads:impressions', 3: 'gads:cpm',
+    4: 'gads:clicks', 5: 'gads:cpc', 6: 'gads:ctr',
+    7: 'gads:conversions', 8: 'gads:cost_per_conversion',
+    11: 'gads:conversions_value', 13: 'gads:roas',
+};
 
 async function loadRelatorioSection() {
     await Promise.all([
@@ -2857,6 +2888,7 @@ function extractSheetId(value) {
 
 async function openRelatorioModal(client = null) {
     relatorioEditId = client ? client.id : null;
+    relCurrentMetricsConfig = client?.metrics_config || null;
     const isEdit = !!client;
 
     $('#modal-relatorio-title').textContent = isEdit ? 'Editar Cliente' : 'Novo Cliente';
@@ -2867,6 +2899,10 @@ async function openRelatorioModal(client = null) {
     $('#rel-notes').value = client?.notes || '';
     $('#rel-spreadsheet-url').value = client?.spreadsheet_id || '';
     $('#rel-spreadsheet-id').value = client?.spreadsheet_id || '';
+    const mcBlock = $('#rel-metrics-config-block');
+    if (mcBlock) { mcBlock.style.display = 'none'; }
+    const mcContainer = $('#rel-metrics-config-container');
+    if (mcContainer) mcContainer.innerHTML = '';
 
     // Reset blocos
     const sel = $('#rel-reportei-select');
@@ -2965,6 +3001,11 @@ async function onReporteiClientSelected(reporteiId, existingClient = null) {
     if (sheetBlock) sheetBlock.style.display = '';
     if (advBlock) advBlock.style.display = '';
     if (submitBtn) submitBtn.disabled = false;
+
+    // Build metrics config UI
+    const mcBlock = $('#rel-metrics-config-block');
+    if (mcBlock) mcBlock.style.display = '';
+    buildRelatorioMetricsUI();
 }
 
 $('#rel-reportei-select')?.addEventListener('change', (e) => {
@@ -2996,11 +3037,137 @@ async function deleteRelatorioClient(id, name) {
     } catch (err) { showToast(err.message, 'error'); }
 }
 
+// ---- Metrics Config UI ----
+
+function buildRelatorioMetricsUI() {
+    const container = $('#rel-metrics-config-container');
+    if (!container) return;
+
+    const metaId = $('#rel-meta-select')?.value;
+    const googleId = $('#rel-google-select')?.value;
+
+    const sections = [];
+    if (metaId) {
+        sections.push({ key: 'semanal_meta', label: 'Semanal — Meta Ads', integrationId: metaId, platform: 'meta' });
+        sections.push({ key: 'mensal_meta', label: 'Mensal — Meta Ads', integrationId: metaId, platform: 'meta' });
+    }
+    if (googleId) {
+        sections.push({ key: 'semanal_google', label: 'Semanal — Google Ads', integrationId: googleId, platform: 'google' });
+        sections.push({ key: 'mensal_google', label: 'Mensal — Google Ads', integrationId: googleId, platform: 'google' });
+    }
+
+    if (sections.length === 0) {
+        container.innerHTML = '<small style="color:var(--text-tertiary);">Selecione ao menos uma integração para configurar.</small>';
+        return;
+    }
+
+    let html = '';
+    for (const s of sections) {
+        html += `<div style="border:1px solid var(--border-subtle);border-radius:8px;margin-bottom:8px;overflow:hidden;" data-rel-config-key="${s.key}">
+            <div onclick="toggleRelMetricsSection(this)" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-surface);cursor:pointer;font-size:0.8rem;font-weight:600;color:var(--text-primary);user-select:none;">
+                <span>${s.label}</span>
+                <span style="transition:transform 150ms;font-size:0.65rem;color:var(--text-tertiary);">▶</span>
+            </div>
+            <div style="display:none;padding:10px 12px;" class="rel-mc-body">
+                <table style="width:100%;font-size:0.78rem;border-collapse:collapse;">
+                    <thead><tr>
+                        <th style="text-align:center;padding:3px 4px;font-weight:600;color:var(--text-tertiary);font-size:0.7rem;width:32px;">Col</th>
+                        <th style="text-align:left;padding:3px 4px;font-weight:600;color:var(--text-tertiary);font-size:0.7rem;">Campo</th>
+                        <th style="text-align:left;padding:3px 4px;font-weight:600;color:var(--text-tertiary);font-size:0.7rem;">Métrica Reportei</th>
+                    </tr></thead>
+                    <tbody id="rel-mc-rows-${s.key}"><tr><td colspan="3" style="text-align:center;padding:8px;color:var(--text-tertiary);">Carregando widgets...</td></tr></tbody>
+                </table>
+            </div>
+        </div>`;
+    }
+    container.innerHTML = html;
+
+    for (const s of sections) {
+        loadRelWidgetsForSection(s.key, s.integrationId, s.platform);
+    }
+}
+
+function toggleRelMetricsSection(headerEl) {
+    const body = headerEl.nextElementSibling;
+    const arrow = headerEl.querySelector('span:last-child');
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : '';
+    if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(90deg)';
+}
+
+async function loadRelWidgetsForSection(configKey, integrationId, platform) {
+    const tbody = document.getElementById(`rel-mc-rows-${configKey}`);
+    if (!tbody) return;
+    try {
+        let widgets;
+        if (relWidgetCache[integrationId]) {
+            widgets = relWidgetCache[integrationId];
+        } else {
+            const res = await fetch(`${RELATORIO_API_BASE}/reportei/integrations/${integrationId}/widgets`);
+            widgets = (await res.json()).data || [];
+            relWidgetCache[integrationId] = widgets;
+        }
+
+        const existingCfg = relCurrentMetricsConfig && relCurrentMetricsConfig[configKey];
+        const defaults = platform === 'meta' ? REL_DEFAULT_META : REL_DEFAULT_GOOGLE;
+
+        let html = '';
+        for (const col of REL_COLUMNS) {
+            let currentKey = '';
+            if (existingCfg) {
+                const entry = existingCfg.find(m => m.colIndex === col.colIndex);
+                currentKey = entry ? (entry.key || '') : '';
+            } else {
+                currentKey = defaults[col.colIndex] || '';
+            }
+
+            let options = '<option value="">— Deixar vazio —</option>';
+            for (const w of widgets) {
+                const sel = w.reference_key === currentKey ? ' selected' : '';
+                options += `<option value="${escapeHtml(w.reference_key)}"${sel}>${escapeHtml(w.reference_key)}</option>`;
+            }
+            if (currentKey && !widgets.find(w => w.reference_key === currentKey)) {
+                options += `<option value="${escapeHtml(currentKey)}" selected>${escapeHtml(currentKey)} ✦</option>`;
+            }
+
+            html += `<tr style="border-top:1px solid var(--border-subtle);">
+                <td style="text-align:center;padding:4px;font-weight:600;color:var(--text-tertiary);">${col.col}</td>
+                <td style="padding:4px;color:var(--text-secondary);">${col.label}</td>
+                <td style="padding:4px;"><select data-col-index="${col.colIndex}" data-rel-config-key="${configKey}" style="width:100%;font-size:0.78rem;padding:3px 4px;border:1px solid var(--border-subtle);border-radius:4px;background:var(--bg-surface);color:var(--text-primary);">${options}</select></td>
+            </tr>`;
+        }
+        tbody.innerHTML = html;
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="3" style="color:var(--error);padding:8px;">Erro: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+function collectRelatorioMetricsConfig() {
+    const config = {};
+    const sections = document.querySelectorAll('[data-rel-config-key]');
+    sections.forEach(section => {
+        const key = section.dataset.relConfigKey;
+        const selects = section.querySelectorAll('select[data-rel-config-key]');
+        if (selects.length === 0) return;
+        const entries = [];
+        selects.forEach(sel => {
+            const colIdx = parseInt(sel.dataset.colIndex);
+            const metricKey = sel.value || null;
+            const col = REL_COLUMNS.find(c => c.colIndex === colIdx);
+            entries.push({ colIndex: colIdx, key: metricKey, label: col ? col.label : '' });
+        });
+        config[key] = entries;
+    });
+    return Object.keys(config).length > 0 ? config : null;
+}
+
 $('#form-relatorio-client')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const sheetRaw = $('#rel-spreadsheet-url')?.value?.trim() || '';
     const sheetId = extractSheetId(sheetRaw);
     if (!sheetId) return showToast('Informe o link ou ID da planilha', 'error');
+
+    const metricsConfig = collectRelatorioMetricsConfig();
 
     const payload = {
         name: $('#rel-client-name').value.trim(),
@@ -3011,6 +3178,7 @@ $('#form-relatorio-client')?.addEventListener('submit', async (e) => {
         semanal_tab_name: $('#rel-semanal-tab').value.trim() || 'Atualizar Projeção Semanal',
         mensal_tab_name: $('#rel-mensal-tab').value.trim() || 'Métricas Gerenciadores',
         lead_metric: $('#rel-lead-metric').value || 'fb_ads:actions_lead',
+        metrics_config: metricsConfig,
         notes: $('#rel-notes').value.trim() || null,
         active: true,
     };
