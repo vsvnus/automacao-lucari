@@ -3385,6 +3385,57 @@ function toggleRelMetricsSection(headerEl) {
     if (arrow) arrow.style.transform = isOpen ? '' : 'rotate(90deg)';
 }
 
+const METRIC_TRANSLATIONS = {
+    // Meta Ads
+    'fb_ads:spend': 'Valor gasto',
+    'fb_ads:impressions': 'Impressões',
+    'fb_ads:cpm': 'CPM',
+    'fb_ads:cpc': 'CPC',
+    'fb_ads:cpc_facebook': 'CPC (Facebook)',
+    'fb_ads:cpc_instagram': 'CPC (Instagram)',
+    'fb_ads:ctr': 'CTR',
+    'fb_ads:inline_link_clicks': 'Cliques no link',
+    'fb_ads:facebook_link_clicks': 'Cliques (Facebook)',
+    'fb_ads:instagram_link_clicks': 'Cliques (Instagram)',
+    'fb_ads:actions_lead': 'Leads (Padrão)',
+    'fb_ads:actions_onsite_conversion_messaging_conversation_started_7d': 'Mensagens Iniciadas',
+    'fb_ads:actions_cost_per_lead': 'CPA (Custo por Lead)',
+    'fb_ads:actions_omni_purchase': 'Vendas (Compras)',
+    'fb_ads:actions_cost_per_purchase': 'Custo por Venda/Compra',
+    'fb_ads:purchase_conversion_value': 'Valor em Vendas (ROAS)',
+    'fb_ads:purchase_roas': 'ROAS',
+    'fb_ads:page_follows': 'Novos Seguidores',
+    'sum_leads_messages': 'Soma (Leads + Mensagens)',
+
+    // Google Ads
+    'gads:cost_micros': 'Valor gasto',
+    'gads:impressions': 'Impressões',
+    'gads:cpm': 'CPM',
+    'gads:clicks': 'Cliques no link',
+    'gads:cpc': 'CPC',
+    'gads:ctr': 'CTR',
+    'gads:conversions': 'Leads (Conversões)',
+    'gads:cost_per_conversion': 'Custo por Conversão (CPA)',
+    'gads:conversions_value': 'Valor em Vendas',
+    'gads:roas': 'ROAS'
+};
+
+function formatMetricName(key) {
+    if (!key) return '';
+    if (METRIC_TRANSLATIONS[key]) {
+        return METRIC_TRANSLATIONS[key];
+    }
+    // Fallback: formata a string "meta: nome_da_metrica" ou semelhante
+    let pretty = key.replace(/_/g, ' ');
+    if (pretty.startsWith('fb ads:')) {
+        pretty = pretty.replace('fb ads:', 'Meta: ');
+    } else if (pretty.startsWith('gads:')) {
+        pretty = pretty.replace('gads:', 'Google: ');
+    }
+    // Capitaliza a primeira letra de cada palavra
+    return pretty.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 async function loadRelWidgetsForSection(configKey, integrationId, platform) {
     const tbody = document.getElementById(`rel-mc-rows-${configKey}`);
     if (!tbody) return;
@@ -3414,10 +3465,12 @@ async function loadRelWidgetsForSection(configKey, integrationId, platform) {
             let options = '<option value="">— Deixar vazio —</option>';
             for (const w of widgets) {
                 const sel = w.reference_key === currentKey ? ' selected' : '';
-                options += `<option value="${escapeHtml(w.reference_key)}"${sel}>${escapeHtml(w.reference_key)}</option>`;
+                const displayLabel = formatMetricName(w.reference_key);
+                options += `<option value="${escapeHtml(w.reference_key)}"${sel}>${escapeHtml(displayLabel)}</option>`;
             }
             if (currentKey && !widgets.find(w => w.reference_key === currentKey)) {
-                options += `<option value="${escapeHtml(currentKey)}" selected>${escapeHtml(currentKey)} ✦</option>`;
+                const displayLabel = formatMetricName(currentKey);
+                options += `<option value="${escapeHtml(currentKey)}" selected>${escapeHtml(displayLabel)} ✦</option>`;
             }
 
             html += `<tr style="border-top:1px solid var(--border-subtle);">
