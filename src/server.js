@@ -132,7 +132,9 @@ app.get('/health', async (_req, res) => {
     let evolutionOk = false;
     try {
         const http = require('http');
-        const sdrUrl = process.env.SDR_API_URL || 'http://localhost:3001';
+        let sdrUrl = process.env.SDR_API_URL || 'http://localhost:3001';
+        if (sdrUrl === 'http://lucari-sdr:3001') sdrUrl = 'https://sdr.vin8n.online';
+
         const sdrHealth = await new Promise((resolve) => {
             const req = http.get(sdrUrl + '/health', { timeout: 3000 }, (resp) => {
                 let data = '';
@@ -490,7 +492,9 @@ async function startServer() {
         // Cross-Service Proxy (SDR + Calculadora)
         // ====================================================
 
-        const SDR_URL = process.env.SDR_API_URL || (process.env.NODE_ENV === 'production' ? 'https://sdr.vin8n.online' : 'http://localhost:3001');
+        let SDR_URL = process.env.SDR_API_URL || (process.env.NODE_ENV === 'production' ? 'https://sdr.vin8n.online' : 'http://localhost:3001');
+        if (SDR_URL === 'http://lucari-sdr:3001') SDR_URL = 'https://sdr.vin8n.online';
+
         const CALC_URL = process.env.CALC_API_URL || 'http://localhost:3002';
         const RELATORIO_URL = process.env.RELATORIO_API_URL || 'http://relatorio-dev:3003';
         const RELATORIO_API_KEY = process.env.RELATORIO_API_KEY || 'admin123';
