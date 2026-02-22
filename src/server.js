@@ -518,8 +518,9 @@ async function startServer() {
                 } else {
                     headers['Content-Type'] = 'application/json';
                 }
-                if (process.env.INTERNAL_API_KEY) {
-                    headers['X-Internal-Key'] = process.env.INTERNAL_API_KEY;
+                const internalKey = process.env.INTERNAL_API_KEY || 'lucari-internal-dev-2026';
+                if (internalKey) {
+                    headers['X-Internal-Key'] = internalKey;
                 }
 
                 const options = {
