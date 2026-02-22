@@ -136,7 +136,9 @@ app.get('/health', async (_req, res) => {
         if (sdrUrl === 'http://lucari-sdr:3001') sdrUrl = 'https://sdr.vin8n.online';
 
         const sdrHealth = await new Promise((resolve) => {
-            const req = http.get(sdrUrl + '/health', { timeout: 3000 }, (resp) => {
+            const reqUrl = sdrUrl + '/health';
+            const client = reqUrl.startsWith('https') ? require('https') : require('http');
+            const req = client.get(reqUrl, { timeout: 3000 }, (resp) => {
                 let data = '';
                 resp.on('data', (chunk) => data += chunk);
                 resp.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
