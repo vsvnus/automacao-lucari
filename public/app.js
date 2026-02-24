@@ -1210,11 +1210,11 @@ function openUserModal(editUser) {
         hint.textContent = 'Obrigatório para novos usuários';
     }
 
-    modal.classList.add('active');
+    modal.classList.add('visible');
 }
 
 function closeUserModal() {
-    $('#modal-user')?.classList.remove('active');
+    $('#modal-user')?.classList.remove('visible');
 }
 
 function handleEditUser(id) {
