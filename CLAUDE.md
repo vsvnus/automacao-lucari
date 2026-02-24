@@ -74,6 +74,14 @@ FASE 4 — PROMOÇÃO PARA PRODUÇÃO (SÓ APÓS APROVAÇÃO DE VINICIUS)
 
 Dashboard para gestão de leads recebidos via webhooks Tintim. Automatiza inserção em Google Sheets por cliente/mês, com painel de métricas, alertas e gerenciamento de usuários.
 
+### IMPORTANTE: Frontend Centralizado
+> O Dashboard é o **ÚNICO frontend** do ecossistema Lucari. SDR, Relatórios e Calculadora são **backend-only** (API + automação). Seus frontends são seções dentro deste dashboard, que faz proxy das chamadas API:
+> - `/api/sdr/*` → SDR backend (sdr.vin8n.online)
+> - `/api/relatorio/*` → Relatório backend (relatorio.vin8n.online)
+> - `/api/calc/*` → Calculadora backend (calc.vin8n.online)
+>
+> **NUNCA crie frontends separados para esses serviços.** Alterações de UI vão SEMPRE neste repo (automacao-lucari).
+
 ## URLs
 
 | Ambiente | URL |
