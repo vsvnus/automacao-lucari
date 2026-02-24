@@ -2899,6 +2899,17 @@ kbd {
     }
 }
 
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+}
 .alert-card.alert-danger {
     background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
     border-color: rgba(239, 68, 68, 0.3);

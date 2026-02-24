@@ -44,11 +44,29 @@ async function loadClientAlerts() {
                     </svg>
                     Investigar
                 </button>
+                <button class="btn-dismiss" onclick="dismissAlert(this)" title="Fechar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
         `}).join("");
     } catch (e) {
         console.error("Erro ao carregar alertas:", e);
     }
+}
+
+function dismissAlert(btn) {
+    const card = btn.closest(".alert-card");
+    card.style.animation = "fadeOut 0.2s ease-out forwards";
+    setTimeout(() => {
+        card.remove();
+        const container = document.getElementById("dashboard-alerts");
+        if (container && container.children.length === 0) {
+            container.style.display = "none";
+        }
+    }, 200);
 }
 
 function navigateToLogs(clientSlug) {
