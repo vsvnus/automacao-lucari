@@ -2007,6 +2007,56 @@ window.handleDeleteSdrTenant = async function (tenantId, tenantName) {
 };
 
 // --- SDR: Detail Panel ---
+// --- SDR: Toggle Bot Active/Paused ---
+function updateToggleActiveBtn(tenant) {
+    const btn = $('#btn-sdr-toggle-active');
+    const label = $('#sdr-toggle-label');
+    const icon = $('#sdr-toggle-icon');
+    if (!btn || !tenant) return;
+
+    const isActive = tenant.active !== false;
+    if (isActive) {
+        label.textContent = 'Pausar Bot';
+        btn.className = 'btn-secondary';
+        icon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+    } else {
+        label.textContent = 'Ativar Bot';
+        btn.className = 'btn-primary';
+        icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+    }
+}
+
+$('#btn-sdr-toggle-active')?.addEventListener('click', async () => {
+    const tenant = sdrState.selectedTenant;
+    if (!tenant) return;
+
+    const isActive = tenant.active !== false;
+    const action = isActive ? 'pausar' : 'ativar';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenant.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: !isActive }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || `Erro ao ${action}`);
+        }
+
+        const updated = await res.json();
+        sdrState.selectedTenant = updated;
+        const idx = sdrState.tenants.findIndex(t => String(t.id) === String(tenant.id));
+        if (idx >= 0) sdrState.tenants[idx] = updated;
+
+        updateToggleActiveBtn(updated);
+        showToast(isActive ? 'Bot pausado — não vai responder mensagens' : 'Bot ativado!', 'success');
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+});
+
 window.openSdrDetail = async function (tenantId) {
     const tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
     if (!tenant) {
@@ -2026,6 +2076,9 @@ window.openSdrDetail = async function (tenantId) {
     // Set header
     $('#sdr-detail-title').textContent = tenant.name;
     $('#sdr-detail-subtitle').textContent = `${tenant.slug} · ${tenant.niche || 'Geral'}`;
+
+    // Update toggle button state
+    updateToggleActiveBtn(tenant);
 
     // Load stats
     loadSdrStats(tenantId);
