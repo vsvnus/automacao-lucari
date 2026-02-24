@@ -1778,6 +1778,18 @@ closeModal = function () {
 
 const SDR_API_BASE = '/api/sdr';
 
+function getSdrPublicUrl() {
+    const host = location.hostname;
+    if (host === 'staging.vin8n.online') return 'https://staging-sdr.vin8n.online';
+    if (host === 'dashboard.vin8n.online') return 'https://sdr.vin8n.online';
+    return 'http://localhost:3001';
+}
+
+function getSdrConnectUrl(slug) {
+    if (!slug) return null;
+    return `${getSdrPublicUrl()}/connect/${slug}`;
+}
+
 const sdrState = {
     tenants: [],
     selectedTenantId: null,
@@ -2047,7 +2059,50 @@ async function showEvolutionQRCode(instanceName) {
     }
 
     startEvolutionPolling(instanceName);
+
+    // Show connect link buttons if slug is available
+    const connectLinks = $('#evolution-connect-links');
+    const slug = $('#sdr-tenant-slug')?.value?.trim();
+    if (connectLinks) {
+        connectLinks.style.display = slug ? 'flex' : 'none';
+    }
 }
+
+// --- Connect Link: Copy & Send ---
+$('#btn-copy-connect-link')?.addEventListener('click', () => {
+    const slug = $('#sdr-tenant-slug')?.value?.trim();
+    const tenantId = $('#sdr-tenant-id')?.value;
+    if (!slug) {
+        showToast('Preencha o slug do cliente primeiro', 'error');
+        return;
+    }
+    if (!tenantId) {
+        showToast('Salve o cliente primeiro para gerar o link', 'error');
+        return;
+    }
+    const url = getSdrConnectUrl(slug);
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('Link copiado!', 'success');
+    }).catch(() => {
+        showToast('Erro ao copiar', 'error');
+    });
+});
+
+$('#btn-send-connect-link')?.addEventListener('click', () => {
+    const slug = $('#sdr-tenant-slug')?.value?.trim();
+    const tenantId = $('#sdr-tenant-id')?.value;
+    if (!slug) {
+        showToast('Preencha o slug do cliente primeiro', 'error');
+        return;
+    }
+    if (!tenantId) {
+        showToast('Salve o cliente primeiro para gerar o link', 'error');
+        return;
+    }
+    const url = getSdrConnectUrl(slug);
+    const msg = encodeURIComponent(`Olá! Conecte seu WhatsApp ao Bot SDR acessando este link:\n${url}`);
+    window.open(`https://wa.me/?text=${msg}`, '_blank');
+});
 
 // Event: Create new instance
 $('#btn-create-evolution-instance')?.addEventListener('click', async () => {
@@ -2450,6 +2505,32 @@ $('#btn-whatsapp-reconnect')?.addEventListener('click', async () => {
     } else {
         if (badge) badge.textContent = 'Erro ao gerar QR Code';
     }
+});
+
+// --- WhatsApp Detail: Connect Link buttons ---
+$('#btn-wa-copy-connect-link')?.addEventListener('click', () => {
+    const tenant = sdrState.selectedTenant;
+    if (!tenant?.slug) {
+        showToast('Slug do cliente não disponível', 'error');
+        return;
+    }
+    const url = getSdrConnectUrl(tenant.slug);
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('Link copiado!', 'success');
+    }).catch(() => {
+        showToast('Erro ao copiar', 'error');
+    });
+});
+
+$('#btn-wa-send-connect-link')?.addEventListener('click', () => {
+    const tenant = sdrState.selectedTenant;
+    if (!tenant?.slug) {
+        showToast('Slug do cliente não disponível', 'error');
+        return;
+    }
+    const url = getSdrConnectUrl(tenant.slug);
+    const msg = encodeURIComponent(`Olá! Conecte seu WhatsApp ao Bot SDR acessando este link:\n${url}`);
+    window.open(`https://wa.me/?text=${msg}`, '_blank');
 });
 
 // --- SDR: Config Tab ---
