@@ -3075,6 +3075,15 @@ kbd {
     border-color: rgba(255, 255, 255, 0.12);
 }
 
+.alert-error-item .alert-dismiss {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.alert-error-item:hover .alert-dismiss {
+    opacity: 1;
+}
+
 .alert-error-icon {
     width: 36px;
     height: 36px;

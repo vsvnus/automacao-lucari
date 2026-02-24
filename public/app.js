@@ -1647,6 +1647,9 @@ async function loadSDRSection() {
     if (listView) listView.style.display = '';
     if (detailView) detailView.style.display = 'none';
 
+    // Load global OpenAI key
+    loadSdrOpenAIKey();
+
     try {
         const res = await fetch(`${SDR_API_BASE}/tenants`);
         if (!res.ok) {
@@ -2126,7 +2129,6 @@ function switchSdrTab(tabName) {
     if (tabName === 'knowledge') loadSdrKnowledge(tenantId);
     if (tabName === 'conversations') loadSdrConversations(tenantId);
     if (tabName === 'leads') loadSdrLeads(tenantId);
-    if (tabName === 'apikey') loadSdrOpenAIKey(tenantId);
 }
 
 // --- SDR: Stats ---
@@ -2599,13 +2601,12 @@ async function loadSdrLeads(tenantId) {
 // SDR: OpenAI API Key Management
 // ============================================
 
-async function loadSdrOpenAIKey(tenantId) {
+async function loadSdrOpenAIKey() {
     const badge = $('#sdr-openai-badge');
     const input = $('#sdr-openai-key-input');
-    if (!tenantId) return;
 
     try {
-        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/settings`);
+        const res = await fetch(`${SDR_API_BASE}/settings`);
         if (!res.ok) throw new Error('offline');
         const data = await res.json();
         if (data.openai_api_key) {
@@ -2615,7 +2616,7 @@ async function loadSdrOpenAIKey(tenantId) {
                 input.type = 'password';
             }
             if (badge) { badge.style.display = ''; badge.textContent = 'Configurada'; badge.style.background = 'var(--accent-green-subtle)'; badge.style.color = 'var(--accent-green)'; }
-            loadSdrOpenAIBalance(tenantId);
+            loadSdrOpenAIBalance();
         } else {
             if (input) input.value = '';
             if (badge) badge.style.display = 'none';
@@ -2628,14 +2629,14 @@ async function loadSdrOpenAIKey(tenantId) {
     }
 }
 
-async function loadSdrOpenAIBalance(tenantId) {
+async function loadSdrOpenAIBalance() {
     const totalEl = $('#sdr-openai-balance-total');
     const remainEl = $('#sdr-openai-balance-remaining');
     const usedEl = $('#sdr-openai-balance-used');
     const noteEl = $('#sdr-openai-balance-note');
 
     try {
-        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/openai-balance`);
+        const res = await fetch(`${SDR_API_BASE}/settings/openai-balance`);
         if (!res.ok) throw new Error('offline');
         const data = await res.json();
 
@@ -2668,19 +2669,17 @@ $('#btn-sdr-save-openai-key')?.addEventListener('click', async () => {
         showToast('Cole a API Key completa', 'error');
         return;
     }
-    const tenantId = sdrState.selectedTenantId;
-    if (!tenantId) return;
 
     try {
-        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/settings`, {
+        const res = await fetch(`${SDR_API_BASE}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ openai_api_key: val }),
         });
         if (!res.ok) throw new Error('Erro ao salvar');
-        showToast('API Key salva!', 'success');
+        showToast('API Key salva! O serviço será atualizado.', 'success');
         input.value = '';
-        loadSdrOpenAIKey(tenantId);
+        loadSdrOpenAIKey();
     } catch (err) {
         showToast(err.message || 'Erro ao salvar API Key', 'error');
     }
@@ -2692,8 +2691,7 @@ $('#btn-sdr-toggle-openai-key')?.addEventListener('click', () => {
 });
 
 $('#btn-sdr-refresh-openai-balance')?.addEventListener('click', () => {
-    const tenantId = sdrState.selectedTenantId;
-    if (tenantId) loadSdrOpenAIBalance(tenantId);
+    loadSdrOpenAIBalance();
 });
 
 // ============================================
@@ -2801,17 +2799,20 @@ function renderAlertErrors(errors) {
         var stepLabel = formatStepName(err.step_name);
         var timeAgo = formatTimeAgo(err.created_at);
 
-        return '<div class="alert-error-item" onclick="openTrailModal(\'' + err.trace_id + '\')">' +
-            '<div class="alert-error-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>' +
-            '<div class="alert-error-info">' +
+        return '<div class="alert-error-item">' +
+            '<div class="alert-error-icon" onclick="openTrailModal(\'' + err.trace_id + '\')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>' +
+            '<div class="alert-error-info" onclick="openTrailModal(\'' + err.trace_id + '\')" style="cursor:pointer;flex:1;">' +
             '<div class="lead-name">' + escapeHtml(name) + (client ? ' - ' + escapeHtml(client) : '') + '</div>' +
             '<div class="error-detail">' + escapeHtml(err.detail || "") + '</div>' +
             '<div class="error-step">Falhou em: ' + stepLabel + '</div>' +
             '</div>' +
-            '<div class="alert-error-meta">' +
+            '<div class="alert-error-meta" onclick="openTrailModal(\'' + err.trace_id + '\')" style="cursor:pointer;">' +
             '<div class="error-time">' + timeAgo + '</div>' +
             '<div class="error-badge">' + escapeHtml(err.step_name) + '</div>' +
             '</div>' +
+            '<button class="btn-dismiss alert-dismiss" onclick="event.stopPropagation();this.closest(\'.alert-error-item\').remove();" title="Dispensar">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+            '</button>' +
             '</div>';
     }).join("");
 }
