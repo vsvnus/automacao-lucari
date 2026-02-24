@@ -749,6 +749,56 @@
             </div>
 
             <div class="settings-grid">
+                <!-- Usuários -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <h3>Usuários</h3>
+                        <button class="btn-primary btn-sm" id="btn-add-user">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            <span>Novo Usuário</span>
+                        </button>
+                    </div>
+                    <div class="users-list" id="users-list">
+                        <p class="empty-state">Carregando...</p>
+                    </div>
+                </div>
+
+                <!-- Webhook URL (editável) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3>🔗 URL do Webhook</h3>
+                    </div>
+                    <div class="settings-list">
+                        <div class="setting-row setting-row-stacked">
+                            <label class="setting-label" for="settings-webhook-input">URL que o Tintim envia os
+                                webhooks</label>
+                            <div class="webhook-edit-group">
+                                <input type="url" id="settings-webhook-input" class="setting-input"
+                                    placeholder="https://dashboard.vin8n.online/webhook/tintim" />
+                                <button class="btn-primary btn-sm" id="btn-save-webhook" title="Salvar URL">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                    </svg>
+                                    <span>Salvar</span>
+                                </button>
+                                <button class="btn-copy btn-sm" id="btn-copy-webhook-settings" title="Copiar URL">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <small class="form-hint">Cole no Tintim em: Configurações → Webhooks → Conversa criada /
+                                Conversa alterada</small>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Info do Sistema -->
                 <div class="card">
                     <div class="card-header">
@@ -1651,6 +1701,48 @@
                     <button type="submit" class="btn-primary" id="btn-rel-submit" disabled>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                        <span>Salvar</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Usuário -->
+    <div id="modal-user" class="modal-overlay">
+        <div class="modal-content" style="max-width: 460px;">
+            <div class="modal-header">
+                <h2 id="modal-user-title">Novo Usuário</h2>
+                <button class="btn-modal-close" onclick="closeUserModal()" aria-label="Fechar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <form id="form-user" autocomplete="off">
+                <input type="hidden" id="user-edit-id">
+                <div class="form-group">
+                    <label for="user-name">Nome</label>
+                    <input type="text" id="user-name" placeholder="Nome completo" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-email">E-mail</label>
+                    <input type="email" id="user-email" placeholder="email@exemplo.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-password">Senha</label>
+                    <input type="password" id="user-password" placeholder="Mínimo 6 caracteres" minlength="6">
+                    <small class="form-hint" id="user-password-hint">Obrigatório para novos usuários</small>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeUserModal()">Cancelar</button>
+                    <button type="submit" class="btn-primary">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                         <span>Salvar</span>
