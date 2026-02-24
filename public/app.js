@@ -31,11 +31,14 @@ const refs = {
 // Navigation
 // ============================================
 
+// Sections that belong to Automação Leads app
+const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts'];
+
 function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
+    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -45,10 +48,18 @@ function navigateTo(section, replace = false) {
     const target = $(`#section-${section}`);
     if (target) target.classList.add('active');
 
-    // Update sidebar active state
+    // Update sidebar active state - Automação sections all highlight 'automacao'
+    const sidebarSection = AUTOMACAO_SECTIONS.includes(section) ? 'automacao' : section;
     $$('.nav-item').forEach(item => {
-        item.classList.toggle('active', item.dataset.section === section);
+        item.classList.toggle('active', item.dataset.section === sidebarSection);
     });
+
+    // Update automacao tab bar active state across all sections that have it
+    if (AUTOMACAO_SECTIONS.includes(section)) {
+        $$('.automacao-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.autotab === section);
+        });
+    }
 
     // Close mobile sidebar
     closeMobileSidebar();
@@ -56,7 +67,15 @@ function navigateTo(section, replace = false) {
     // Update app context bar
     const contextBar = document.getElementById('app-context-bar');
     const contextName = document.getElementById('app-context-name');
-    const appSections = { sdr: 'SDR de IA', calculadora: 'Calculadora', relatorio: 'Relatórios' };
+    const appSections = {
+        automacao: 'Automação de Leads',
+        clients: 'Automação de Leads',
+        logs: 'Automação de Leads',
+        alerts: 'Automação de Leads',
+        sdr: 'SDR de IA',
+        calculadora: 'Calculadora',
+        relatorio: 'Relatórios'
+    };
     if (contextBar) {
         if (appSections[section]) {
             contextBar.style.display = 'flex';
@@ -76,8 +95,8 @@ function navigateTo(section, replace = false) {
     }
 
     // Refresh section data
+    if (section === 'automacao') loadAutomacaoOverview();
     if (section === 'clients') loadClients();
-    if (section === 'settings') loadSettings();
     if (section === 'settings') loadSettings();
     if (section === 'logs') {
         populateClientSelect();
@@ -90,6 +109,7 @@ function navigateTo(section, replace = false) {
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
     if (section === 'relatorio') loadRelatorioSection();
+    if (section === 'dashboard') loadDashboardOverview();
 }
 
 // Handle Browser Back/Forward
@@ -112,6 +132,17 @@ $$('.nav-item').forEach(item => {
             navigateTo(section);
         }
     });
+});
+
+// Automação tab bar clicks (delegated)
+document.addEventListener('click', (e) => {
+    const tab = e.target.closest('.automacao-tab');
+    if (!tab) return;
+    e.preventDefault();
+    const targetSection = tab.dataset.autotab;
+    if (targetSection && targetSection !== state.currentSection) {
+        navigateTo(targetSection);
+    }
 });
 
 // Mobile sidebar
@@ -362,26 +393,11 @@ function setupPeriodSelector() {
 // ============================================
 async function updateDashboard() {
     const health = await fetchHealth();
-    const stats = await fetchStats();
-    const dashboardStats = await fetchDashboardStats();
 
     const serverDot = document.getElementById('server-status-dot');
     const statusText = $('#server-status-text');
 
     if (health) {
-        // Stats cards
-        $('#stat-clients').textContent = health.clients || 0;
-
-        // New stats from /api/dashboard/stats
-        if (dashboardStats) {
-            const leadsEl = $('#stat-leads');
-            const salesEl = $('#stat-sales');
-            const errorsEl = $('#stat-errors');
-            if (leadsEl) leadsEl.textContent = dashboardStats.newLeads || 0;
-            if (salesEl) salesEl.textContent = dashboardStats.sales || 0;
-            if (errorsEl) errorsEl.textContent = dashboardStats.errors || 0;
-        }
-
         // Server status (compact dots)
         if (serverDot) {
             serverDot.classList.add('online');
@@ -423,6 +439,9 @@ async function updateDashboard() {
                 ? 'var(--accent-green)'
                 : 'var(--accent-orange)';
         }
+
+        // Cache health data for overview
+        state._lastHealth = health;
     } else {
         // Offline state
         if (serverDot) {
@@ -432,12 +451,102 @@ async function updateDashboard() {
         if (statusText) statusText.textContent = 'Offline';
     }
 
-    // Load dashboard previews
+    // If on dashboard overview, refresh the overview cards
+    if (state.currentSection === 'dashboard') {
+        loadDashboardOverview();
+    }
+    // If on automacao, refresh automacao data
+    if (state.currentSection === 'automacao') {
+        loadAutomacaoOverview();
+    }
+}
+
+// ============================================
+// Dashboard Overview (4 App Cards)
+// ============================================
+async function loadDashboardOverview() {
+    try {
+        // Fetch all data in parallel
+        const [health, dashboardStats, sdrRes, calcRes, relRes] = await Promise.all([
+            state._lastHealth || fetchHealth(),
+            fetchDashboardStats(),
+            fetch('/api/sdr/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch('/api/calc/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch('/api/relatorio/clients').then(r => r.ok ? r.json() : []).catch(() => []),
+        ]);
+
+        // Automação card
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        if (dashboardStats) {
+            setVal('ov-auto-leads', dashboardStats.newLeads || 0);
+            setVal('ov-auto-sales', dashboardStats.sales || 0);
+            setVal('ov-auto-errors', dashboardStats.errors || 0);
+        }
+        if (health) {
+            setVal('ov-auto-clients', health.clients || 0);
+        }
+
+        // SDR card
+        const sdrTenants = Array.isArray(sdrRes) ? sdrRes : (sdrRes.tenants || []);
+        setVal('ov-sdr-tenants', sdrTenants.length);
+        // Calculate total conversations and leads from tenants
+        let totalConvos = 0, totalSdrLeads = 0;
+        sdrTenants.forEach(t => {
+            totalConvos += (t.conversations_count || t.total_conversations || 0);
+            totalSdrLeads += (t.leads_count || t.total_leads || 0);
+        });
+        setVal('ov-sdr-conversations', totalConvos);
+        setVal('ov-sdr-leads', totalSdrLeads);
+
+        // Calculadora card
+        const calcTenants = Array.isArray(calcRes) ? calcRes : (calcRes.tenants || []);
+        setVal('ov-calc-tenants', calcTenants.length);
+
+        // Relatório card
+        const relClients = Array.isArray(relRes) ? relRes : (relRes.clients || []);
+        setVal('ov-rel-clients', relClients.length);
+        // Try to get execution stats
+        try {
+            const execRes = await fetch('/api/relatorio/executions?limit=100');
+            if (execRes.ok) {
+                const execData = await execRes.json();
+                const execs = Array.isArray(execData) ? execData : (execData.executions || []);
+                setVal('ov-rel-execs', execs.length);
+                const errors = execs.filter(e => e.status === 'error' || e.error).length;
+                setVal('ov-rel-errors', errors);
+            }
+        } catch {
+            setVal('ov-rel-execs', '—');
+            setVal('ov-rel-errors', '—');
+        }
+    } catch (e) {
+        console.error('Failed to load dashboard overview:', e);
+    }
+}
+
+// ============================================
+// Automação Overview (reuses existing functions)
+// ============================================
+async function loadAutomacaoOverview() {
+    const health = await fetchHealth();
+    const dashboardStats = await fetchDashboardStats();
+
+    if (health) {
+        const el = $('#stat-clients');
+        if (el) el.textContent = health.clients || 0;
+    }
+
+    if (dashboardStats) {
+        const leadsEl = $('#stat-leads');
+        const salesEl = $('#stat-sales');
+        const errorsEl = $('#stat-errors');
+        if (leadsEl) leadsEl.textContent = dashboardStats.newLeads || 0;
+        if (salesEl) salesEl.textContent = dashboardStats.sales || 0;
+        if (errorsEl) errorsEl.textContent = dashboardStats.errors || 0;
+    }
+
     await loadDashboardClients();
     await loadDashboardActivity();
-
-    // Load apps overview stats
-    loadAppsOverviewStats();
 }
 
 async function loadAppsOverviewStats() {
@@ -1038,10 +1147,10 @@ document.addEventListener('keydown', (e) => {
 
     switch (e.key) {
         case '1': navigateTo('dashboard'); break;
-        case '2': navigateTo('clients'); break;
-        case '3': navigateTo('logs'); break;
-        case '4': navigateTo('sdr'); break;
-        case '5': navigateTo('calculadora'); break;
+        case '2': navigateTo('automacao'); break;
+        case '3': navigateTo('sdr'); break;
+        case '4': navigateTo('calculadora'); break;
+        case '5': navigateTo('relatorio'); break;
         case '6': navigateTo('settings'); break;
         case 'n':
         case 'N':
@@ -1101,6 +1210,9 @@ async function init() {
     // 2. Load Data
     await loadSettings();
     updateDashboard();
+
+    // Reload button for automacao section
+    $('#btn-reload-automacao')?.addEventListener('click', () => loadAutomacaoOverview());
 
     // Auto-refresh every 30s
     setInterval(updateDashboard, 30000);
