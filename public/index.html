@@ -1758,15 +1758,11 @@
                             </div>
                         </div>
                         <div class="form-group" style="margin-top:12px;margin-bottom:0;">
-                            <label for="rel-lead-metric">Métrica de Lead/Ação</label>
-                            <select id="rel-lead-metric">
-                                <option value="fb_ads:actions_lead">Leads (padrão)</option>
-                                <option value="fb_ads:actions_onsite_conversion_messaging_conversation_started_7d">
-                                    Mensagens Iniciadas</option>
-                                <option value="fb_ads:page_follows">Novos Seguidores</option>
-                                <option value="sum_leads_messages">Soma (Leads + Mensagens)</option>
-                                <option value="google_ads:conversions">Google Ads (Conversões)</option>
-                            </select>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="rel-lead-metric-ig" style="width:16px;height:16px;cursor:pointer;">
+                                <label for="rel-lead-metric-ig" style="margin:0;cursor:pointer;">Usar novos seguidores como métrica de leads</label>
+                            </div>
+                            <small style="display:block;color:var(--text-tertiary);margin-top:4px;">Quando ativo, a coluna de Leads será preenchida com novos seguidores do Instagram.</small>
                         </div>
                         <div class="form-group" style="margin-top:12px;margin-bottom:0;">
                             <label for="rel-notes">Observações</label>
