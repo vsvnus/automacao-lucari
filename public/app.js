@@ -31,11 +31,14 @@ const refs = {
 // Navigation
 // ============================================
 
+// Sections that belong to Automação Leads app
+const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts'];
+
 function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
+    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -45,13 +48,43 @@ function navigateTo(section, replace = false) {
     const target = $(`#section-${section}`);
     if (target) target.classList.add('active');
 
-    // Update sidebar active state
+    // Update sidebar active state - Automação sections all highlight 'automacao'
+    const sidebarSection = AUTOMACAO_SECTIONS.includes(section) ? 'automacao' : section;
     $$('.nav-item').forEach(item => {
-        item.classList.toggle('active', item.dataset.section === section);
+        item.classList.toggle('active', item.dataset.section === sidebarSection);
     });
+
+    // Update automacao tab bar active state across all sections that have it
+    if (AUTOMACAO_SECTIONS.includes(section)) {
+        $$('.automacao-tab').forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.autotab === section);
+        });
+    }
 
     // Close mobile sidebar
     closeMobileSidebar();
+
+    // Update app context bar
+    const contextBar = document.getElementById('app-context-bar');
+    const contextName = document.getElementById('app-context-name');
+    const appSections = {
+        automacao: 'Automação de Leads',
+        clients: 'Automação de Leads',
+        logs: 'Automação de Leads',
+        alerts: 'Automação de Leads',
+        sdr: 'SDR de IA',
+        calculadora: 'Calculadora',
+        relatorio: 'Relatórios'
+    };
+    if (contextBar) {
+        if (appSections[section]) {
+            contextBar.style.display = 'flex';
+            contextBar.className = 'app-context-bar ctx-' + section;
+            if (contextName) contextName.textContent = appSections[section];
+        } else {
+            contextBar.style.display = 'none';
+        }
+    }
 
     // Update URL History
     const url = section === 'dashboard' ? '/' : `/${section}`;
@@ -62,8 +95,8 @@ function navigateTo(section, replace = false) {
     }
 
     // Refresh section data
+    if (section === 'automacao') loadAutomacaoOverview();
     if (section === 'clients') loadClients();
-    if (section === 'settings') loadSettings();
     if (section === 'settings') loadSettings();
     if (section === 'logs') {
         populateClientSelect();
@@ -76,6 +109,7 @@ function navigateTo(section, replace = false) {
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
     if (section === 'relatorio') loadRelatorioSection();
+    if (section === 'dashboard') loadDashboardOverview();
 }
 
 // Handle Browser Back/Forward
@@ -97,6 +131,33 @@ $$('.nav-item').forEach(item => {
         if (section !== state.currentSection) {
             navigateTo(section);
         }
+    });
+});
+
+// Automação tab bar clicks (delegated)
+document.addEventListener('click', (e) => {
+    const tab = e.target.closest('.automacao-tab');
+    if (!tab) return;
+    e.preventDefault();
+    const targetSection = tab.dataset.autotab;
+    if (targetSection && targetSection !== state.currentSection) {
+        navigateTo(targetSection);
+    }
+});
+
+// Relatório tab bar clicks
+document.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-reltab]');
+    if (!tab) return;
+    e.preventDefault();
+    const targetTab = tab.dataset.reltab;
+    // Update tab active state
+    $$('#relatorio-tabs .automacao-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.reltab === targetTab);
+    });
+    // Show/hide tab content
+    $$('.rel-tab-content').forEach(c => {
+        c.classList.toggle('active', c.id === `rel-tab-${targetTab}`);
     });
 });
 
@@ -348,61 +409,38 @@ function setupPeriodSelector() {
 // ============================================
 async function updateDashboard() {
     const health = await fetchHealth();
-    const stats = await fetchStats();
-    const dashboardStats = await fetchDashboardStats();
 
-    const statusIndicator = $('#server-status .status-indicator');
+    const serverDot = document.getElementById('server-status-dot');
     const statusText = $('#server-status-text');
 
     if (health) {
-        // Stats cards
-        $('#stat-clients').textContent = health.clients || 0;
-
-        // New stats from /api/dashboard/stats
-        if (dashboardStats) {
-            const leadsEl = $('#stat-leads');
-            const salesEl = $('#stat-sales');
-            const errorsEl = $('#stat-errors');
-            if (leadsEl) leadsEl.textContent = dashboardStats.newLeads || 0;
-            if (salesEl) salesEl.textContent = dashboardStats.sales || 0;
-            if (errorsEl) errorsEl.textContent = dashboardStats.errors || 0;
+        // Server status (compact dots)
+        if (serverDot) {
+            serverDot.classList.add('online');
+            serverDot.classList.remove('offline');
         }
-
-        // Server status
-        statusIndicator?.classList.add('online');
-        statusIndicator?.classList.remove('offline');
         if (statusText) statusText.textContent = 'Online';
 
         // Google Sheets integration status
-        const sheetsIndicator = document.getElementById('sheets-status-indicator');
-        const sheetsText = document.getElementById('sheets-status-text');
+        const sheetsDot = document.getElementById('sheets-dot');
         const integrationAlert = document.getElementById('integration-alert');
         const sheetsConnected = health.integrations?.googleSheets === 'connected';
 
-        if (sheetsIndicator) {
-            sheetsIndicator.classList.toggle('online', sheetsConnected);
-            sheetsIndicator.classList.toggle('offline', !sheetsConnected);
-        }
-        if (sheetsText) {
-            sheetsText.textContent = sheetsConnected ? 'Conectado' : 'Desconectado';
-            sheetsText.style.color = sheetsConnected ? '' : 'var(--accent-red)';
+        if (sheetsDot) {
+            sheetsDot.classList.toggle('online', sheetsConnected);
+            sheetsDot.classList.toggle('offline', !sheetsConnected);
         }
         if (integrationAlert) {
             integrationAlert.style.display = sheetsConnected ? 'none' : 'flex';
         }
 
         // Evolution API status
-        const evoIndicator = document.getElementById('evolution-status-indicator');
-        const evoText = document.getElementById('evolution-status-text');
+        const evoDot = document.getElementById('evolution-dot');
         const evoConnected = health.integrations?.evolution === 'connected';
 
-        if (evoIndicator) {
-            evoIndicator.classList.toggle('online', evoConnected);
-            evoIndicator.classList.toggle('offline', !evoConnected);
-        }
-        if (evoText) {
-            evoText.textContent = evoConnected ? 'Conectado' : 'Desconectado';
-            evoText.style.color = evoConnected ? '' : 'var(--accent-red)';
+        if (evoDot) {
+            evoDot.classList.toggle('online', evoConnected);
+            evoDot.classList.toggle('offline', !evoConnected);
         }
 
         // Env badge
@@ -417,16 +455,158 @@ async function updateDashboard() {
                 ? 'var(--accent-green)'
                 : 'var(--accent-orange)';
         }
+
+        // Cache health data for overview
+        state._lastHealth = health;
     } else {
         // Offline state
-        statusIndicator?.classList.remove('online');
-        statusIndicator?.classList.add('offline');
+        if (serverDot) {
+            serverDot.classList.remove('online');
+            serverDot.classList.add('offline');
+        }
         if (statusText) statusText.textContent = 'Offline';
     }
 
-    // Load dashboard previews
+    // If on dashboard overview, refresh the overview cards
+    if (state.currentSection === 'dashboard') {
+        loadDashboardOverview();
+    }
+    // If on automacao, refresh automacao data
+    if (state.currentSection === 'automacao') {
+        loadAutomacaoOverview();
+    }
+}
+
+// ============================================
+// Dashboard Overview (4 App Cards)
+// ============================================
+async function loadDashboardOverview() {
+    try {
+        // Fetch all data in parallel
+        const [health, dashboardStats, sdrRes, calcRes, relRes] = await Promise.all([
+            state._lastHealth || fetchHealth(),
+            fetchDashboardStats(),
+            fetch('/api/sdr/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch('/api/calc/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
+            fetch('/api/relatorio/clients').then(r => r.ok ? r.json() : []).catch(() => []),
+        ]);
+
+        // Automação card
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        if (dashboardStats) {
+            setVal('ov-auto-leads', dashboardStats.newLeads || 0);
+            setVal('ov-auto-sales', dashboardStats.sales || 0);
+            setVal('ov-auto-errors', dashboardStats.errors || 0);
+        }
+        if (health) {
+            setVal('ov-auto-clients', health.clients || 0);
+        }
+
+        // SDR card
+        const sdrTenants = Array.isArray(sdrRes) ? sdrRes : (sdrRes.tenants || []);
+        setVal('ov-sdr-tenants', sdrTenants.length);
+        // Calculate total conversations and leads from tenants
+        let totalConvos = 0, totalSdrLeads = 0;
+        sdrTenants.forEach(t => {
+            totalConvos += (t.conversations_count || t.total_conversations || 0);
+            totalSdrLeads += (t.leads_count || t.total_leads || 0);
+        });
+        setVal('ov-sdr-conversations', totalConvos);
+        setVal('ov-sdr-leads', totalSdrLeads);
+
+        // Calculadora card
+        const calcTenants = Array.isArray(calcRes) ? calcRes : (calcRes.tenants || []);
+        setVal('ov-calc-tenants', calcTenants.length);
+
+        // Relatório card
+        const relClients = Array.isArray(relRes) ? relRes : (relRes.clients || []);
+        setVal('ov-rel-clients', relClients.length);
+        // Try to get execution stats
+        try {
+            const execRes = await fetch('/api/relatorio/executions?limit=100');
+            if (execRes.ok) {
+                const execData = await execRes.json();
+                const execs = Array.isArray(execData) ? execData : (execData.executions || []);
+                setVal('ov-rel-execs', execs.length);
+                const errors = execs.filter(e => e.status === 'error' || e.error).length;
+                setVal('ov-rel-errors', errors);
+            }
+        } catch {
+            setVal('ov-rel-execs', '—');
+            setVal('ov-rel-errors', '—');
+        }
+    } catch (e) {
+        console.error('Failed to load dashboard overview:', e);
+    }
+}
+
+// ============================================
+// Automação Overview (reuses existing functions)
+// ============================================
+async function loadAutomacaoOverview() {
+    const health = await fetchHealth();
+    const dashboardStats = await fetchDashboardStats();
+
+    if (health) {
+        const el = $('#stat-clients');
+        if (el) el.textContent = health.clients || 0;
+    }
+
+    if (dashboardStats) {
+        const leadsEl = $('#stat-leads');
+        const salesEl = $('#stat-sales');
+        const errorsEl = $('#stat-errors');
+        if (leadsEl) leadsEl.textContent = dashboardStats.newLeads || 0;
+        if (salesEl) salesEl.textContent = dashboardStats.sales || 0;
+        if (errorsEl) errorsEl.textContent = dashboardStats.errors || 0;
+    }
+
     await loadDashboardClients();
     await loadDashboardActivity();
+}
+
+async function loadAppsOverviewStats() {
+    // SDR tenants count
+    try {
+        const res = await fetch('/api/sdr/tenants');
+        if (res.ok) {
+            const data = await res.json();
+            const count = Array.isArray(data) ? data.length : (data.tenants ? data.tenants.length : 0);
+            const el = document.getElementById('app-stat-sdr');
+            if (el) el.textContent = `${count} tenant${count !== 1 ? 's' : ''}`;
+        }
+    } catch {
+        const el = document.getElementById('app-stat-sdr');
+        if (el) el.textContent = 'Indisponível';
+    }
+
+    // Calculadora tenants count
+    try {
+        const res = await fetch('/api/calc/tenants');
+        if (res.ok) {
+            const data = await res.json();
+            const count = Array.isArray(data) ? data.length : (data.tenants ? data.tenants.length : 0);
+            const el = document.getElementById('app-stat-calc');
+            if (el) el.textContent = `${count} tenant${count !== 1 ? 's' : ''}`;
+        }
+    } catch {
+        const el = document.getElementById('app-stat-calc');
+        if (el) el.textContent = 'Indisponível';
+    }
+
+    // Relatório clients count
+    try {
+        const res = await fetch('/api/relatorio/clients');
+        if (res.ok) {
+            const data = await res.json();
+            const count = Array.isArray(data) ? data.length : (data.clients ? data.clients.length : 0);
+            const el = document.getElementById('app-stat-relatorio');
+            if (el) el.textContent = `${count} cliente${count !== 1 ? 's' : ''}`;
+        }
+    } catch {
+        const el = document.getElementById('app-stat-relatorio');
+        if (el) el.textContent = 'Indisponível';
+    }
 }
 
 async function fetchDashboardStats() {
@@ -983,10 +1163,10 @@ document.addEventListener('keydown', (e) => {
 
     switch (e.key) {
         case '1': navigateTo('dashboard'); break;
-        case '2': navigateTo('clients'); break;
-        case '3': navigateTo('logs'); break;
-        case '4': navigateTo('sdr'); break;
-        case '5': navigateTo('calculadora'); break;
+        case '2': navigateTo('automacao'); break;
+        case '3': navigateTo('sdr'); break;
+        case '4': navigateTo('calculadora'); break;
+        case '5': navigateTo('relatorio'); break;
         case '6': navigateTo('settings'); break;
         case 'n':
         case 'N':
@@ -1046,6 +1226,9 @@ async function init() {
     // 2. Load Data
     await loadSettings();
     updateDashboard();
+
+    // Reload button for automacao section
+    $('#btn-reload-automacao')?.addEventListener('click', () => loadAutomacaoOverview());
 
     // Auto-refresh every 30s
     setInterval(updateDashboard, 30000);
@@ -1463,6 +1646,9 @@ async function loadSDRSection() {
     const detailView = $('#sdr-detail-view');
     if (listView) listView.style.display = '';
     if (detailView) detailView.style.display = 'none';
+
+    // Load global OpenAI key
+    loadSdrOpenAIKey();
 
     try {
         const res = await fetch(`${SDR_API_BASE}/tenants`);
@@ -2412,6 +2598,103 @@ async function loadSdrLeads(tenantId) {
 }
 
 // ============================================
+// SDR: OpenAI API Key Management
+// ============================================
+
+async function loadSdrOpenAIKey() {
+    const badge = $('#sdr-openai-badge');
+    const input = $('#sdr-openai-key-input');
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/settings`);
+        if (!res.ok) throw new Error('offline');
+        const data = await res.json();
+        if (data.openai_api_key) {
+            const key = data.openai_api_key;
+            if (input) {
+                input.value = key.length > 8 ? key.slice(0, 5) + '••••••••' + key.slice(-4) : '••••••••';
+                input.type = 'password';
+            }
+            if (badge) { badge.style.display = ''; badge.textContent = 'Configurada'; badge.style.background = 'var(--accent-green-subtle)'; badge.style.color = 'var(--accent-green)'; }
+            loadSdrOpenAIBalance();
+        } else {
+            if (input) input.value = '';
+            if (badge) badge.style.display = 'none';
+            const note = $('#sdr-openai-balance-note');
+            if (note) note.textContent = 'Salve a API Key para consultar o saldo';
+        }
+    } catch {
+        if (input) input.value = '';
+        if (badge) badge.style.display = 'none';
+    }
+}
+
+async function loadSdrOpenAIBalance() {
+    const totalEl = $('#sdr-openai-balance-total');
+    const remainEl = $('#sdr-openai-balance-remaining');
+    const usedEl = $('#sdr-openai-balance-used');
+    const noteEl = $('#sdr-openai-balance-note');
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/settings/openai-balance`);
+        if (!res.ok) throw new Error('offline');
+        const data = await res.json();
+
+        if (data.total_granted !== undefined) {
+            const total = parseFloat(data.total_granted || 0);
+            const used = parseFloat(data.total_used || 0);
+            const remaining = total - used;
+            if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
+            if (remainEl) remainEl.textContent = `$${remaining.toFixed(2)}`;
+            if (usedEl) usedEl.textContent = `$${used.toFixed(2)}`;
+            if (noteEl) noteEl.textContent = `Atualizado: ${new Date().toLocaleString('pt-BR')}`;
+        } else if (data.error) {
+            if (noteEl) noteEl.textContent = data.error;
+        } else {
+            if (noteEl) noteEl.textContent = 'Saldo não disponível para esta conta (contas pagas não expõem saldo via API)';
+            if (totalEl) totalEl.textContent = '—';
+            if (remainEl) remainEl.textContent = '—';
+            if (usedEl) usedEl.textContent = '—';
+        }
+    } catch {
+        const noteEl = $('#sdr-openai-balance-note');
+        if (noteEl) noteEl.textContent = 'Não foi possível consultar o saldo';
+    }
+}
+
+$('#btn-sdr-save-openai-key')?.addEventListener('click', async () => {
+    const input = $('#sdr-openai-key-input');
+    const val = input?.value?.trim();
+    if (!val || val.includes('••••')) {
+        showToast('Cole a API Key completa', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ openai_api_key: val }),
+        });
+        if (!res.ok) throw new Error('Erro ao salvar');
+        showToast('API Key salva! O serviço será atualizado.', 'success');
+        input.value = '';
+        loadSdrOpenAIKey();
+    } catch (err) {
+        showToast(err.message || 'Erro ao salvar API Key', 'error');
+    }
+});
+
+$('#btn-sdr-toggle-openai-key')?.addEventListener('click', () => {
+    const inp = $('#sdr-openai-key-input');
+    if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+});
+
+$('#btn-sdr-refresh-openai-balance')?.addEventListener('click', () => {
+    loadSdrOpenAIBalance();
+});
+
+// ============================================
 // Calculadora Section
 // ============================================
 
@@ -2516,17 +2799,20 @@ function renderAlertErrors(errors) {
         var stepLabel = formatStepName(err.step_name);
         var timeAgo = formatTimeAgo(err.created_at);
 
-        return '<div class="alert-error-item" onclick="openTrailModal(\'' + err.trace_id + '\')">' +
-            '<div class="alert-error-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>' +
-            '<div class="alert-error-info">' +
+        return '<div class="alert-error-item">' +
+            '<div class="alert-error-icon" onclick="openTrailModal(\'' + err.trace_id + '\')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>' +
+            '<div class="alert-error-info" onclick="openTrailModal(\'' + err.trace_id + '\')" style="cursor:pointer;flex:1;">' +
             '<div class="lead-name">' + escapeHtml(name) + (client ? ' - ' + escapeHtml(client) : '') + '</div>' +
             '<div class="error-detail">' + escapeHtml(err.detail || "") + '</div>' +
             '<div class="error-step">Falhou em: ' + stepLabel + '</div>' +
             '</div>' +
-            '<div class="alert-error-meta">' +
+            '<div class="alert-error-meta" onclick="openTrailModal(\'' + err.trace_id + '\')" style="cursor:pointer;">' +
             '<div class="error-time">' + timeAgo + '</div>' +
             '<div class="error-badge">' + escapeHtml(err.step_name) + '</div>' +
             '</div>' +
+            '<button class="btn-dismiss alert-dismiss" onclick="event.stopPropagation();this.closest(\'.alert-error-item\').remove();" title="Dispensar">' +
+            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+            '</button>' +
             '</div>';
     }).join("");
 }
@@ -2859,13 +3145,21 @@ async function loadRelatorioExecutions() {
             return;
         }
         container.innerHTML = execs.map(e => {
-            const color = e.status === 'success' ? 'var(--success)' : e.status === 'error' ? 'var(--error)' : 'var(--warning)';
+            const isError = e.status === 'error';
+            const isSuccess = e.status === 'success';
+            const color = isSuccess ? 'var(--success)' : isError ? 'var(--error)' : 'var(--warning)';
+            const statusLabel = isSuccess ? 'Sucesso' : isError ? 'Erro' : escapeHtml(e.status || '—');
             const dt = e.created_at ? new Date(e.created_at).toLocaleString('pt-BR') : e.run_date || '—';
-            return `<div class="activity-item">
+            const errorMsg = e.error_message || e.error || e.details || '';
+            const errorBlock = isError && errorMsg
+                ? `<div class="exec-error-detail"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span>${escapeHtml(errorMsg)}</span></div>`
+                : '';
+            return `<div class="activity-item${isError ? ' exec-error-row' : ''}">
                 <div class="activity-dot" style="background:${color};"></div>
                 <div class="activity-content">
                     <span class="activity-title">${escapeHtml(e.client_name || String(e.client_id))} — ${escapeHtml(e.execution_type || '—')}</span>
-                    <span class="activity-meta">${escapeHtml(dt)} · ${escapeHtml(e.status)}</span>
+                    <span class="activity-meta">${escapeHtml(dt)} · <span style="color:${color};font-weight:600;">${statusLabel}</span></span>
+                    ${errorBlock}
                 </div>
             </div>`;
         }).join('');
