@@ -1474,89 +1474,21 @@
                 <!-- Section: Conexão WhatsApp -->
                 <div class="sdr-form-section-title">Conexão WhatsApp</div>
                 <div class="sdr-form-grid">
-                    <div class="form-group">
+                    <div class="form-group" style="grid-column:1/-1;">
                         <label for="sdr-tenant-whatsapp">Número WhatsApp</label>
                         <input type="text" id="sdr-tenant-whatsapp" placeholder="5511999999999">
-                        <small class="form-hint">Número completo com DDI+DDD</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="sdr-tenant-evolution">Instância Evolution</label>
-                        <div style="display:flex;gap:8px;align-items:flex-start;">
-                            <select id="sdr-tenant-evolution" class="setting-input" style="flex:1;">
-                                <option value="">Carregando instâncias...</option>
-                            </select>
-                            <button type="button" class="btn-secondary btn-sm" id="btn-refresh-instances"
-                                title="Recarregar" style="height:40px;padding:0 10px;">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <polyline points="23 4 23 10 17 10"></polyline>
-                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                                </svg>
-                            </button>
-                        </div>
-                        <small class="form-hint">Selecione uma instância existente ou crie uma nova abaixo</small>
+                        <small class="form-hint">Número completo com DDI+DDD. A instância WhatsApp será criada automaticamente ao salvar.</small>
                     </div>
                 </div>
 
-                <!-- Criar Nova Instância -->
-                <div id="evolution-create-section"
-                    style="margin-top:8px;padding:16px;background:var(--bg-surface);border-radius:8px;border:1px solid var(--border-subtle);">
-                    <div style="display:flex;gap:8px;align-items:flex-end;">
-                        <div class="form-group" style="flex:1;margin-bottom:0;">
-                            <label for="evolution-new-name" style="font-size:0.8rem;">Criar Nova Instância</label>
-                            <input type="text" id="evolution-new-name" placeholder="Nome da nova instância">
-                        </div>
-                        <button type="button" class="btn-primary btn-sm" id="btn-create-evolution-instance"
-                            style="height:40px;padding:0 16px;white-space:nowrap;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2">
-                                <line x1="12" y1="5" x2="12" y2="19"></line>
-                                <line x1="5" y1="12" x2="19" y2="12"></line>
-                            </svg>
-                            Criar
-                        </button>
-                    </div>
-                    <!-- QR Code Area -->
-                    <div id="evolution-qr-area" style="display:none;margin-top:16px;text-align:center;">
-                        <div id="evolution-qr-status" style="margin-bottom:8px;">
-                            <span class="badge" id="evolution-connection-badge"
-                                style="font-size:0.8rem;">Aguardando...</span>
-                        </div>
-                        <div id="evolution-qr-container"
-                            style="background:#fff;display:inline-block;padding:16px;border-radius:12px;">
-                            <img id="evolution-qr-img" src="" alt="QR Code"
-                                style="width:256px;height:256px;display:none;">
-                            <div id="evolution-qr-loading"
-                                style="width:256px;height:256px;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">
-                                Gerando QR Code...
-                            </div>
-                        </div>
-                        <p style="margin-top:8px;font-size:0.8rem;color:var(--text-secondary);">Escaneie com o WhatsApp
-                            para conectar</p>
-                    </div>
-                </div>
-
-                <!-- Gerar QR para instância existente -->
-                <div id="evolution-reconnect-section"
-                    style="display:none;margin-top:8px;text-align:center;">
-                    <button type="button" class="btn-secondary btn-sm" id="btn-evolution-show-qr"
-                        style="gap:6px;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <rect x="3" y="3" width="7" height="7"></rect>
-                            <rect x="14" y="3" width="7" height="7"></rect>
-                            <rect x="3" y="14" width="7" height="7"></rect>
-                            <rect x="14" y="14" width="7" height="7"></rect>
-                        </svg>
-                        <span>Gerar QR Code</span>
-                    </button>
-                </div>
-
-                <!-- Link de Conexão Público (separado do QR) -->
+                <!-- Conexão WhatsApp (só aparece ao editar cliente salvo) -->
                 <div id="evolution-connect-link-section"
                     style="display:none;margin-top:8px;padding:16px;background:var(--bg-surface);border-radius:8px;border:1px solid var(--border-subtle);">
-                    <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:4px;">Link de Conexão Público</label>
-                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">Envie este link para o cliente conectar o WhatsApp remotamente</p>
+                    <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:4px;">Conexão WhatsApp</label>
+                    <div id="evolution-instance-status" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        <span class="badge" id="evolution-modal-status-badge" style="font-size:0.75rem;">Verificando...</span>
+                        <span style="font-size:0.75rem;color:var(--text-secondary);" id="evolution-modal-instance-name"></span>
+                    </div>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                         <input type="text" id="evolution-connect-url" readonly
                             style="flex:1;min-width:180px;font-size:0.8rem;padding:8px 12px;background:var(--bg-base);border:1px solid var(--border-subtle);border-radius:6px;color:var(--text-primary);">
@@ -1580,6 +1512,7 @@
                             <span>Enviar</span>
                         </button>
                     </div>
+                    <p style="margin-top:8px;font-size:0.72rem;color:var(--text-tertiary);">Envie o link para o cliente escanear o QR Code e conectar o WhatsApp</p>
                 </div>
 
                 <!-- Section: IA -->

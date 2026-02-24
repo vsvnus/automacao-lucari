@@ -1867,6 +1867,10 @@ async function loadSDRSection() {
                     </div>
                 </div>
                 <div class="client-card-footer">
+                    <button class="btn-text" onclick="handleDeleteSdrTenant('${tenant.id}', '${escapeHtml(tenant.name).replace(/'/g, "\\'")}')" style="color:var(--accent-red, #ef4444);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Excluir
+                    </button>
                     <div style="flex:1"></div>
                     <button class="btn-text" onclick="handleEditSdrTenant('${tenant.id}')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -2061,28 +2065,46 @@ async function showEvolutionQRCode(instanceName) {
     startEvolutionPolling(instanceName);
 }
 
-// --- Connect Link Section (modal): show/hide + populate ---
-function updateConnectLinkSection() {
+// --- Connect Link Section (modal): show/hide + populate + check status ---
+async function updateConnectLinkSection(tenant) {
     const section = $('#evolution-connect-link-section');
-    const reconnectSection = $('#evolution-reconnect-section');
     const urlInput = $('#evolution-connect-url');
+    const badge = $('#evolution-modal-status-badge');
+    const instanceLabel = $('#evolution-modal-instance-name');
     const slug = $('#sdr-tenant-slug')?.value?.trim();
     const tenantId = $('#sdr-tenant-id')?.value;
-    const instanceName = $('#sdr-tenant-evolution')?.value;
 
-    // Link section: only when client is saved (has ID + slug)
-    if (section) {
-        if (tenantId && slug) {
-            section.style.display = '';
-            if (urlInput) urlInput.value = getSdrConnectUrl(slug);
-        } else {
-            section.style.display = 'none';
-        }
+    if (!section) return;
+
+    // Only show when client is saved
+    if (!tenantId || !slug) {
+        section.style.display = 'none';
+        return;
     }
 
-    // Reconnect/show QR button: only when editing and instance is selected
-    if (reconnectSection) {
-        reconnectSection.style.display = (tenantId && instanceName) ? '' : 'none';
+    section.style.display = '';
+    if (urlInput) urlInput.value = getSdrConnectUrl(slug);
+
+    const instanceName = tenant?.evolution_instance_id || slug;
+    if (instanceLabel) instanceLabel.textContent = `Instância: ${instanceName}`;
+
+    // Check connection status
+    if (badge) {
+        badge.textContent = 'Verificando...';
+        badge.style.background = 'var(--bg-surface)';
+        badge.style.color = 'var(--text-secondary)';
+
+        const status = await getInstanceStatus(instanceName);
+        const state = status?.instance?.state || status?.state || 'unknown';
+        if (state === 'open' || state === 'connected') {
+            badge.textContent = 'Conectado';
+            badge.style.background = 'var(--accent-green-subtle)';
+            badge.style.color = 'var(--accent-green)';
+        } else {
+            badge.textContent = state === 'close' ? 'Desconectado' : (state || 'Desconhecido');
+            badge.style.background = 'var(--accent-red-subtle, #fef2f2)';
+            badge.style.color = 'var(--accent-red, #ef4444)';
+        }
     }
 }
 
@@ -2104,45 +2126,6 @@ $('#btn-send-connect-link')?.addEventListener('click', () => {
     window.open(`https://wa.me/?text=${msg}`, '_blank');
 });
 
-// --- Show QR for existing instance ---
-$('#btn-evolution-show-qr')?.addEventListener('click', async () => {
-    const instanceName = $('#sdr-tenant-evolution')?.value;
-    if (!instanceName) {
-        showToast('Selecione uma instância primeiro', 'error');
-        return;
-    }
-    await showEvolutionQRCode(instanceName);
-});
-
-// Event: Create new instance
-$('#btn-create-evolution-instance')?.addEventListener('click', async () => {
-    const nameInput = $('#evolution-new-name');
-    const name = nameInput?.value?.trim();
-    if (!name) {
-        showToast('Digite um nome para a instância', 'error');
-        return;
-    }
-
-    try {
-        showToast('Criando instância...', 'info');
-        await createEvolutionInstance(name);
-        showToast(`Instância "${name}" criada!`, 'success');
-
-        // Reload select and auto-select
-        await loadEvolutionInstancesSelect(name);
-
-        // Show QR code
-        await showEvolutionQRCode(name);
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
-});
-
-// Event: Refresh instances
-$('#btn-refresh-instances')?.addEventListener('click', () => {
-    const current = $('#sdr-tenant-evolution')?.value;
-    loadEvolutionInstancesSelect(current);
-});
 
 // --- SDR: Modal CRUD ---
 function openSdrModal(tenant = null) {
@@ -2150,9 +2133,6 @@ function openSdrModal(tenant = null) {
     const title = $('#sdr-modal-title');
     const submitBtn = $('#sdr-modal-submit-btn span');
 
-    // Reset QR area
-    const qrArea = $('#evolution-qr-area');
-    if (qrArea) qrArea.style.display = 'none';
     stopEvolutionPolling();
 
     if (tenant) {
@@ -2172,8 +2152,6 @@ function openSdrModal(tenant = null) {
         $('#sdr-tenant-days').value = tenant.business_days || '1,2,3,4,5';
         $('#sdr-tenant-prompt').value = tenant.system_prompt || '';
         $('#sdr-tenant-ooh-msg').value = tenant.out_of_hours_message || '';
-        // Load instances select and set current value
-        loadEvolutionInstancesSelect(tenant.evolution_instance_id || '');
     } else {
         title.textContent = 'Novo Cliente SDR';
         submitBtn.textContent = 'Salvar Cliente';
@@ -2184,12 +2162,10 @@ function openSdrModal(tenant = null) {
         $('#sdr-tenant-hours-start').value = '08:00';
         $('#sdr-tenant-hours-end').value = '18:00';
         $('#sdr-tenant-days').value = '1,2,3,4,5';
-        // Load instances select
-        loadEvolutionInstancesSelect('');
     }
 
-    // Show/hide connect link + reconnect sections
-    updateConnectLinkSection();
+    // Show/hide connect link section (async, non-blocking)
+    updateConnectLinkSection(tenant);
 
     modal.classList.add('visible');
     document.body.style.overflow = 'hidden';
@@ -2225,7 +2201,6 @@ $('#form-sdr-tenant')?.addEventListener('submit', async (e) => {
         niche: $('#sdr-tenant-niche').value.trim(),
         tone: $('#sdr-tenant-tone').value,
         whatsapp_number: $('#sdr-tenant-whatsapp').value.trim(),
-        evolution_instance_id: $('#sdr-tenant-evolution').value.trim(),
         llm_model: $('#sdr-tenant-model').value,
         max_tokens_per_response: parseInt($('#sdr-tenant-tokens').value) || 500,
         business_hours_start: $('#sdr-tenant-hours-start').value,
@@ -2256,12 +2231,18 @@ $('#form-sdr-tenant')?.addEventListener('submit', async (e) => {
             throw new Error(err.error || 'Erro ao salvar');
         }
 
-        showToast(id ? 'Cliente atualizado!' : 'Cliente criado!', 'success');
-        closeSdrModal();
-        loadSDRSection();
+        const savedTenant = await res.json();
+        const isNew = !id;
 
-        // If we're viewing this tenant's details, reload them
-        if (sdrState.selectedTenantId === id) {
+        showToast(isNew ? 'Cliente criado com instância WhatsApp!' : 'Cliente atualizado!', 'success');
+        closeSdrModal();
+        await loadSDRSection();
+
+        // After creating new tenant, auto-open detail view on WhatsApp tab
+        if (isNew && savedTenant?.id) {
+            openSdrDetail(savedTenant.id);
+            setTimeout(() => switchSdrTab('whatsapp'), 300);
+        } else if (sdrState.selectedTenantId === id) {
             openSdrDetail(id);
         }
     } catch (err) {
@@ -2276,6 +2257,34 @@ window.handleEditSdrTenant = function (tenantId) {
         return;
     }
     openSdrModal(tenant);
+};
+
+window.handleDeleteSdrTenant = async function (tenantId, tenantName) {
+    if (!confirm(`Excluir o cliente "${tenantName}"?\n\nIsso vai remover:\n- Todas as conversas e mensagens\n- Todos os leads\n- Toda a base de conhecimento\n- A instância WhatsApp\n\nEssa ação não pode ser desfeita.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}`, {
+            method: 'DELETE',
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Erro ao excluir');
+        }
+
+        showToast(`Cliente "${tenantName}" excluído`, 'success');
+
+        // If viewing this tenant's detail, go back to list
+        if (sdrState.selectedTenantId === tenantId || String(sdrState.selectedTenantId) === String(tenantId)) {
+            closeSdrDetail();
+        }
+
+        loadSDRSection();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 // --- SDR: Detail Panel ---
