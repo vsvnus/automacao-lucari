@@ -1,77 +1,51 @@
-# Lucari Ecosystem — Infrastructure Guide
+# Dashboard + Automação Planilhas — Lucari (automacao-lucari)
 
-## Server
-- **IP**: 178.156.164.91 (Hetzner)
-- **SSH**: `ssh -i ~/.ssh/hetzner_lucari root@178.156.164.91`
-- **Coolify Panel**: http://178.156.164.91:8000
-- **Domain**: *.vin8n.online (Traefik proxy with Let's Encrypt)
+> **Atualizado**: 2026-02-24 | **Versão**: 1.1 (pós correções fase A)
 
-## Projects
+## Princípios de Operação
 
-| Project | Repo (`github.com/vsvnus/`) | Prod URL | Staging URL |
-|---------|----------------------------|----------|-------------|
-| Dashboard + Automação Planilhas | `automacao-lucari` | dashboard.vin8n.online | staging.vin8n.online |
-| SDR de IA (atendimento WhatsApp) | `sdr-ia-lucari` | sdr.vin8n.online | staging-sdr.vin8n.online |
-| Calculadora Salário Maternidade | `calculadora-lucari` | calc.vin8n.online | — |
-| Automação Relatórios (Reportei) | `relatorio-lucari` | porta 3003 (sem domínio) | — |
-| Evolution API (WhatsApp) | terceiro (evoapicloud) | evolution.vin8n.online | — |
+### Documentação Obrigatória
+> **TODA alteração no código DEVE ser refletida neste CLAUDE.md.** Novas features, correções, endpoints, colunas de banco, dependências — tudo deve ser documentado aqui antes de considerar o trabalho concluído.
 
-## Architecture
+### Ciclo Autônomo de Produção
+Este projeto é administrado por agentes de IA via terminal. O servidor deve funcionar como um ciclo fechado e autônomo:
+- O gestor do projeto (Vinicius) é **project manager**, não desenvolvedor
+- Toda operação (deploy, debug, migração) deve ser executável via IA no terminal
+- O agente deve manter práticas corretas, documentação atualizada e código limpo
+- **Logs de container são perdidos a cada reinicialização** — sempre verificar logs em tempo real, não confiar em logs históricos
 
-### Production (managed by Coolify)
-- Coolify auto-deploys from `main` branch when code is pushed
-- Container names are random hashes (ex: `mg4ko84ks4os0c44k4socokk-new`)
-- Env vars are configured in Coolify panel — they persist across restarts
-- **NEVER edit production containers directly** — changes are lost on redeploy
-
-### Staging (managed by deploy.sh)
-- Code lives in `/opt/staging/{dashboard,sdr}/` on the server
-- Uses `staging` branch (not main)
-- Env files: `/opt/staging/.env.dashboard` and `/opt/staging/.env.sdr`
-- Deploy: `bash /opt/staging/deploy.sh`
-- Container names are fixed: `dashboard-staging`, `sdr-staging`
-
-### Git Workflow (OBRIGATÓRIO — leia antes de qualquer alteração)
-
-Este projeto é administrado por agentes de IA. O processo abaixo **DEVE** ser seguido à risca para evitar conflitos de merge e perda de trabalho.
+### Git Workflow (OBRIGATÓRIO)
 
 #### Regra de Ouro
 > **NUNCA edite código na branch `main`.** Todo trabalho começa e acontece na branch `staging`.
 
-#### Processo Completo — Feature ou Ajuste
+#### Processo Completo
 
 ```
 FASE 1 — PREPARAÇÃO (antes de escrever qualquer código)
-──────────────────────────────────────────────────────
 1. git checkout staging
-2. git pull origin staging          ← pega últimas mudanças do staging remoto
+2. git pull origin staging
 3. git pull origin main             ← sincroniza staging com produção
-   (se houver conflito aqui, resolva ANTES de começar)
-4. git push origin staging          ← staging agora está alinhado com main
+4. git push origin staging
 
 FASE 2 — DESENVOLVIMENTO
-──────────────────────────────────────────────────────
 5. Faça todas as alterações na branch staging
 6. git add <arquivos específicos>   ← NUNCA use "git add ." ou "git add -A"
 7. git commit -m "descrição clara"
 8. git push origin staging
 
 FASE 3 — DEPLOY STAGING
-──────────────────────────────────────────────────────
-9.  SSH no servidor: ssh -i ~/.ssh/hetzner_lucari root@178.156.164.91
+9.  SSH: ssh -i ~/.ssh/hetzner_lucari root@178.156.164.91
 10. bash /opt/staging/deploy.sh
 11. Testar em staging.vin8n.online
-12. Se houver bug, volte à FASE 2 e corrija
 
 FASE 4 — PROMOÇÃO PARA PRODUÇÃO
-──────────────────────────────────────────────────────
-13. git checkout main
-14. git pull origin main             ← SEMPRE puxar antes de mergear
-15. git merge staging                ← merge (NÃO rebase) staging em main
-    (merge deve ser limpo se FASE 1 foi seguida)
-16. git push origin main
-17. Coolify auto-deploys em ~1 min
-18. git checkout staging             ← volte para staging imediatamente
+12. git checkout main
+13. git pull origin main
+14. git merge staging                ← merge (NÃO rebase)
+15. git push origin main
+16. Coolify auto-deploys em ~1 min
+17. git checkout staging             ← volte para staging imediatamente
 ```
 
 #### Regras Críticas
@@ -79,74 +53,33 @@ FASE 4 — PROMOÇÃO PARA PRODUÇÃO
 | Regra | Por quê |
 |-------|---------|
 | Sempre começar com `git checkout staging` + `git pull` | Evita trabalhar sobre versão desatualizada |
-| Sincronizar staging com main ANTES de começar (`git pull origin main` na staging) | Evita divergência entre branches |
+| Sincronizar staging com main ANTES de começar | Evita divergência entre branches |
 | Usar `git merge` (não `git rebase`) para staging→main | Rebase reescreve histórico e causa conflitos em cascata |
 | Nunca usar `git push --force` | Destrói histórico de outros contribuidores |
 | Nunca fazer commit direto na main | Main só recebe merges de staging |
-| Usar `git add <arquivo>` específico, nunca `git add .` | Evita commitar .env, credenciais, arquivos temporários |
+| Usar `git add <arquivo>` específico | Evita commitar .env, credenciais, temporários |
 | Voltar para staging após push na main | Próximo trabalho já começa no lugar certo |
 
-#### Resolução de Conflitos
+## Visão Geral
 
-Se um conflito aparecer em qualquer etapa:
-1. **PARE** — não force ou ignore
-2. Identifique o arquivo com conflito (`git status`)
-3. Abra o arquivo e resolva manualmente (manter as duas versões se fizerem sentido)
-4. `git add <arquivo resolvido>` → `git commit`
-5. Continue o processo
+Dashboard para gestão de leads recebidos via webhooks Tintim. Automatiza inserção em Google Sheets por cliente/mês, com painel de métricas, alertas e gerenciamento de usuários.
 
-**Se o conflito é muito complexo** (muitos arquivos, mudanças entrelaçadas):
-1. `git merge --abort` ou `git rebase --abort`
-2. Avise o usuário sobre a situação
-3. Não tente resolver forçadamente — peça orientação
+## URLs
 
-#### Checklist Pré-Push (para o agente de IA)
+| Ambiente | URL |
+|----------|-----|
+| Produção | dashboard.vin8n.online |
+| Staging | staging.vin8n.online |
+| Health | `GET /health` |
 
-Antes de cada `git push`, verifique:
-- [ ] Estou na branch correta? (`git branch --show-current`)
-- [ ] Puxei as últimas mudanças? (`git pull origin <branch>`)
-- [ ] Os arquivos commitados são apenas os relevantes? (`git diff --cached --name-only`)
-- [ ] Nenhum arquivo sensível está incluído? (`.env`, `credentials`, `*.key`)
-
-## Databases (PostgreSQL on coolify-db container)
-
-| Database | Project | User |
-|----------|---------|------|
-| `leads_automation` | Dashboard PROD | leads_user |
-| `leads_automation_staging` | Dashboard STAGING | leads_user |
-| `sdr_ia` | SDR PROD | sdr_user |
-| `sdr_ia_staging` | SDR STAGING | sdr_user |
-| `evolution` | Evolution API | coolify |
-
-Access: `docker exec coolify-db psql -U leads_user -d leads_automation`
-
-## Key Services & Integrations
-
-### Google Sheets (Dashboard)
-- Service account: `automacao-wpp@automacao-planilha-487020.iam.gserviceaccount.com`
-- PROD: credentials via `GOOGLE_CREDENTIALS_JSON` env var (set in Coolify)
-- STAGING: credentials via file `config/google-credentials.json` (in .gitignore)
-- The sheetsService has graceful fallback: B64 env → JSON env → file
-
-### Tintim (Webhook source for leads)
-- Sends webhooks to `POST /webhook/tintim`
-- Events: `lead.create` (new lead), `lead.update` (status change)
-- Each client has a `tintim_instance_id` that maps to `account.code` in the payload
-- Only Meta Ads / Google Ads leads go to spreadsheet; organic WhatsApp is filtered
-
-### Evolution API (WhatsApp for SDR)
-- Container: `w0s0cowks8scc8004sswcss4-065145829442`
-- Internal URL: `http://w0s0cowks8scc8004sswcss4-065145829442:8080`
-- API Key: configured in SDR env vars
-
-## File Structure (Dashboard)
+## Estrutura de Arquivos
 
 ```
 src/
 ├── server.js          — Express server, routes, auth, health endpoint
 ├── webhookHandler.js  — Tintim webhook processing (new leads + status updates)
 ├── sheetsService.js   — Google Sheets API (insert/update leads, monthly tabs)
-├── pgService.js       — PostgreSQL (logging, clients, dashboard stats, alerts)
+├── pgService.js       — PostgreSQL (logging, clients, dashboard stats, alerts, users)
 ├── clientManager.js   — Client config loader (from PostgreSQL)
 ├── supabaseService.js — Legacy (not actively used)
 └── utils/
@@ -154,31 +87,81 @@ src/
     ├── formatter.js   — Phone/date formatting (BR)
     └── validator.js   — Tintim payload validation
 public/
-├── index.html         — Dashboard SPA
-├── app.js             — Dashboard frontend logic
+├── index.html         — Dashboard SPA (single page, todas as seções)
+├── app.js             — Dashboard frontend logic (modals, CRUD, charts)
 ├── alerts.js          — Client alert system
-├── style.css          — All styles
+├── style.css          — All styles (inclui modal .modal-overlay.visible)
 └── login.html         — Login page
+infra/
+└── schema-leads.sql   — Migrações de banco (CREATE TABLE + ALTER TABLE)
 ```
 
-## Common Issues & Solutions
+## Banco de Dados (leads_automation / leads_automation_staging)
+
+### Tabelas
+- `clients` — clientes cadastrados
+- `lead_trail` — trail de leads por cliente
+- `leads_log` — log de leads processados
+- `webhook_events` — deduplicação de webhooks (30s window)
+- `system_settings` — configurações do sistema (key-value)
+- `users` — autenticação (email, password_hash, name, role, updated_at)
+- `session` — sessões Express
+
+### Migrações Recentes (2026-02-24)
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'admin';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+```
+Necessárias para o CRUD de usuários funcionar corretamente.
+
+## Correções Recentes (2026-02-24)
+
+### Bug Fix: Webhook URL mostrando email
+- **Causa**: ID duplicado `#settings-webhook-input` em `index.html` — existia em dois cards diferentes
+- **Fix**: Removido card duplicado da seção automação (mantido apenas na seção settings)
+
+### Bug Fix: Botão "Novo Usuário" não funciona
+- **Causa**: CSS usa `.modal-overlay.visible` para `display:flex`, mas JS usava `.classList.add('active')`
+- **Fix**: Alterado `app.js` para usar `visible` em `openUserModal()` e `closeUserModal()`
+- **Padrão**: TODOS os modals do app usam classe `visible` (nunca `active`)
+
+### Bug Fix: Aba Usuários vazia
+- **Causa**: Colunas `role` e `updated_at` não existiam na tabela `users`
+- **Fix**: ALTER TABLE adicionando as colunas (aplicado em prod e staging)
+
+## Integrações
+
+### Google Sheets
+- Service account: `automacao-wpp@automacao-planilha-487020.iam.gserviceaccount.com`
+- PROD: `GOOGLE_CREDENTIALS_JSON` env var (Coolify)
+- STAGING: `config/google-credentials.json` (in .gitignore)
+- Fallback: B64 env → JSON env → file
+
+### Tintim (Webhook)
+- Endpoint: `POST /webhook/tintim`
+- Events: `lead.create`, `lead.update`
+- Filtro: só Meta/Google Ads → planilha (orgânico ignorado)
+
+## Problemas Comuns
 
 ### "Google Sheets não disponível"
-- Check `GOOGLE_CREDENTIALS_JSON` env var or `config/google-credentials.json` file
-- The JSON must contain `client_email` field — empty `{}` will fail silently
-- Health endpoint shows: `GET /health` → `integrations.googleSheets`
+- Verificar `GOOGLE_CREDENTIALS_JSON` ou `config/google-credentials.json`
+- JSON precisa ter `client_email` — `{}` vazio falha silenciosamente
+- `GET /health` → `integrations.googleSheets`
 
-### Leads not going to spreadsheet
-- Check if leads are organic (filtered by design — only Meta/Google Ads go through)
-- Check `docker logs <container>` for `🚫 Lead orgânico ignorado`
-- Check `leads_log` table for `processing_result` column
+### Leads não vão para planilha
+- Leads orgânicos são filtrados (design)
+- Verificar `docker logs <container>` para `Lead orgânico ignorado`
+- Verificar `leads_log.processing_result`
 
-### Duplicate leads
-- Idempotency window is 30 seconds (`checkDuplicateWebhook`)
-- Depends on `webhook_events` table having records
-- Tintim sometimes sends the same webhook multiple times
+### Leads duplicados
+- Window de idempotência: 30 segundos (`checkDuplicateWebhook`)
+- Tintim às vezes envia mesmo webhook múltiplas vezes
+
+### Modal não abre
+- TODOS os modals usam classe CSS `visible` (nunca `active`)
+- Padrão: `modal.classList.add('visible')` / `modal.classList.remove('visible')`
 
 ## Owner
 - **Vinicius Pimentel** (vinnipimentelgestor@gmail.com)
-- GitHub: vsvnus
-- Company: Lucari
+- GitHub: vsvnus | Company: Lucari
