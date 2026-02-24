@@ -985,12 +985,14 @@ class PgService {
         if (!this.isAvailable()) return [];
         try {
             const result = await this.query(`
-                SELECT c.id, c.name, c.slug,
-                       MAX(ll.created_at) as last_lead_at
+                SELECT c.id, c.name, c.slug, c.tintim_instance_id,
+                       MAX(ll.created_at) as last_lead_at,
+                       EXTRACT(DAY FROM NOW() - MAX(ll.created_at))::int as days_without_leads,
+                       MAX(ll.created_at)::date as last_lead_date
                 FROM clients c
                 LEFT JOIN leads_log ll ON ll.client_id = c.id
                 WHERE c.active = true
-                GROUP BY c.id, c.name, c.slug
+                GROUP BY c.id, c.name, c.slug, c.tintim_instance_id
                 HAVING MAX(ll.created_at) < NOW() - INTERVAL '1 day' * $1
                    OR MAX(ll.created_at) IS NULL
                 ORDER BY last_lead_at ASC NULLS FIRST
@@ -1006,12 +1008,12 @@ class PgService {
         if (!this.isAvailable()) return [];
         try {
             const result = await this.query(`
-                SELECT we.id, we.event_type, we.received_at, we.processing_result,
-                       we.error_message, we.payload
+                SELECT we.id, we.event_type, we.created_at, we.processing_result,
+                       we.payload
                 FROM webhook_events we
                 WHERE we.client_id = $1
-                  AND (we.processing_result = 'error' OR we.error_message IS NOT NULL)
-                ORDER BY we.received_at DESC
+                  AND we.processing_result != 'success'
+                ORDER BY we.created_at DESC
                 LIMIT $2
             `, [clientId, limit]);
             return result.rows;
@@ -1098,7 +1100,7 @@ class PgService {
                 this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = 'error' AND created_at >= $1`, [todayISO]),
                 this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = 'error' AND created_at >= $1`, [oneHourAgo]),
                 this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1`, [todayISO]),
-                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1 AND trace_id NOT IN (SELECT DISTINCT trace_id FROM lead_trail WHERE status = 'error' AND created_at >= $1)`, [todayISO, todayISO]),
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1 AND trace_id NOT IN (SELECT DISTINCT trace_id FROM lead_trail WHERE status = 'error' AND created_at >= $1)`, [todayISO]),
             ]);
 
             return {
