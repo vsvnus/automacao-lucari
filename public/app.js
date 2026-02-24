@@ -53,6 +53,20 @@ function navigateTo(section, replace = false) {
     // Close mobile sidebar
     closeMobileSidebar();
 
+    // Update app context bar
+    const contextBar = document.getElementById('app-context-bar');
+    const contextName = document.getElementById('app-context-name');
+    const appSections = { sdr: 'SDR de IA', calculadora: 'Calculadora', relatorio: 'Relatórios' };
+    if (contextBar) {
+        if (appSections[section]) {
+            contextBar.style.display = 'flex';
+            contextBar.className = 'app-context-bar ctx-' + section;
+            if (contextName) contextName.textContent = appSections[section];
+        } else {
+            contextBar.style.display = 'none';
+        }
+    }
+
     // Update URL History
     const url = section === 'dashboard' ? '/' : `/${section}`;
     if (replace) {
@@ -351,7 +365,7 @@ async function updateDashboard() {
     const stats = await fetchStats();
     const dashboardStats = await fetchDashboardStats();
 
-    const statusIndicator = $('#server-status .status-indicator');
+    const serverDot = document.getElementById('server-status-dot');
     const statusText = $('#server-status-text');
 
     if (health) {
@@ -368,41 +382,33 @@ async function updateDashboard() {
             if (errorsEl) errorsEl.textContent = dashboardStats.errors || 0;
         }
 
-        // Server status
-        statusIndicator?.classList.add('online');
-        statusIndicator?.classList.remove('offline');
+        // Server status (compact dots)
+        if (serverDot) {
+            serverDot.classList.add('online');
+            serverDot.classList.remove('offline');
+        }
         if (statusText) statusText.textContent = 'Online';
 
         // Google Sheets integration status
-        const sheetsIndicator = document.getElementById('sheets-status-indicator');
-        const sheetsText = document.getElementById('sheets-status-text');
+        const sheetsDot = document.getElementById('sheets-dot');
         const integrationAlert = document.getElementById('integration-alert');
         const sheetsConnected = health.integrations?.googleSheets === 'connected';
 
-        if (sheetsIndicator) {
-            sheetsIndicator.classList.toggle('online', sheetsConnected);
-            sheetsIndicator.classList.toggle('offline', !sheetsConnected);
-        }
-        if (sheetsText) {
-            sheetsText.textContent = sheetsConnected ? 'Conectado' : 'Desconectado';
-            sheetsText.style.color = sheetsConnected ? '' : 'var(--accent-red)';
+        if (sheetsDot) {
+            sheetsDot.classList.toggle('online', sheetsConnected);
+            sheetsDot.classList.toggle('offline', !sheetsConnected);
         }
         if (integrationAlert) {
             integrationAlert.style.display = sheetsConnected ? 'none' : 'flex';
         }
 
         // Evolution API status
-        const evoIndicator = document.getElementById('evolution-status-indicator');
-        const evoText = document.getElementById('evolution-status-text');
+        const evoDot = document.getElementById('evolution-dot');
         const evoConnected = health.integrations?.evolution === 'connected';
 
-        if (evoIndicator) {
-            evoIndicator.classList.toggle('online', evoConnected);
-            evoIndicator.classList.toggle('offline', !evoConnected);
-        }
-        if (evoText) {
-            evoText.textContent = evoConnected ? 'Conectado' : 'Desconectado';
-            evoText.style.color = evoConnected ? '' : 'var(--accent-red)';
+        if (evoDot) {
+            evoDot.classList.toggle('online', evoConnected);
+            evoDot.classList.toggle('offline', !evoConnected);
         }
 
         // Env badge
@@ -419,14 +425,63 @@ async function updateDashboard() {
         }
     } else {
         // Offline state
-        statusIndicator?.classList.remove('online');
-        statusIndicator?.classList.add('offline');
+        if (serverDot) {
+            serverDot.classList.remove('online');
+            serverDot.classList.add('offline');
+        }
         if (statusText) statusText.textContent = 'Offline';
     }
 
     // Load dashboard previews
     await loadDashboardClients();
     await loadDashboardActivity();
+
+    // Load apps overview stats
+    loadAppsOverviewStats();
+}
+
+async function loadAppsOverviewStats() {
+    // SDR tenants count
+    try {
+        const res = await fetch('/api/sdr/tenants');
+        if (res.ok) {
+            const data = await res.json();
+            const count = Array.isArray(data) ? data.length : (data.tenants ? data.tenants.length : 0);
+            const el = document.getElementById('app-stat-sdr');
+            if (el) el.textContent = `${count} tenant${count !== 1 ? 's' : ''}`;
+        }
+    } catch {
+        const el = document.getElementById('app-stat-sdr');
+        if (el) el.textContent = 'Indisponível';
+    }
+
+    // Calculadora tenants count
+    try {
+        const res = await fetch('/api/calc/tenants');
+        if (res.ok) {
+            const data = await res.json();
+            const count = Array.isArray(data) ? data.length : (data.tenants ? data.tenants.length : 0);
+            const el = document.getElementById('app-stat-calc');
+            if (el) el.textContent = `${count} tenant${count !== 1 ? 's' : ''}`;
+        }
+    } catch {
+        const el = document.getElementById('app-stat-calc');
+        if (el) el.textContent = 'Indisponível';
+    }
+
+    // Relatório clients count
+    try {
+        const res = await fetch('/api/relatorio/clients');
+        if (res.ok) {
+            const data = await res.json();
+            const count = Array.isArray(data) ? data.length : (data.clients ? data.clients.length : 0);
+            const el = document.getElementById('app-stat-relatorio');
+            if (el) el.textContent = `${count} cliente${count !== 1 ? 's' : ''}`;
+        }
+    } catch {
+        const el = document.getElementById('app-stat-relatorio');
+        if (el) el.textContent = 'Indisponível';
+    }
 }
 
 async function fetchDashboardStats() {

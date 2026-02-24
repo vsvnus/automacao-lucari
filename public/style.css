@@ -238,15 +238,79 @@ body {
     background: var(--accent-primary);
 }
 
-.nav-divider {
-    height: 1px;
-    background: var(--border-subtle);
-    margin: 8px 14px;
+.nav-group-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+    padding: 16px 14px 6px;
+    margin-top: 8px;
+}
+
+.nav-group-label:first-child {
+    margin-top: 0;
+    padding-top: 4px;
+}
+
+.nav-app-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.dot-sdr { background: var(--accent-green); }
+.dot-calc { background: var(--accent-primary); }
+.dot-relatorio { background: var(--accent-orange); }
+
+.nav-app-sdr,
+.nav-app-calc,
+.nav-app-relatorio {
+    padding-left: 20px;
 }
 
 .sidebar-footer {
     padding: 16px 16px 20px;
     border-top: 1px solid var(--border-subtle);
+}
+
+.sidebar-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+}
+
+.sidebar-status-label {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    margin-left: auto;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-tertiary);
+}
+
+.status-dot.online {
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green-glow);
+    animation: pulse-dot 2.5s ease-in-out infinite;
+}
+
+.status-dot.offline {
+    background: var(--accent-red);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
 }
 
 .server-status {
@@ -608,7 +672,7 @@ body {
 }
 
 .stat-card:hover {
-    transform: translateY(-4px);
+    transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
     border-color: var(--accent-primary-subtle);
 }
@@ -704,6 +768,127 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* --- Apps Overview --- */
+.apps-overview {
+    margin-top: 32px;
+}
+
+.apps-overview .section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.apps-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.app-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: var(--transition-normal);
+}
+
+.app-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-default);
+    box-shadow: var(--shadow-md);
+}
+
+.app-card-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.app-card-icon.sdr {
+    background: var(--accent-green-subtle);
+    color: var(--accent-green);
+}
+
+.app-card-icon.calc {
+    background: var(--accent-primary-subtle);
+    color: var(--accent-primary);
+}
+
+.app-card-icon.relatorio {
+    background: var(--accent-orange-subtle);
+    color: var(--accent-orange);
+}
+
+.app-card-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.app-card-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.app-card-stat {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.app-card-arrow {
+    font-size: 1.1rem;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    transition: var(--transition-fast);
+}
+
+.app-card:hover .app-card-arrow {
+    color: var(--text-secondary);
+    transform: translateX(2px);
+}
+
+/* --- App Context Bar --- */
+.app-context-bar {
+    padding: 8px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.app-context-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.app-context-bar.ctx-sdr .app-context-dot { background: var(--accent-green); }
+.app-context-bar.ctx-calculadora .app-context-dot { background: var(--accent-primary); }
+.app-context-bar.ctx-relatorio .app-context-dot { background: var(--accent-orange); }
 
 /* --- Activity List (New) --- */
 .activity-feed {
@@ -1644,6 +1829,20 @@ kbd {
     .toast {
         min-width: auto;
         max-width: none;
+    }
+
+    .nav-group-label {
+        font-size: 0.6rem;
+        padding: 12px 14px 4px;
+    }
+
+    .apps-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .app-context-bar {
+        padding: 6px 16px;
+        font-size: 0.7rem;
     }
 }
 
