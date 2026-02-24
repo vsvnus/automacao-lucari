@@ -7,6 +7,14 @@
 ### Documentação Obrigatória
 > **TODA alteração no código DEVE ser refletida neste CLAUDE.md.** Novas features, correções, endpoints, colunas de banco, dependências — tudo deve ser documentado aqui antes de considerar o trabalho concluído.
 
+### Aprovação Obrigatória para Produção
+> **NENHUMA alteração pode ir para produção sem aprovação explícita de Vinicius.** O fluxo é:
+> 1. Deploy no staging + informar o que mudou
+> 2. **Aguardar Vinicius testar e aprovar** (staging.vin8n.online)
+> 3. Só após aprovação explícita ("aprovado", "pode mandar", "manda") → merge staging → main
+>
+> **Merge para main sem aprovação é PROIBIDO.**
+
 ### Ciclo Autônomo de Produção
 Este projeto é administrado por agentes de IA via terminal. O servidor deve funcionar como um ciclo fechado e autônomo:
 - O gestor do projeto (Vinicius) é **project manager**, não desenvolvedor
@@ -38,14 +46,15 @@ FASE 3 — DEPLOY STAGING
 9.  SSH: ssh -i ~/.ssh/hetzner_lucari root@178.156.164.91
 10. bash /opt/staging/deploy.sh
 11. Testar em staging.vin8n.online
+12. Informar Vinicius sobre as mudanças e AGUARDAR aprovação
 
-FASE 4 — PROMOÇÃO PARA PRODUÇÃO
-12. git checkout main
-13. git pull origin main
-14. git merge staging                ← merge (NÃO rebase)
-15. git push origin main
-16. Coolify auto-deploys em ~1 min
-17. git checkout staging             ← volte para staging imediatamente
+FASE 4 — PROMOÇÃO PARA PRODUÇÃO (SÓ APÓS APROVAÇÃO DE VINICIUS)
+13. git checkout main
+14. git pull origin main
+15. git merge staging                ← merge (NÃO rebase)
+16. git push origin main
+17. Coolify auto-deploys em ~1 min
+18. git checkout staging             ← volte para staging imediatamente
 ```
 
 #### Regras Críticas
@@ -57,6 +66,7 @@ FASE 4 — PROMOÇÃO PARA PRODUÇÃO
 | Usar `git merge` (não `git rebase`) para staging→main | Rebase reescreve histórico e causa conflitos em cascata |
 | Nunca usar `git push --force` | Destrói histórico de outros contribuidores |
 | Nunca fazer commit direto na main | Main só recebe merges de staging |
+| **Nunca mergear para main sem aprovação de Vinicius** | Vinicius testa no staging antes |
 | Usar `git add <arquivo>` específico | Evita commitar .env, credenciais, temporários |
 | Voltar para staging após push na main | Próximo trabalho já começa no lugar certo |
 
