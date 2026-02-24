@@ -1132,6 +1132,34 @@ body {
     animation: page-enter 0.3s var(--ease-out);
 }
 
+/* Relatório execution error display */
+.exec-error-row {
+    background: rgba(239, 68, 68, 0.04);
+    border-left: 3px solid var(--error);
+    padding-left: 12px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+}
+
+.exec-error-detail {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: rgba(239, 68, 68, 0.08);
+    border-radius: 6px;
+    font-size: 0.78rem;
+    color: var(--error);
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.exec-error-detail svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
 /* --- Activity List (New) --- */
 .activity-feed {
     display: flex;

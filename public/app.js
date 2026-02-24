@@ -2126,6 +2126,7 @@ function switchSdrTab(tabName) {
     if (tabName === 'knowledge') loadSdrKnowledge(tenantId);
     if (tabName === 'conversations') loadSdrConversations(tenantId);
     if (tabName === 'leads') loadSdrLeads(tenantId);
+    if (tabName === 'apikey') loadSdrOpenAIKey(tenantId);
 }
 
 // --- SDR: Stats ---
@@ -2595,6 +2596,107 @@ async function loadSdrLeads(tenantId) {
 }
 
 // ============================================
+// SDR: OpenAI API Key Management
+// ============================================
+
+async function loadSdrOpenAIKey(tenantId) {
+    const badge = $('#sdr-openai-badge');
+    const input = $('#sdr-openai-key-input');
+    if (!tenantId) return;
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/settings`);
+        if (!res.ok) throw new Error('offline');
+        const data = await res.json();
+        if (data.openai_api_key) {
+            const key = data.openai_api_key;
+            if (input) {
+                input.value = key.length > 8 ? key.slice(0, 5) + '••••••••' + key.slice(-4) : '••••••••';
+                input.type = 'password';
+            }
+            if (badge) { badge.style.display = ''; badge.textContent = 'Configurada'; badge.style.background = 'var(--accent-green-subtle)'; badge.style.color = 'var(--accent-green)'; }
+            loadSdrOpenAIBalance(tenantId);
+        } else {
+            if (input) input.value = '';
+            if (badge) badge.style.display = 'none';
+            const note = $('#sdr-openai-balance-note');
+            if (note) note.textContent = 'Salve a API Key para consultar o saldo';
+        }
+    } catch {
+        if (input) input.value = '';
+        if (badge) badge.style.display = 'none';
+    }
+}
+
+async function loadSdrOpenAIBalance(tenantId) {
+    const totalEl = $('#sdr-openai-balance-total');
+    const remainEl = $('#sdr-openai-balance-remaining');
+    const usedEl = $('#sdr-openai-balance-used');
+    const noteEl = $('#sdr-openai-balance-note');
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/openai-balance`);
+        if (!res.ok) throw new Error('offline');
+        const data = await res.json();
+
+        if (data.total_granted !== undefined) {
+            const total = parseFloat(data.total_granted || 0);
+            const used = parseFloat(data.total_used || 0);
+            const remaining = total - used;
+            if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
+            if (remainEl) remainEl.textContent = `$${remaining.toFixed(2)}`;
+            if (usedEl) usedEl.textContent = `$${used.toFixed(2)}`;
+            if (noteEl) noteEl.textContent = `Atualizado: ${new Date().toLocaleString('pt-BR')}`;
+        } else if (data.error) {
+            if (noteEl) noteEl.textContent = data.error;
+        } else {
+            if (noteEl) noteEl.textContent = 'Saldo não disponível para esta conta (contas pagas não expõem saldo via API)';
+            if (totalEl) totalEl.textContent = '—';
+            if (remainEl) remainEl.textContent = '—';
+            if (usedEl) usedEl.textContent = '—';
+        }
+    } catch {
+        const noteEl = $('#sdr-openai-balance-note');
+        if (noteEl) noteEl.textContent = 'Não foi possível consultar o saldo';
+    }
+}
+
+$('#btn-sdr-save-openai-key')?.addEventListener('click', async () => {
+    const input = $('#sdr-openai-key-input');
+    const val = input?.value?.trim();
+    if (!val || val.includes('••••')) {
+        showToast('Cole a API Key completa', 'error');
+        return;
+    }
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/settings`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ openai_api_key: val }),
+        });
+        if (!res.ok) throw new Error('Erro ao salvar');
+        showToast('API Key salva!', 'success');
+        input.value = '';
+        loadSdrOpenAIKey(tenantId);
+    } catch (err) {
+        showToast(err.message || 'Erro ao salvar API Key', 'error');
+    }
+});
+
+$('#btn-sdr-toggle-openai-key')?.addEventListener('click', () => {
+    const inp = $('#sdr-openai-key-input');
+    if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
+});
+
+$('#btn-sdr-refresh-openai-balance')?.addEventListener('click', () => {
+    const tenantId = sdrState.selectedTenantId;
+    if (tenantId) loadSdrOpenAIBalance(tenantId);
+});
+
+// ============================================
 // Calculadora Section
 // ============================================
 
@@ -3046,13 +3148,21 @@ async function loadRelatorioExecutions() {
             return;
         }
         container.innerHTML = execs.map(e => {
-            const color = e.status === 'success' ? 'var(--success)' : e.status === 'error' ? 'var(--error)' : 'var(--warning)';
+            const isError = e.status === 'error';
+            const isSuccess = e.status === 'success';
+            const color = isSuccess ? 'var(--success)' : isError ? 'var(--error)' : 'var(--warning)';
+            const statusLabel = isSuccess ? 'Sucesso' : isError ? 'Erro' : escapeHtml(e.status || '—');
             const dt = e.created_at ? new Date(e.created_at).toLocaleString('pt-BR') : e.run_date || '—';
-            return `<div class="activity-item">
+            const errorMsg = e.error_message || e.error || e.details || '';
+            const errorBlock = isError && errorMsg
+                ? `<div class="exec-error-detail"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg><span>${escapeHtml(errorMsg)}</span></div>`
+                : '';
+            return `<div class="activity-item${isError ? ' exec-error-row' : ''}">
                 <div class="activity-dot" style="background:${color};"></div>
                 <div class="activity-content">
                     <span class="activity-title">${escapeHtml(e.client_name || String(e.client_id))} — ${escapeHtml(e.execution_type || '—')}</span>
-                    <span class="activity-meta">${escapeHtml(dt)} · ${escapeHtml(e.status)}</span>
+                    <span class="activity-meta">${escapeHtml(dt)} · <span style="color:${color};font-weight:600;">${statusLabel}</span></span>
+                    ${errorBlock}
                 </div>
             </div>`;
         }).join('');
