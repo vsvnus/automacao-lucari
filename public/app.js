@@ -145,6 +145,22 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// Relatório tab bar clicks
+document.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-reltab]');
+    if (!tab) return;
+    e.preventDefault();
+    const targetTab = tab.dataset.reltab;
+    // Update tab active state
+    $$('#relatorio-tabs .automacao-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.reltab === targetTab);
+    });
+    // Show/hide tab content
+    $$('.rel-tab-content').forEach(c => {
+        c.classList.toggle('active', c.id === `rel-tab-${targetTab}`);
+    });
+});
+
 // Mobile sidebar
 function openMobileSidebar() {
     refs.sidebar.classList.add('open');

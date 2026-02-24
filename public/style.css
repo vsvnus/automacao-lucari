@@ -1069,6 +1069,69 @@ body {
     line-height: 1.3;
 }
 
+/* --- Status Dot Tooltips --- */
+.status-dot-wrap {
+    position: relative;
+    display: inline-flex;
+    cursor: default;
+}
+
+.status-dot-wrap::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    border: 1px solid var(--border-default);
+    box-shadow: var(--shadow-md);
+    z-index: 50;
+}
+
+.status-dot-wrap:hover::after {
+    opacity: 1;
+}
+
+/* --- Dismiss Button --- */
+.btn-dismiss {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.btn-dismiss:hover {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+/* --- Relatório Tab Content --- */
+.rel-tab-content {
+    display: none;
+}
+
+.rel-tab-content.active {
+    display: block;
+    animation: page-enter 0.3s var(--ease-out);
+}
+
 /* --- Activity List (New) --- */
 .activity-feed {
     display: flex;
