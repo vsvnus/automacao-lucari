@@ -1,6 +1,6 @@
 # Dashboard + Automação Planilhas — Lucari (automacao-lucari)
 
-> **Atualizado**: 2026-02-24 | **Versão**: 1.1 (pós correções fase A)
+> **Atualizado**: 2026-02-24 | **Versão**: 1.2 (configurações avançadas SDR)
 
 ## Princípios de Operação
 
@@ -123,6 +123,19 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'admin';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 ```
 Necessárias para o CRUD de usuários funcionar corretamente.
+
+## Alterações Recentes
+
+### Configurações avançadas do SDR (v1.2, 2026-02-24)
+Novos campos na aba Configuração do tenant SDR:
+- **Janela de Contexto** (`cfg-context-window`) — quantas mensagens o bot lembra
+- **Temperatura** (`cfg-temperature`) — criatividade das respostas (0-1)
+- **Mensagem de Boas-vindas** (`cfg-welcome-msg`) — enviada no primeiro contato
+- **Telefone do Gestor** (`cfg-notification-phone`) — notificações de lead qualificado
+- **Follow-up Automático** (`cfg-followup-intervals`, `cfg-followup-max`) — intervalos e limite
+- **Google Sheet ID** (`cfg-google-sheet`) — sincronização de leads
+- **Google Calendar ID** (`cfg-google-calendar`) — agendamento de reuniões
+- Arquivos alterados: `public/index.html`, `public/app.js` (renderSdrConfig + submit handler)
 
 ## Correções Recentes (2026-02-24)
 

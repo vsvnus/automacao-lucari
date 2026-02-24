@@ -1081,6 +1081,16 @@
                                     <label for="cfg-tokens">Max Tokens</label>
                                     <input type="number" id="cfg-tokens" placeholder="500">
                                 </div>
+                                <div class="form-group">
+                                    <label for="cfg-context-window">Janela de Contexto</label>
+                                    <input type="number" id="cfg-context-window" placeholder="5" min="1" max="50">
+                                    <small class="form-hint">Quantas mensagens anteriores o bot lembra</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-temperature">Temperatura</label>
+                                    <input type="number" id="cfg-temperature" placeholder="0.7" min="0" max="1" step="0.1">
+                                    <small class="form-hint">0 = preciso, 1 = criativo</small>
+                                </div>
                                 <div class="form-group" style="grid-column:1/-1;">
                                     <label for="cfg-prompt">System Prompt</label>
                                     <textarea id="cfg-prompt" class="setting-input" rows="6"
@@ -1110,6 +1120,58 @@
                                     <label for="cfg-ooh-msg">Mensagem Fora do Horário</label>
                                     <textarea id="cfg-ooh-msg" class="setting-input" rows="2"
                                         placeholder="Obrigado pelo contato! Estamos fora do horário de atendimento..."></textarea>
+                                </div>
+                                <div class="form-group" style="grid-column:1/-1;">
+                                    <label for="cfg-welcome-msg">Mensagem de Boas-vindas</label>
+                                    <textarea id="cfg-welcome-msg" class="setting-input" rows="2"
+                                        placeholder="Olá! Bem-vindo à [empresa]. Como posso ajudar?"></textarea>
+                                    <small class="form-hint">Enviada automaticamente no primeiro contato do lead. Deixe vazio para desativar.</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Notificações -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header"><h3>Notificações</h3></div>
+                            <div class="sdr-form-grid" style="padding:16px;">
+                                <div class="form-group" style="grid-column:1/-1;">
+                                    <label for="cfg-notification-phone">Telefone do Gestor</label>
+                                    <input type="text" id="cfg-notification-phone" placeholder="5511999999999">
+                                    <small class="form-hint">Recebe alerta por WhatsApp quando um lead é qualificado</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Follow-up Automático -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header"><h3>Follow-up Automático</h3></div>
+                            <div class="sdr-form-grid" style="padding:16px;">
+                                <div class="form-group">
+                                    <label for="cfg-followup-intervals">Intervalos (horas)</label>
+                                    <input type="text" id="cfg-followup-intervals" placeholder="24, 48, 168">
+                                    <small class="form-hint">Horas entre cada follow-up separadas por vírgula</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-followup-max">Máx. Follow-ups</label>
+                                    <input type="number" id="cfg-followup-max" placeholder="3" min="0" max="10">
+                                    <small class="form-hint">0 = desativado</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Integrações Google -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header"><h3>Integrações Google</h3></div>
+                            <div class="sdr-form-grid" style="padding:16px;">
+                                <div class="form-group" style="grid-column:1/-1;">
+                                    <label for="cfg-google-sheet">Google Sheet ID</label>
+                                    <input type="text" id="cfg-google-sheet" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+                                    <small class="form-hint">ID da planilha para sincronizar leads automaticamente</small>
+                                </div>
+                                <div class="form-group" style="grid-column:1/-1;">
+                                    <label for="cfg-google-calendar">Google Calendar ID</label>
+                                    <input type="text" id="cfg-google-calendar" placeholder="email@gmail.com">
+                                    <small class="form-hint">ID do calendário para agendamento de reuniões pelo bot</small>
                                 </div>
                             </div>
                         </div>

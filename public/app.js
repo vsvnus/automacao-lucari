@@ -2339,6 +2339,8 @@ function renderSdrConfig(tenant) {
     // IA
     if (f('cfg-model')) f('cfg-model').value = tenant.llm_model || 'gpt-4o-mini';
     if (f('cfg-tokens')) f('cfg-tokens').value = tenant.max_tokens_per_response || 500;
+    if (f('cfg-context-window')) f('cfg-context-window').value = tenant.context_window || 5;
+    if (f('cfg-temperature')) f('cfg-temperature').value = tenant.temperature != null ? tenant.temperature : 0.7;
     if (f('cfg-prompt')) f('cfg-prompt').value = tenant.system_prompt || '';
 
     // Horário
@@ -2349,6 +2351,21 @@ function renderSdrConfig(tenant) {
         f('cfg-days').value = days;
     }
     if (f('cfg-ooh-msg')) f('cfg-ooh-msg').value = tenant.out_of_hours_message || '';
+    if (f('cfg-welcome-msg')) f('cfg-welcome-msg').value = tenant.welcome_message || '';
+
+    // Notificações
+    if (f('cfg-notification-phone')) f('cfg-notification-phone').value = tenant.notification_phone || '';
+
+    // Follow-up
+    if (f('cfg-followup-intervals')) {
+        const intervals = Array.isArray(tenant.follow_up_intervals) ? tenant.follow_up_intervals.join(', ') : (tenant.follow_up_intervals || '24, 48, 168');
+        f('cfg-followup-intervals').value = intervals;
+    }
+    if (f('cfg-followup-max')) f('cfg-followup-max').value = tenant.max_follow_ups != null ? tenant.max_follow_ups : 3;
+
+    // Integrações Google
+    if (f('cfg-google-sheet')) f('cfg-google-sheet').value = tenant.google_sheet_id || '';
+    if (f('cfg-google-calendar')) f('cfg-google-calendar').value = tenant.google_calendar_id || '';
 }
 
 // Save config form
@@ -2363,6 +2380,12 @@ $('#form-sdr-config')?.addEventListener('submit', async (e) => {
     if (btn) btn.disabled = true;
 
     try {
+        const followUpRaw = $('#cfg-followup-intervals')?.value.trim();
+        let followUpIntervals = undefined;
+        if (followUpRaw) {
+            followUpIntervals = followUpRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+        }
+
         const data = {
             name: $('#cfg-name')?.value.trim() || undefined,
             niche: $('#cfg-niche')?.value.trim() || undefined,
@@ -2370,11 +2393,19 @@ $('#form-sdr-config')?.addEventListener('submit', async (e) => {
             whatsapp_number: $('#cfg-whatsapp')?.value.trim() || undefined,
             llm_model: $('#cfg-model')?.value || undefined,
             max_tokens_per_response: parseInt($('#cfg-tokens')?.value) || undefined,
+            context_window: parseInt($('#cfg-context-window')?.value) || undefined,
+            temperature: $('#cfg-temperature')?.value !== '' ? parseFloat($('#cfg-temperature')?.value) : undefined,
             system_prompt: $('#cfg-prompt')?.value.trim() || undefined,
             business_hours_start: $('#cfg-hours-start')?.value || undefined,
             business_hours_end: $('#cfg-hours-end')?.value || undefined,
             business_days: $('#cfg-days')?.value.trim() || undefined,
             out_of_hours_message: $('#cfg-ooh-msg')?.value.trim() || undefined,
+            welcome_message: $('#cfg-welcome-msg')?.value.trim() || undefined,
+            notification_phone: $('#cfg-notification-phone')?.value.trim() || undefined,
+            follow_up_intervals: followUpIntervals,
+            max_follow_ups: parseInt($('#cfg-followup-max')?.value) >= 0 ? parseInt($('#cfg-followup-max')?.value) : undefined,
+            google_sheet_id: $('#cfg-google-sheet')?.value.trim() || undefined,
+            google_calendar_id: $('#cfg-google-calendar')?.value.trim() || undefined,
         };
 
         const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}`, {
