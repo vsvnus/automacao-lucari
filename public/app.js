@@ -1015,7 +1015,10 @@ async function updateClient(clientData) {
 // Settings
 // ============================================
 async function loadSettings() {
-    // Carregar webhook URL do backend (Supabase)
+    // Carregar lista de usuários
+    loadUsers();
+
+    // Carregar webhook URL do backend
     try {
         const res = await fetch('/admin/settings/webhook-url');
         const data = await res.json();
@@ -1130,6 +1133,146 @@ $('#btn-copy-webhook')?.addEventListener('click', () => {
 });
 
 // ============================================
+// User Management
+// ============================================
+let usersData = [];
+let currentUserId = null;
+
+async function loadUsers() {
+    try {
+        const res = await fetch('/api/users');
+        if (!res.ok) return;
+        usersData = await res.json();
+        renderUsersList();
+    } catch { /* silent */ }
+}
+
+function renderUsersList() {
+    const container = $('#users-list');
+    if (!container) return;
+
+    if (usersData.length === 0) {
+        container.innerHTML = '<p class="empty-state">Nenhum usuário cadastrado</p>';
+        return;
+    }
+
+    container.innerHTML = usersData.map(user => {
+        const initial = (user.name || user.email || '?')[0].toUpperCase();
+        const isMe = user.id === currentUserId;
+        const created = new Date(user.created_at).toLocaleDateString('pt-BR');
+        return `
+            <div class="user-row">
+                <div class="user-avatar">${initial}</div>
+                <div class="user-info">
+                    <span class="user-name">${escapeHtml(user.name || 'Sem nome')}${isMe ? ' <span class="badge badge-sm" style="font-size:0.65rem;vertical-align:middle;">Você</span>' : ''}</span>
+                    <span class="user-email">${escapeHtml(user.email)}</span>
+                </div>
+                <div class="user-meta">
+                    <span class="user-date">Criado em ${created}</span>
+                </div>
+                <div class="user-actions">
+                    <button class="btn-icon" title="Editar" onclick="handleEditUser('${user.id}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    </button>
+                    ${!isMe ? `<button class="btn-icon" title="Remover" onclick="handleDeleteUser('${user.id}', '${escapeHtml(user.name || user.email)}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>` : ''}
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function openUserModal(editUser) {
+    const modal = $('#modal-user');
+    const title = $('#modal-user-title');
+    const form = $('#form-user');
+    const hint = $('#user-password-hint');
+
+    form.reset();
+    $('#user-edit-id').value = '';
+
+    if (editUser) {
+        title.textContent = 'Editar Usuário';
+        $('#user-edit-id').value = editUser.id;
+        $('#user-name').value = editUser.name || '';
+        $('#user-email').value = editUser.email || '';
+        $('#user-password').removeAttribute('required');
+        hint.textContent = 'Deixe vazio para manter a senha atual';
+    } else {
+        title.textContent = 'Novo Usuário';
+        $('#user-password').setAttribute('required', 'required');
+        hint.textContent = 'Obrigatório para novos usuários';
+    }
+
+    modal.classList.add('active');
+}
+
+function closeUserModal() {
+    $('#modal-user')?.classList.remove('active');
+}
+
+function handleEditUser(id) {
+    const user = usersData.find(u => u.id === id);
+    if (user) openUserModal(user);
+}
+
+async function handleDeleteUser(id, name) {
+    if (!confirm(`Remover o usuário "${name}"? Esta ação não pode ser desfeita.`)) return;
+
+    try {
+        const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data.error || 'Erro ao remover', 'error');
+            return;
+        }
+        showToast('Usuário removido', 'success');
+        loadUsers();
+    } catch {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+$('#btn-add-user')?.addEventListener('click', () => openUserModal());
+
+$('#form-user')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const editId = $('#user-edit-id').value;
+    const name = $('#user-name').value.trim();
+    const email = $('#user-email').value.trim();
+    const password = $('#user-password').value;
+
+    const body = { name, email };
+    if (password) body.password = password;
+
+    try {
+        const url = editId ? `/api/users/${editId}` : '/api/users';
+        const method = editId ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast(data.error || 'Erro ao salvar', 'error');
+            return;
+        }
+        showToast(editId ? 'Usuário atualizado!' : 'Usuário criado!', 'success');
+        closeUserModal();
+        loadUsers();
+    } catch {
+        showToast('Erro de conexão', 'error');
+    }
+});
+
+// ============================================
 // Toast System
 // ============================================
 function showToast(message, type = 'info') {
@@ -1206,6 +1349,7 @@ async function init() {
     if (window.authService) {
         const user = await window.authService.checkAuth();
         if (!user) return; // Will redirect
+        currentUserId = user.id;
     }
 
     // Setup Logout (Immediately interactive)

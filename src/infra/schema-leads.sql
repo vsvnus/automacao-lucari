@@ -73,6 +73,19 @@ WITH (OIDS=FALSE);
 ALTER TABLE session ADD CONSTRAINT session_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE;
 CREATE INDEX IF NOT EXISTS idx_session_expire ON session(expire);
 
+-- Migration: Add role and updated_at to users
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'role') THEN
+        ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'admin';
+    END IF;
+END $$;
+
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'updated_at') THEN
+        ALTER TABLE users ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+    END IF;
+END $$;
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_leads_log_created ON leads_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_leads_log_client ON leads_log(client_id);

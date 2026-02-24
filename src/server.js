@@ -186,42 +186,84 @@ app.post('/webhook/tintim', async (req, res) => {
     }
 });
 
+// ====================================================
+// Auto-migrate plaintext passwords to bcrypt on startup
+// ====================================================
+async function migratePasswordsToHash() {
+    if (!pgService.isAvailable()) return;
+    try {
+        const { rows } = await pgService.query('SELECT id, password_hash FROM users');
+        for (const user of rows) {
+            if (user.password_hash && !user.password_hash.startsWith('$2')) {
+                const hashed = await bcrypt.hash(user.password_hash, 10);
+                await pgService.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hashed, user.id]);
+                logger.info(`Password migrated to bcrypt for user ${user.id}`);
+            }
+        }
+    } catch (error) {
+        logger.error('Erro na migração de senhas', { error: error.message });
+    }
+}
+
+// Setup check (public)
+app.get('/api/auth/setup-needed', async (_req, res) => {
+    const count = await pgService.countUsers();
+    res.json({ setupNeeded: count === 0 });
+});
+
+// Setup — create first admin (only works with 0 users)
+app.post('/api/auth/setup', async (req, res) => {
+    const { email, password, name } = req.body;
+
+    if (!email || !password || !name) {
+        return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
+    }
+    if (password.length < 6) {
+        return res.status(400).json({ error: 'Senha deve ter no mínimo 6 caracteres' });
+    }
+
+    const count = await pgService.countUsers();
+    if (count > 0) {
+        return res.status(403).json({ error: 'Setup já foi realizado. Use o login.' });
+    }
+
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        const user = await pgService.createUser(email, passwordHash, name, 'admin');
+        logger.info(`Setup: primeiro admin criado — ${email}`);
+        res.status(201).json({ user: { id: user.id, email: user.email, name: user.name } });
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ error: 'Email já cadastrado' });
+        }
+        res.status(500).json({ error: 'Erro ao criar conta' });
+    }
+});
+
 // Login
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
 
-    // Admin hardcoded fallback removido, agora usa DB
-    // Verificar usuário no banco
-    const user = await pgService.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = await pgService.findUserByEmail(email);
 
-    if (user && user.rows.length > 0) {
-        const userData = user.rows[0];
-        // Comparar senha (bcrypt, ou plain text se for migração legado)
-        // Por simplificação debug, assumindo plain text se for legado ou bcrypt correto
-        // Na criação manual via curl usamos 'admin123', que não é hash bcrypt.
-        // Vamos permitir plain text temporariamente para o login manual funcionar.
-
-        let validPassword = false;
-        const storedHash = userData.password_hash || userData.password;
+    if (user) {
+        const storedHash = user.password_hash;
         if (storedHash && storedHash.startsWith('$2')) {
-            validPassword = await bcrypt.compare(password, storedHash);
-        } else {
-            validPassword = (password === storedHash);
-        }
+            const valid = await bcrypt.compare(password, storedHash);
+            if (valid) {
+                req.session.userId = user.id;
+                req.session.user = { id: user.id, email: user.email, name: user.name };
 
-        if (validPassword) {
-            req.session.userId = userData.id;
-            req.session.user = { id: userData.id, email: userData.email, name: userData.name };
+                logger.info(`Login bem-sucedido: ${email}`);
 
-            logger.info(`Login bem-sucedido: ${email}`);
-
-            return req.session.save((err) => {
-                if (err) {
-                    logger.error('Erro ao salvar sessão', err);
-                    return res.status(500).json({ error: 'Erro de sessão' });
-                }
-                res.json({ user: req.session.user });
-            });
+                return req.session.save((err) => {
+                    if (err) {
+                        logger.error('Erro ao salvar sessão', err);
+                        return res.status(500).json({ error: 'Erro de sessão' });
+                    }
+                    res.json({ user: req.session.user });
+                });
+            }
         }
     }
 
@@ -375,7 +417,114 @@ app.post('/admin/settings/webhook-url', requireAuth, async (req, res) => {
 });
 
 // ====================================================
-// Inicialização
+// User Management API (protected)
+// ====================================================
+
+app.get('/api/users', requireAuth, async (_req, res) => {
+    const users = await pgService.listUsers();
+    res.json(users);
+});
+
+app.post('/api/users', requireAuth, async (req, res) => {
+    const { email, password, name, role } = req.body;
+
+    if (!email || !password || !name) {
+        return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
+    }
+    if (password.length < 6) {
+        return res.status(400).json({ error: 'Senha deve ter no mínimo 6 caracteres' });
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Email inválido' });
+    }
+
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        const user = await pgService.createUser(email, passwordHash, name, role || 'admin');
+        logger.info(`Usuário criado: ${email}`);
+        res.status(201).json(user);
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ error: 'Email já cadastrado' });
+        }
+        res.status(500).json({ error: 'Erro ao criar usuário' });
+    }
+});
+
+app.put('/api/users/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const { email, password, name, role } = req.body;
+
+    // Cannot remove admin role from yourself
+    if (id === req.session.userId && role && role !== 'admin') {
+        return res.status(400).json({ error: 'Você não pode remover seu próprio papel de admin' });
+    }
+
+    if (email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ error: 'Email inválido' });
+        }
+    }
+    if (password !== undefined && password !== '' && password.length < 6) {
+        return res.status(400).json({ error: 'Senha deve ter no mínimo 6 caracteres' });
+    }
+
+    try {
+        let passwordHash = null;
+        if (password && password.length >= 6) {
+            passwordHash = await bcrypt.hash(password, 10);
+        }
+
+        const updated = await pgService.updateUser(id, { email, name, role, passwordHash });
+        if (!updated) {
+            return res.status(404).json({ error: 'Usuário não encontrado' });
+        }
+        logger.info(`Usuário atualizado: ${id}`);
+        res.json(updated);
+    } catch (error) {
+        if (error.code === '23505') {
+            return res.status(409).json({ error: 'Email já cadastrado por outro usuário' });
+        }
+        res.status(500).json({ error: 'Erro ao atualizar usuário' });
+    }
+});
+
+app.delete('/api/users/:id', requireAuth, async (req, res) => {
+    const { id } = req.params;
+
+    // Cannot delete yourself
+    if (id === req.session.userId) {
+        return res.status(400).json({ error: 'Você não pode deletar sua própria conta' });
+    }
+
+    // Must keep at least 1 user
+    const count = await pgService.countUsers();
+    if (count <= 1) {
+        return res.status(400).json({ error: 'O sistema precisa de pelo menos 1 usuário' });
+    }
+
+    try {
+        const deleted = await pgService.deleteUser(id);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Usuário não encontrado' });
+        }
+
+        // Invalidate sessions for deleted user
+        try {
+            await pgService.query(
+                `DELETE FROM session WHERE sess::jsonb->>'userId' = $1`,
+                [id]
+            );
+        } catch { /* session cleanup is best-effort */ }
+
+        logger.info(`Usuário deletado: ${id}`);
+        res.json({ status: 'deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Erro ao deletar usuário' });
+    }
+});
 
 // ====================================================
 // Alertas de Clientes Sem Leads
@@ -470,6 +619,7 @@ async function startServer() {
         // 1.5. Rodar migrations se necessário
         if (pgService.isAvailable()) {
             await pgService.runMigrations();
+            await migratePasswordsToHash();
         }
 
         // 2. Carregar clientes (PostgreSQL → fallback JSON)

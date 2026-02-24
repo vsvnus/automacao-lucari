@@ -961,13 +961,13 @@ class PgService {
         }
     }
 
-    async createUser(email, passwordHash, name) {
+    async createUser(email, passwordHash, name, role = 'admin') {
         if (!this.isAvailable()) return null;
         try {
             const { rows } = await this.query(
-                `INSERT INTO users (email, password_hash, name)
-                 VALUES ($1, $2, $3) RETURNING *`,
-                [email, passwordHash, name]
+                `INSERT INTO users (email, password_hash, name, role)
+                 VALUES ($1, $2, $3, $4) RETURNING id, email, name, role, created_at`,
+                [email, passwordHash, name, role]
             );
             return rows[0];
         } catch (error) {
@@ -976,7 +976,82 @@ class PgService {
         }
     }
 
-    // ============================================================
+    async listUsers() {
+        if (!this.isAvailable()) return [];
+        try {
+            const { rows } = await this.query(
+                'SELECT id, email, name, role, created_at, updated_at FROM users ORDER BY created_at ASC'
+            );
+            return rows;
+        } catch (error) {
+            logger.error('Erro ao listar users', { error: error.message });
+            return [];
+        }
+    }
+
+    async getUserById(id) {
+        if (!this.isAvailable()) return null;
+        try {
+            const { rows } = await this.query(
+                'SELECT id, email, name, role, created_at, updated_at FROM users WHERE id = $1',
+                [id]
+            );
+            return rows[0] || null;
+        } catch (error) {
+            logger.error('Erro ao buscar user por id', { error: error.message });
+            return null;
+        }
+    }
+
+    async updateUser(id, { email, name, role, passwordHash }) {
+        if (!this.isAvailable()) return null;
+        try {
+            const fields = [];
+            const values = [];
+            let idx = 1;
+
+            if (email !== undefined) { fields.push(`email = $${idx++}`); values.push(email); }
+            if (name !== undefined) { fields.push(`name = $${idx++}`); values.push(name); }
+            if (role !== undefined) { fields.push(`role = $${idx++}`); values.push(role); }
+            if (passwordHash) { fields.push(`password_hash = $${idx++}`); values.push(passwordHash); }
+
+            if (fields.length === 0) return null;
+
+            fields.push(`updated_at = NOW()`);
+            values.push(id);
+
+            const { rows } = await this.query(
+                `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id, email, name, role, created_at, updated_at`,
+                values
+            );
+            return rows[0] || null;
+        } catch (error) {
+            logger.error('Erro ao atualizar user', { error: error.message });
+            throw error;
+        }
+    }
+
+    async deleteUser(id) {
+        if (!this.isAvailable()) return false;
+        try {
+            const { rowCount } = await this.query('DELETE FROM users WHERE id = $1', [id]);
+            return rowCount > 0;
+        } catch (error) {
+            logger.error('Erro ao deletar user', { error: error.message });
+            throw error;
+        }
+    }
+
+    async countUsers() {
+        if (!this.isAvailable()) return 0;
+        try {
+            const { rows } = await this.query('SELECT COUNT(*) as count FROM users');
+            return parseInt(rows[0].count, 10);
+        } catch {
+            return 0;
+        }
+    }
+
     // ============================================================
     // ALERTAS
     // ============================================================
