@@ -1064,6 +1064,35 @@
                                 </span>
                             </div>
                         </div>
+                        <!-- Link de Conexão Público -->
+                        <div id="wa-detail-connect-link-section"
+                            style="display:none;padding:16px;border-top:1px solid var(--border-subtle);">
+                            <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:4px;">Link de Conexão Público</label>
+                            <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">Envie para o cliente conectar o WhatsApp remotamente</p>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                <input type="text" id="wa-detail-connect-url" readonly
+                                    style="flex:1;min-width:180px;font-size:0.8rem;padding:8px 12px;background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:6px;color:var(--text-primary);">
+                                <button type="button" class="btn-secondary btn-sm" id="btn-wa-copy-connect-link"
+                                    style="gap:6px;height:36px;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                    <span>Copiar</span>
+                                </button>
+                                <button type="button" class="btn-secondary btn-sm" id="btn-wa-send-connect-link"
+                                    style="gap:6px;height:36px;background:rgba(37,211,102,0.1);color:#25d366;border-color:#25d366;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                        <path
+                                            d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+                                        <path
+                                            d="M12 0C5.373 0 0 5.373 0 12c0 2.138.56 4.143 1.54 5.886L0 24l6.305-1.654A11.953 11.953 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.97 0-3.834-.56-5.42-1.53l-.389-.231-4.032 1.058 1.076-3.93-.253-.403A9.713 9.713 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z" />
+                                    </svg>
+                                    <span>Enviar</span>
+                                </button>
+                            </div>
+                        </div>
                         <!-- Reconnect QR Code area -->
                         <div id="wa-detail-qr-area"
                             style="display:none;padding:24px;text-align:center;border-top:1px solid var(--border-subtle);">
@@ -1071,29 +1100,6 @@
                                 Code com o WhatsApp para reconectar</p>
                             <div style="background:#fff;display:inline-block;padding:16px;border-radius:12px;">
                                 <img id="wa-detail-qr-img" src="" alt="QR Code" style="width:256px;height:256px;">
-                            </div>
-                            <!-- Link público de conexão -->
-                            <div id="wa-detail-connect-links"
-                                style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-                                <button type="button" class="btn-secondary btn-sm" id="btn-wa-copy-connect-link"
-                                    style="gap:6px;">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                        stroke-width="2">
-                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                    </svg>
-                                    <span>Copiar Link</span>
-                                </button>
-                                <button type="button" class="btn-secondary btn-sm" id="btn-wa-send-connect-link"
-                                    style="gap:6px;background:rgba(37,211,102,0.1);color:#25d366;border-color:#25d366;">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                        <path
-                                            d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
-                                        <path
-                                            d="M12 0C5.373 0 0 5.373 0 12c0 2.138.56 4.143 1.54 5.886L0 24l6.305-1.654A11.953 11.953 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.97 0-3.834-.56-5.42-1.53l-.389-.231-4.032 1.058 1.076-3.93-.253-.403A9.713 9.713 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z" />
-                                    </svg>
-                                    <span>Enviar via WhatsApp</span>
-                                </button>
                             </div>
                         </div>
                         <div style="padding:16px;border-top:1px solid var(--border-subtle);">
@@ -1527,29 +1533,52 @@
                         </div>
                         <p style="margin-top:8px;font-size:0.8rem;color:var(--text-secondary);">Escaneie com o WhatsApp
                             para conectar</p>
-                        <!-- Link público de conexão -->
-                        <div id="evolution-connect-links"
-                            style="display:none;margin-top:12px;gap:8px;justify-content:center;flex-wrap:wrap;">
-                            <button type="button" class="btn-secondary btn-sm" id="btn-copy-connect-link"
-                                style="gap:6px;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
-                                <span>Copiar Link</span>
-                            </button>
-                            <button type="button" class="btn-secondary btn-sm" id="btn-send-connect-link"
-                                style="gap:6px;background:rgba(37,211,102,0.1);color:#25d366;border-color:#25d366;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                    <path
-                                        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
-                                    <path
-                                        d="M12 0C5.373 0 0 5.373 0 12c0 2.138.56 4.143 1.54 5.886L0 24l6.305-1.654A11.953 11.953 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.97 0-3.834-.56-5.42-1.53l-.389-.231-4.032 1.058 1.076-3.93-.253-.403A9.713 9.713 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z" />
-                                </svg>
-                                <span>Enviar via WhatsApp</span>
-                            </button>
-                        </div>
+                    </div>
+                </div>
+
+                <!-- Gerar QR para instância existente -->
+                <div id="evolution-reconnect-section"
+                    style="display:none;margin-top:8px;text-align:center;">
+                    <button type="button" class="btn-secondary btn-sm" id="btn-evolution-show-qr"
+                        style="gap:6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"></rect>
+                            <rect x="14" y="3" width="7" height="7"></rect>
+                            <rect x="3" y="14" width="7" height="7"></rect>
+                            <rect x="14" y="14" width="7" height="7"></rect>
+                        </svg>
+                        <span>Gerar QR Code</span>
+                    </button>
+                </div>
+
+                <!-- Link de Conexão Público (separado do QR) -->
+                <div id="evolution-connect-link-section"
+                    style="display:none;margin-top:8px;padding:16px;background:var(--bg-surface);border-radius:8px;border:1px solid var(--border-subtle);">
+                    <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:4px;">Link de Conexão Público</label>
+                    <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">Envie este link para o cliente conectar o WhatsApp remotamente</p>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <input type="text" id="evolution-connect-url" readonly
+                            style="flex:1;min-width:180px;font-size:0.8rem;padding:8px 12px;background:var(--bg-base);border:1px solid var(--border-subtle);border-radius:6px;color:var(--text-primary);">
+                        <button type="button" class="btn-secondary btn-sm" id="btn-copy-connect-link"
+                            style="gap:6px;height:36px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                            <span>Copiar</span>
+                        </button>
+                        <button type="button" class="btn-secondary btn-sm" id="btn-send-connect-link"
+                            style="gap:6px;height:36px;background:rgba(37,211,102,0.1);color:#25d366;border-color:#25d366;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path
+                                    d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+                                <path
+                                    d="M12 0C5.373 0 0 5.373 0 12c0 2.138.56 4.143 1.54 5.886L0 24l6.305-1.654A11.953 11.953 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75c-1.97 0-3.834-.56-5.42-1.53l-.389-.231-4.032 1.058 1.076-3.93-.253-.403A9.713 9.713 0 012.25 12c0-5.385 4.365-9.75 9.75-9.75S21.75 6.615 21.75 12s-4.365 9.75-9.75 9.75z" />
+                            </svg>
+                            <span>Enviar</span>
+                        </button>
                     </div>
                 </div>
 

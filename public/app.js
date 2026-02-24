@@ -2059,28 +2059,37 @@ async function showEvolutionQRCode(instanceName) {
     }
 
     startEvolutionPolling(instanceName);
+}
 
-    // Show connect link buttons if slug is available
-    const connectLinks = $('#evolution-connect-links');
+// --- Connect Link Section (modal): show/hide + populate ---
+function updateConnectLinkSection() {
+    const section = $('#evolution-connect-link-section');
+    const reconnectSection = $('#evolution-reconnect-section');
+    const urlInput = $('#evolution-connect-url');
     const slug = $('#sdr-tenant-slug')?.value?.trim();
-    if (connectLinks) {
-        connectLinks.style.display = slug ? 'flex' : 'none';
+    const tenantId = $('#sdr-tenant-id')?.value;
+    const instanceName = $('#sdr-tenant-evolution')?.value;
+
+    // Link section: only when client is saved (has ID + slug)
+    if (section) {
+        if (tenantId && slug) {
+            section.style.display = '';
+            if (urlInput) urlInput.value = getSdrConnectUrl(slug);
+        } else {
+            section.style.display = 'none';
+        }
+    }
+
+    // Reconnect/show QR button: only when editing and instance is selected
+    if (reconnectSection) {
+        reconnectSection.style.display = (tenantId && instanceName) ? '' : 'none';
     }
 }
 
-// --- Connect Link: Copy & Send ---
+// --- Connect Link: Copy & Send (modal) ---
 $('#btn-copy-connect-link')?.addEventListener('click', () => {
-    const slug = $('#sdr-tenant-slug')?.value?.trim();
-    const tenantId = $('#sdr-tenant-id')?.value;
-    if (!slug) {
-        showToast('Preencha o slug do cliente primeiro', 'error');
-        return;
-    }
-    if (!tenantId) {
-        showToast('Salve o cliente primeiro para gerar o link', 'error');
-        return;
-    }
-    const url = getSdrConnectUrl(slug);
+    const url = $('#evolution-connect-url')?.value;
+    if (!url) return;
     navigator.clipboard.writeText(url).then(() => {
         showToast('Link copiado!', 'success');
     }).catch(() => {
@@ -2089,19 +2098,20 @@ $('#btn-copy-connect-link')?.addEventListener('click', () => {
 });
 
 $('#btn-send-connect-link')?.addEventListener('click', () => {
-    const slug = $('#sdr-tenant-slug')?.value?.trim();
-    const tenantId = $('#sdr-tenant-id')?.value;
-    if (!slug) {
-        showToast('Preencha o slug do cliente primeiro', 'error');
-        return;
-    }
-    if (!tenantId) {
-        showToast('Salve o cliente primeiro para gerar o link', 'error');
-        return;
-    }
-    const url = getSdrConnectUrl(slug);
+    const url = $('#evolution-connect-url')?.value;
+    if (!url) return;
     const msg = encodeURIComponent(`Olá! Conecte seu WhatsApp ao Bot SDR acessando este link:\n${url}`);
     window.open(`https://wa.me/?text=${msg}`, '_blank');
+});
+
+// --- Show QR for existing instance ---
+$('#btn-evolution-show-qr')?.addEventListener('click', async () => {
+    const instanceName = $('#sdr-tenant-evolution')?.value;
+    if (!instanceName) {
+        showToast('Selecione uma instância primeiro', 'error');
+        return;
+    }
+    await showEvolutionQRCode(instanceName);
 });
 
 // Event: Create new instance
@@ -2177,6 +2187,9 @@ function openSdrModal(tenant = null) {
         // Load instances select
         loadEvolutionInstancesSelect('');
     }
+
+    // Show/hide connect link + reconnect sections
+    updateConnectLinkSection();
 
     modal.classList.add('visible');
     document.body.style.overflow = 'hidden';
@@ -2448,6 +2461,16 @@ async function loadSdrWhatsAppStatus(tenant) {
         }
         if (reconnectBtn) reconnectBtn.style.display = '';
     }
+
+    // Populate connect link section
+    const linkSection = $('#wa-detail-connect-link-section');
+    const linkUrl = $('#wa-detail-connect-url');
+    if (linkSection && tenant.slug) {
+        linkSection.style.display = '';
+        if (linkUrl) linkUrl.value = getSdrConnectUrl(tenant.slug);
+    } else if (linkSection) {
+        linkSection.style.display = 'none';
+    }
 }
 
 $('#btn-whatsapp-refresh-status')?.addEventListener('click', () => {
@@ -2509,12 +2532,8 @@ $('#btn-whatsapp-reconnect')?.addEventListener('click', async () => {
 
 // --- WhatsApp Detail: Connect Link buttons ---
 $('#btn-wa-copy-connect-link')?.addEventListener('click', () => {
-    const tenant = sdrState.selectedTenant;
-    if (!tenant?.slug) {
-        showToast('Slug do cliente não disponível', 'error');
-        return;
-    }
-    const url = getSdrConnectUrl(tenant.slug);
+    const url = $('#wa-detail-connect-url')?.value;
+    if (!url) return;
     navigator.clipboard.writeText(url).then(() => {
         showToast('Link copiado!', 'success');
     }).catch(() => {
@@ -2523,12 +2542,8 @@ $('#btn-wa-copy-connect-link')?.addEventListener('click', () => {
 });
 
 $('#btn-wa-send-connect-link')?.addEventListener('click', () => {
-    const tenant = sdrState.selectedTenant;
-    if (!tenant?.slug) {
-        showToast('Slug do cliente não disponível', 'error');
-        return;
-    }
-    const url = getSdrConnectUrl(tenant.slug);
+    const url = $('#wa-detail-connect-url')?.value;
+    if (!url) return;
     const msg = encodeURIComponent(`Olá! Conecte seu WhatsApp ao Bot SDR acessando este link:\n${url}`);
     window.open(`https://wa.me/?text=${msg}`, '_blank');
 });
