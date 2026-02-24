@@ -1071,10 +1071,10 @@ class PgService {
         try {
             const { rows } = await this.query(`
                 SELECT t.trace_id, t.step_name, t.detail, t.metadata, t.created_at,
-                       (SELECT lt2.detail FROM lead_trail lt2 WHERE lt2.trace_id = t.trace_id AND lt2.step_name = webhook_received LIMIT 1) as webhook_detail,
-                       (SELECT lt3.metadata FROM lead_trail lt3 WHERE lt3.trace_id = t.trace_id AND lt3.step_name = webhook_received LIMIT 1) as webhook_metadata
+                       (SELECT lt2.detail FROM lead_trail lt2 WHERE lt2.trace_id = t.trace_id AND lt2.step_name = 'webhook_received' LIMIT 1) as webhook_detail,
+                       (SELECT lt3.metadata FROM lead_trail lt3 WHERE lt3.trace_id = t.trace_id AND lt3.step_name = 'webhook_received' LIMIT 1) as webhook_metadata
                 FROM lead_trail t
-                WHERE t.status = error
+                WHERE t.status = 'error'
                 ORDER BY t.created_at DESC
                 LIMIT $1
             `, [limit]);
@@ -1088,17 +1088,17 @@ class PgService {
     async getTrailErrorStats() {
         if (!this.isAvailable()) return { today: 0, lastHour: 0, totalToday: 0, successToday: 0 };
         try {
-            const nowSP = new Date(new Date().toLocaleString(en-US, { timeZone: America/Sao_Paulo }));
+            const nowSP = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
             const todayStart = new Date(nowSP);
             todayStart.setHours(0, 0, 0, 0);
             const todayISO = new Date(todayStart.getTime() + 3 * 60 * 60 * 1000).toISOString();
             const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
             const [errToday, errHour, totalToday, successToday] = await Promise.all([
-                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = error AND created_at >= $1`, [todayISO]),
-                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = error AND created_at >= $1`, [oneHourAgo]),
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = 'error' AND created_at >= $1`, [todayISO]),
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE status = 'error' AND created_at >= $1`, [oneHourAgo]),
                 this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1`, [todayISO]),
-                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1 AND trace_id NOT IN (SELECT DISTINCT trace_id FROM lead_trail WHERE status = error AND created_at >= $1)`, [todayISO, todayISO]),
+                this.query(`SELECT COUNT(DISTINCT trace_id) as count FROM lead_trail WHERE created_at >= $1 AND trace_id NOT IN (SELECT DISTINCT trace_id FROM lead_trail WHERE status = 'error' AND created_at >= $1)`, [todayISO, todayISO]),
             ]);
 
             return {
@@ -1117,7 +1117,7 @@ class PgService {
         if (!this.isAvailable()) return null;
         try {
             const { rows } = await this.query(
-                `SELECT metadata FROM lead_trail WHERE trace_id = $1 AND step_name = webhook_received LIMIT 1`,
+                `SELECT metadata FROM lead_trail WHERE trace_id = $1 AND step_name = 'webhook_received' LIMIT 1`,
                 [traceId]
             );
             return rows[0]?.metadata?.payload || null;
