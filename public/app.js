@@ -483,11 +483,10 @@ async function updateDashboard() {
 async function loadDashboardOverview() {
     try {
         // Fetch all data in parallel
-        const [health, dashboardStats, sdrRes, calcRes, relRes] = await Promise.all([
+        const [health, dashboardStats, sdrRes, relRes] = await Promise.all([
             state._lastHealth || fetchHealth(),
             fetchDashboardStats(),
             fetch('/api/sdr/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
-            fetch('/api/calc/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
             fetch('/api/relatorio/clients').then(r => r.ok ? r.json() : []).catch(() => []),
         ]);
 
@@ -505,28 +504,39 @@ async function loadDashboardOverview() {
         // SDR card
         const sdrTenants = Array.isArray(sdrRes) ? sdrRes : (sdrRes.tenants || []);
         setVal('ov-sdr-tenants', sdrTenants.length);
-        // Calculate total conversations and leads from tenants
+        // Fetch stats per tenant to get real conversation/lead counts
         let totalConvos = 0, totalSdrLeads = 0;
-        sdrTenants.forEach(t => {
-            totalConvos += (t.conversations_count || t.total_conversations || 0);
-            totalSdrLeads += (t.leads_count || t.total_leads || 0);
-        });
+        try {
+            const statsResults = await Promise.all(
+                sdrTenants.map(t =>
+                    fetch(`/api/sdr/tenants/${t.id}/stats`).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+                )
+            );
+            statsResults.forEach(s => {
+                totalConvos += (s.conversations || 0);
+                totalSdrLeads += (s.leads || 0);
+            });
+        } catch { /* ignore */ }
         setVal('ov-sdr-conversations', totalConvos);
         setVal('ov-sdr-leads', totalSdrLeads);
 
-        // Calculadora card
-        const calcTenants = Array.isArray(calcRes) ? calcRes : (calcRes.tenants || []);
-        setVal('ov-calc-tenants', calcTenants.length);
+        // Calculadora card — static app, just check if online
+        try {
+            const calcHealth = await fetch('/api/calc/health').then(r => r.ok).catch(() => false);
+            setVal('ov-calc-status', calcHealth ? 'Online' : 'Offline');
+        } catch {
+            setVal('ov-calc-status', 'Offline');
+        }
 
-        // Relatório card
-        const relClients = Array.isArray(relRes) ? relRes : (relRes.clients || []);
+        // Relatório card — API returns { data: [...] }
+        const relClients = Array.isArray(relRes) ? relRes : (relRes.data || relRes.clients || []);
         setVal('ov-rel-clients', relClients.length);
         // Try to get execution stats
         try {
             const execRes = await fetch('/api/relatorio/executions?limit=100');
             if (execRes.ok) {
                 const execData = await execRes.json();
-                const execs = Array.isArray(execData) ? execData : (execData.executions || []);
+                const execs = Array.isArray(execData) ? execData : (execData.data || execData.executions || []);
                 setVal('ov-rel-execs', execs.length);
                 const errors = execs.filter(e => e.status === 'error' || e.error).length;
                 setVal('ov-rel-errors', errors);
@@ -599,7 +609,8 @@ async function loadAppsOverviewStats() {
         const res = await fetch('/api/relatorio/clients');
         if (res.ok) {
             const data = await res.json();
-            const count = Array.isArray(data) ? data.length : (data.clients ? data.clients.length : 0);
+            const list = Array.isArray(data) ? data : (data.data || data.clients || []);
+            const count = list.length;
             const el = document.getElementById('app-stat-relatorio');
             if (el) el.textContent = `${count} cliente${count !== 1 ? 's' : ''}`;
         }
