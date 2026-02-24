@@ -1804,27 +1804,69 @@ const sdrState = {
 };
 
 // --- SDR: Load Tenant List ---
-async function loadSDRSection() {
+function formatNumber(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return String(n);
+}
+
+function getSdrDateRange() {
+    const from = $('#sdr-date-from')?.value;
+    const to = $('#sdr-date-to')?.value;
+    if (from && to) return { from, to };
+    const now = new Date();
+    const toDate = now.toISOString().split('T')[0];
+    const fromDate = new Date(now.setDate(now.getDate() - 30)).toISOString().split('T')[0];
+    return { from: fromDate, to: toDate };
+}
+
+function initSdrDatePicker() {
+    const { from, to } = getSdrDateRange();
+    const fromEl = $('#sdr-date-from');
+    const toEl = $('#sdr-date-to');
+    if (fromEl && !fromEl.value) fromEl.value = from;
+    if (toEl && !toEl.value) toEl.value = to;
+
+    fromEl?.addEventListener('change', () => loadSdrDashboard());
+    toEl?.addEventListener('change', () => loadSdrDashboard());
+
+    $$('.sdr-period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            $$('.sdr-period-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const days = parseInt(btn.dataset.period);
+            const now = new Date();
+            const toDate = now.toISOString().split('T')[0];
+            const fromDate = new Date(new Date().setDate(new Date().getDate() - days)).toISOString().split('T')[0];
+            if ($('#sdr-date-from')) $('#sdr-date-from').value = fromDate;
+            if ($('#sdr-date-to')) $('#sdr-date-to').value = toDate;
+            loadSdrDashboard();
+        });
+    });
+}
+
+async function loadSdrDashboard() {
     const container = $('#sdr-tenants-list');
     if (!container) return;
 
-    // Ensure we show the list view
-    const listView = $('#sdr-list-view');
-    const detailView = $('#sdr-detail-view');
-    if (listView) listView.style.display = '';
-    if (detailView) detailView.style.display = 'none';
-
-    // Load global OpenAI key
-    loadSdrOpenAIKey();
+    const { from, to } = getSdrDateRange();
 
     try {
-        const res = await fetch(`${SDR_API_BASE}/tenants`);
-        if (!res.ok) {
-            container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>SDR de IA não conectado</p><small>Verifique se o serviço está rodando</small></div></div>`;
-            return;
-        }
-        const tenants = await res.json();
-        sdrState.tenants = tenants || [];
+        const res = await fetch(`${SDR_API_BASE}/dashboard?from=${from}&to=${to}`);
+        if (!res.ok) throw new Error('SDR não conectado');
+        const data = await res.json();
+
+        sdrState.tenants = data.tenants || [];
+
+        // Update KPIs
+        const t = data.totals;
+        const setKpi = (id, val) => { const el = $(`#${id}`); if (el) el.textContent = val; };
+        setKpi('sdr-kpi-clients', t.activeClients);
+        setKpi('sdr-kpi-conversations', formatNumber(t.conversations));
+        setKpi('sdr-kpi-messages', formatNumber(t.messages));
+        setKpi('sdr-kpi-leads', formatNumber(t.leads));
+        setKpi('sdr-kpi-tokens', formatNumber(t.tokens));
+        setKpi('sdr-kpi-cost', '$' + t.estimated_cost.toFixed(2));
 
         if (sdrState.tenants.length === 0) {
             container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty">
@@ -1837,7 +1879,10 @@ async function loadSDRSection() {
         sdrState.tenants.forEach(tenant => {
             const card = document.createElement('div');
             card.className = 'client-card';
+            card.style.cursor = 'pointer';
+            card.onclick = () => openSdrDetail(tenant.id);
             const initial = getInitials(tenant.name);
+            const cost = tenant.estimated_cost != null ? '$' + tenant.estimated_cost.toFixed(2) : '—';
             card.innerHTML = `
                 <div class="client-card-header">
                     <div class="client-name-group">
@@ -1852,36 +1897,54 @@ async function loadSDRSection() {
                         ${tenant.active !== false ? 'Ativo' : 'Inativo'}
                     </span>
                 </div>
-                <div class="client-meta">
+                <div class="client-meta" style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;">
                     <div class="client-meta-row">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                        Modelo: <code>${escapeHtml(tenant.llm_model || 'gpt-4o-mini')}</code>
+                        ${formatNumber(tenant.conversations)} conversas
                     </div>
                     <div class="client-meta-row">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>
-                        Horário: <code>${escapeHtml(tenant.business_hours_start || '08:00')} — ${escapeHtml(tenant.business_hours_end || '18:00')}</code>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                        ${formatNumber(tenant.leads)} leads
                     </div>
                     <div class="client-meta-row">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5.09 3h3"></path></svg>
-                        WhatsApp: <code>${escapeHtml(tenant.whatsapp_number || 'Não configurado')}</code>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        ${formatNumber(tenant.tokens)} tokens
+                    </div>
+                    <div class="client-meta-row" style="color:var(--accent-green);font-weight:600;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        ${cost}
                     </div>
                 </div>
                 <div class="client-card-footer">
-                    <button class="btn-text" onclick="handleDeleteSdrTenant('${tenant.id}', '${escapeHtml(tenant.name).replace(/'/g, "\\'")}')" style="color:var(--accent-red, #ef4444);">
+                    <button class="btn-text" onclick="event.stopPropagation();handleDeleteSdrTenant('${tenant.id}', '${escapeHtml(tenant.name).replace(/'/g, "\\'")}')" style="color:var(--accent-red, #ef4444);">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         Excluir
                     </button>
                     <div style="flex:1"></div>
-                    <button class="btn-text" onclick="openSdrDetail('${tenant.id}')" style="color:var(--accent-cyan);">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        Configurar
-                    </button>
+                    <span style="font-size:0.75rem;color:var(--text-tertiary);">
+                        <code>${escapeHtml(tenant.llm_model || 'gpt-4o-mini')}</code>
+                    </span>
                 </div>`;
             container.appendChild(card);
         });
     } catch (err) {
         container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>Erro ao carregar SDR</p><small>${escapeHtml(err.message)}</small></div></div>`;
     }
+}
+
+async function loadSDRSection() {
+    // Ensure we show the list view
+    const listView = $('#sdr-list-view');
+    const detailView = $('#sdr-detail-view');
+    if (listView) listView.style.display = '';
+    if (detailView) detailView.style.display = 'none';
+
+    // Load global OpenAI key (for settings modal)
+    loadSdrOpenAIKey();
+
+    // Init date picker and load dashboard
+    initSdrDatePicker();
+    await loadSdrDashboard();
 }
 
 // --- Evolution API Functions ---
@@ -1921,6 +1984,26 @@ function closeSdrModal() {
 }
 
 $('#btn-add-sdr-tenant')?.addEventListener('click', () => openSdrModal());
+
+// --- SDR: Settings Modal (OpenAI API Key) ---
+function openSdrSettingsModal() {
+    const modal = $('#modal-sdr-settings');
+    if (modal) {
+        modal.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+    }
+}
+window.closeSdrSettingsModal = function () {
+    const modal = $('#modal-sdr-settings');
+    if (modal) {
+        modal.classList.remove('visible');
+        document.body.style.overflow = '';
+    }
+};
+$('#btn-sdr-settings')?.addEventListener('click', () => openSdrSettingsModal());
+$('#modal-sdr-settings')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSdrSettingsModal();
+});
 
 $('#modal-sdr-tenant')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeSdrModal();
@@ -2058,24 +2141,37 @@ $('#btn-sdr-toggle-active')?.addEventListener('click', async () => {
 });
 
 window.openSdrDetail = async function (tenantId) {
-    const tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
+    let tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
     if (!tenant) {
         showToast('Cliente não encontrado', 'error');
         return;
     }
 
     sdrState.selectedTenantId = tenantId;
-    sdrState.selectedTenant = tenant;
 
-    // Toggle views
+    // Toggle views immediately (show loading state)
     const listView = $('#sdr-list-view');
     const detailView = $('#sdr-detail-view');
     if (listView) listView.style.display = 'none';
     if (detailView) detailView.style.display = '';
 
-    // Set header
+    // Set header with cached data
     $('#sdr-detail-title').textContent = tenant.name;
     $('#sdr-detail-subtitle').textContent = `${tenant.slug} · ${tenant.niche || 'Geral'}`;
+
+    // Fetch full tenant data (dashboard API returns limited columns)
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants`);
+        if (res.ok) {
+            const allTenants = await res.json();
+            const full = allTenants.find(t => String(t.id) === String(tenantId));
+            if (full) tenant = full;
+        }
+    } catch { /* use cached data */ }
+
+    sdrState.selectedTenant = tenant;
+    const idx = sdrState.tenants.findIndex(t => String(t.id) === String(tenantId));
+    if (idx >= 0) sdrState.tenants[idx] = tenant;
 
     // Update toggle button state
     updateToggleActiveBtn(tenant);
