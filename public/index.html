@@ -58,6 +58,15 @@
                 <span>Automação Leads</span>
                 <span class="nav-badge" id="alerts-badge" style="display:none;">0</span>
             </a>
+            <a href="#" class="nav-item nav-app-keywords" data-section="keywords">
+                <span class="nav-app-dot dot-keywords"></span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <span>Palavras-Chave</span>
+            </a>
             <a href="#" class="nav-item nav-app-sdr" data-section="sdr">
                 <span class="nav-app-dot dot-sdr"></span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1595,6 +1604,164 @@
             </div>
         </section>
 
+        <!-- ===== SECTION: Palavras-Chave (Google Ads Keywords) ===== -->
+        <section class="page-section" id="section-keywords">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Palavras-Chave Google Ads</h2>
+                    <p class="page-subtitle">Performance de keywords nas campanhas Google</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-icon" id="btn-reload-keywords" title="Recarregar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="keywords-filters">
+                <select class="keywords-client-select" id="kw-client-select">
+                    <option value="">Todos os Clientes</option>
+                </select>
+                <div class="period-pills">
+                    <button class="period-pill kw-period active" data-kwperiod="7d">7 dias</button>
+                    <button class="period-pill kw-period" data-kwperiod="30d">30 dias</button>
+                    <button class="period-pill kw-period" data-kwperiod="90d">90 dias</button>
+                    <button class="period-pill kw-period" data-kwperiod="custom">Custom</button>
+                </div>
+                <div class="kw-custom-range" id="kw-custom-range" style="display:none;">
+                    <input type="date" class="period-date-input" id="kw-from" />
+                    <span class="period-range-sep">ate</span>
+                    <input type="date" class="period-date-input" id="kw-to" />
+                    <button class="btn-primary btn-sm" id="btn-kw-apply">Aplicar</button>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="keywords-stats-grid">
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-unique">0</span>
+                        <span class="kw-stat-label">Keywords Unicas</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-leads">0</span>
+                        <span class="kw-stat-label">Leads Google Ads</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-top">—</span>
+                        <span class="kw-stat-label">Top Keyword</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-rate">0%</span>
+                        <span class="kw-stat-label">Taxa de Conversao</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trend Chart -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <h3>Tendencia de Leads por Dia</h3>
+                </div>
+                <div class="card-body">
+                    <div class="kw-trend-chart" id="kw-trend-chart">
+                        <canvas id="kw-trend-canvas" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Keywords Ranking Table -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <h3>Ranking de Keywords</h3>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div class="table-wrapper">
+                        <table class="keywords-table" id="kw-ranking-table">
+                            <thead>
+                                <tr>
+                                    <th>Keyword</th>
+                                    <th>Leads</th>
+                                    <th>Conversoes</th>
+                                    <th>Taxa</th>
+                                    <th>Valor Total</th>
+                                    <th>Ultima Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kw-ranking-body">
+                                <tr><td colspan="6" class="empty-state">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Campaigns Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Performance por Campanha</h3>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div class="table-wrapper">
+                        <table class="keywords-table" id="kw-campaigns-table">
+                            <thead>
+                                <tr>
+                                    <th>Campanha</th>
+                                    <th>Leads</th>
+                                    <th>Keywords</th>
+                                    <th>Conversoes</th>
+                                    <th>Valor Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kw-campaigns-body">
+                                <tr><td colspan="5" class="empty-state">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backfill Button -->
+            <div style="margin-top: 24px; text-align: right;">
+                <button class="btn-text" id="btn-kw-backfill" style="font-size: 12px; color: var(--text-tertiary);">
+                    Migrar dados historicos
+                </button>
+            </div>
+        </section>
+
     </main>
 
     <!-- Modal Adicionar Cliente -->
@@ -1842,6 +2009,23 @@
 
     <script src="app.js?v=1.2.0"></script>
     <script src="alerts.js?v=1.2.0"></script>
+<!-- Keyword Detail Modal -->
+<div class="modal-overlay" id="modal-keyword-detail" style="display:none;">
+    <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 id="kw-detail-title">Detalhes da Keyword</h3>
+            <button class="btn-icon" onclick="document.getElementById('modal-keyword-detail').style.display='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body" id="kw-detail-body">
+            <p>Carregando...</p>
+        </div>
+    </div>
+</div>
 </body>
 
 </html>

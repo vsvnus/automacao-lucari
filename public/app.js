@@ -38,7 +38,7 @@ function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
+    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'keywords', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -72,6 +72,7 @@ function navigateTo(section, replace = false) {
         clients: 'Automação de Leads',
         logs: 'Automação de Leads',
         alerts: 'Automação de Leads',
+        keywords: 'Palavras-Chave',
         sdr: 'SDR de IA',
         calculadora: 'Calculadora',
         relatorio: 'Relatórios'
@@ -105,6 +106,7 @@ function navigateTo(section, replace = false) {
             searchLeads('');
         }
     }
+    if (section === 'keywords') loadKeywordsSection();
     if (section === 'sdr') loadSDRSection();
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
@@ -1318,10 +1320,11 @@ document.addEventListener('keydown', (e) => {
     switch (e.key) {
         case '1': navigateTo('dashboard'); break;
         case '2': navigateTo('automacao'); break;
-        case '3': navigateTo('sdr'); break;
-        case '4': navigateTo('calculadora'); break;
-        case '5': navigateTo('relatorio'); break;
-        case '6': navigateTo('settings'); break;
+        case '3': navigateTo('keywords'); break;
+        case '4': navigateTo('sdr'); break;
+        case '5': navigateTo('calculadora'); break;
+        case '6': navigateTo('relatorio'); break;
+        case '7': navigateTo('settings'); break;
         case 'n':
         case 'N':
             navigateTo('clients');
@@ -3822,3 +3825,349 @@ $('#btn-relatorio-refresh-execs')?.addEventListener('click', loadRelatorioExecut
 $('#modal-relatorio-client')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeRelatorioModal();
 });
+
+// ============================================
+// Keywords Section (Palavras-Chave Google Ads)
+// ============================================
+
+const kwState = {
+    period: '30d',
+    clientId: null,
+    dateFrom: null,
+    dateTo: null,
+};
+
+function getKwDateRange() {
+    const now = new Date();
+    let from, to;
+    if (kwState.period === 'custom' && kwState.dateFrom && kwState.dateTo) {
+        from = kwState.dateFrom;
+        to = kwState.dateTo;
+    } else {
+        const days = kwState.period === '7d' ? 7 : kwState.period === '90d' ? 90 : 30;
+        from = new Date(now.getTime() - days * 86400000).toISOString();
+        to = now.toISOString();
+    }
+    return { from, to };
+}
+
+function buildKwParams() {
+    const { from, to } = getKwDateRange();
+    const params = new URLSearchParams();
+    if (kwState.clientId) params.set('client', kwState.clientId);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return params.toString();
+}
+
+async function loadKeywordsSection() {
+    // Populate client select
+    const select = document.getElementById('kw-client-select');
+    if (select && select.options.length <= 1) {
+        try {
+            const clients = await fetch('/admin/clients', { credentials: 'same-origin' }).then(r => r.json());
+            clients.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                select.appendChild(opt);
+            });
+        } catch (e) { console.error('Failed to load clients for keywords', e); }
+    }
+
+    await Promise.all([
+        loadKeywordsStats(),
+        loadKeywordsOverview(),
+        loadKeywordsTrend(),
+        loadKeywordsCampaigns(),
+    ]);
+}
+
+async function loadKeywordsStats() {
+    try {
+        const data = await fetch('/api/keywords/stats?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const el = (id) => document.getElementById(id);
+        if (el('kw-stat-unique')) el('kw-stat-unique').textContent = data.uniqueKeywords || 0;
+        if (el('kw-stat-leads')) el('kw-stat-leads').textContent = data.totalLeads || 0;
+        if (el('kw-stat-top')) el('kw-stat-top').textContent = data.topKeyword || '—';
+        if (el('kw-stat-rate')) el('kw-stat-rate').textContent = (data.conversionRate || 0) + '%';
+    } catch (e) { console.error('Keywords stats error', e); }
+}
+
+async function loadKeywordsOverview() {
+    try {
+        const data = await fetch('/api/keywords/overview?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const tbody = document.getElementById('kw-ranking-body');
+        if (!tbody) return;
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma keyword encontrada no periodo</td></tr>';
+            return;
+        }
+
+        const maxLeads = Math.max(...data.map(d => parseInt(d.leads, 10)));
+        tbody.innerHTML = data.map(row => {
+            const leads = parseInt(row.leads, 10);
+            const conversions = parseInt(row.conversions, 10);
+            const rate = parseFloat(row.rate || 0);
+            const value = parseFloat(row.total_value || 0);
+            const barWidth = maxLeads > 0 ? (leads / maxLeads * 100) : 0;
+            const lastDate = row.last_date ? new Date(row.last_date).toLocaleDateString('pt-BR') : '—';
+            const keyword = row.keyword || '(sem keyword)';
+            return '<tr class="kw-row-clickable" data-keyword="' + escapeHtml(keyword) + '">' +
+                '<td><div class="kw-cell-bar"><div class="kw-bar" style="width:' + barWidth + '%"></div><span class="kw-keyword-text">' + escapeHtml(keyword) + '</span></div></td>' +
+                '<td>' + leads + '</td>' +
+                '<td>' + conversions + '</td>' +
+                '<td>' + rate + '%</td>' +
+                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                '<td>' + lastDate + '</td>' +
+                '</tr>';
+        }).join('');
+
+        // Click handler for keyword detail
+        tbody.querySelectorAll('.kw-row-clickable').forEach(row => {
+            row.addEventListener('click', () => {
+                const kw = row.dataset.keyword;
+                openKeywordDetail(kw);
+            });
+        });
+    } catch (e) { console.error('Keywords overview error', e); }
+}
+
+async function loadKeywordsTrend() {
+    try {
+        const data = await fetch('/api/keywords/trend?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        renderKwTrendChart(data);
+    } catch (e) { console.error('Keywords trend error', e); }
+}
+
+function renderKwTrendChart(data) {
+    const canvas = document.getElementById('kw-trend-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 200 * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = '200px';
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = 200;
+    const padding = { top: 20, right: 20, bottom: 40, left: 40 };
+    const chartW = w - padding.left - padding.right;
+    const chartH = h - padding.top - padding.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (!data || data.length === 0) {
+        ctx.fillStyle = '#5c5e6a';
+        ctx.font = '13px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Sem dados no periodo', w / 2, h / 2);
+        return;
+    }
+
+    const maxVal = Math.max(...data.map(d => parseInt(d.leads, 10)), 1);
+    const barGap = 4;
+    const barWidth = Math.max(4, (chartW / data.length) - barGap);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(w - padding.right, y);
+        ctx.stroke();
+    }
+
+    // Y axis labels
+    ctx.fillStyle = '#5c5e6a';
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartH / 4) * i;
+        const val = Math.round(maxVal * (1 - i / 4));
+        ctx.fillText(val.toString(), padding.left - 8, y + 4);
+    }
+
+    // Bars
+    data.forEach((d, i) => {
+        const leads = parseInt(d.leads, 10);
+        const conversions = parseInt(d.conversions || 0, 10);
+        const barH = (leads / maxVal) * chartH;
+        const x = padding.left + i * (barWidth + barGap);
+        const y = padding.top + chartH - barH;
+
+        // Lead bar
+        ctx.fillStyle = 'rgba(66, 133, 244, 0.7)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barH, [3, 3, 0, 0]);
+        ctx.fill();
+
+        // Conversion overlay
+        if (conversions > 0) {
+            const convH = (conversions / maxVal) * chartH;
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+            ctx.beginPath();
+            ctx.roundRect(x, padding.top + chartH - convH, barWidth, convH, [3, 3, 0, 0]);
+            ctx.fill();
+        }
+
+        // X axis label (show every N labels)
+        const showEvery = Math.max(1, Math.floor(data.length / 10));
+        if (i % showEvery === 0) {
+            ctx.fillStyle = '#5c5e6a';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            const dateStr = d.day ? new Date(d.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+            ctx.fillText(dateStr, x + barWidth / 2, h - 8);
+        }
+    });
+}
+
+async function loadKeywordsCampaigns() {
+    try {
+        const data = await fetch('/api/keywords/campaigns?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const tbody = document.getElementById('kw-campaigns-body');
+        if (!tbody) return;
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma campanha encontrada</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(row => {
+            const value = parseFloat(row.total_value || 0);
+            return '<tr>' +
+                '<td>' + escapeHtml(row.campaign || '(sem campanha)') + '</td>' +
+                '<td>' + (row.leads || 0) + '</td>' +
+                '<td>' + (row.keywords || 0) + '</td>' +
+                '<td>' + (row.conversions || 0) + '</td>' +
+                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                '</tr>';
+        }).join('');
+    } catch (e) { console.error('Keywords campaigns error', e); }
+}
+
+async function openKeywordDetail(keyword) {
+    const modal = document.getElementById('modal-keyword-detail');
+    const title = document.getElementById('kw-detail-title');
+    const body = document.getElementById('kw-detail-body');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    if (title) title.textContent = 'Keyword: ' + keyword;
+    if (body) body.innerHTML = '<p style="color:var(--text-secondary)">Carregando...</p>';
+
+    try {
+        const params = new URLSearchParams();
+        params.set('keyword', keyword);
+        const { from, to } = getKwDateRange();
+        if (kwState.clientId) params.set('client', kwState.clientId);
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+
+        const data = await fetch('/api/keywords/detail?' + params.toString(), { credentials: 'same-origin' }).then(r => r.json());
+
+        if (!data || data.length === 0) {
+            body.innerHTML = '<p class="empty-state">Nenhum lead encontrado para esta keyword</p>';
+            return;
+        }
+
+        body.innerHTML = '<table class="keywords-table" style="width:100%"><thead><tr>' +
+            '<th>Nome</th><th>Telefone</th><th>Status</th><th>Campanha</th><th>Convertido</th><th>Data</th>' +
+            '</tr></thead><tbody>' +
+            data.map(row => {
+                const date = row.created_at ? new Date(row.created_at).toLocaleDateString('pt-BR') : '—';
+                return '<tr>' +
+                    '<td>' + escapeHtml(row.lead_name || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.lead_phone || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.lead_status || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.campaign || '—') + '</td>' +
+                    '<td>' + (row.converted ? '<span style="color:var(--accent-green)">Sim</span>' : 'Nao') + '</td>' +
+                    '<td>' + date + '</td>' +
+                    '</tr>';
+            }).join('') +
+            '</tbody></table>';
+    } catch (e) {
+        body.innerHTML = '<p class="empty-state">Erro ao carregar detalhes</p>';
+    }
+}
+
+// Keywords event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Period pills
+    document.querySelectorAll('.kw-period').forEach(pill => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.kw-period').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            const period = pill.dataset.kwperiod;
+            kwState.period = period;
+            const customRange = document.getElementById('kw-custom-range');
+            if (customRange) customRange.style.display = period === 'custom' ? 'flex' : 'none';
+            if (period !== 'custom') loadKeywordsSection();
+        });
+    });
+
+    // Client select
+    const kwClientSelect = document.getElementById('kw-client-select');
+    if (kwClientSelect) {
+        kwClientSelect.addEventListener('change', () => {
+            kwState.clientId = kwClientSelect.value || null;
+            loadKeywordsSection();
+        });
+    }
+
+    // Custom date apply
+    const btnKwApply = document.getElementById('btn-kw-apply');
+    if (btnKwApply) {
+        btnKwApply.addEventListener('click', () => {
+            const from = document.getElementById('kw-from');
+            const to = document.getElementById('kw-to');
+            if (from && to && from.value && to.value) {
+                kwState.dateFrom = new Date(from.value).toISOString();
+                kwState.dateTo = new Date(to.value + 'T23:59:59').toISOString();
+                loadKeywordsSection();
+            }
+        });
+    }
+
+    // Reload button
+    const btnReloadKw = document.getElementById('btn-reload-keywords');
+    if (btnReloadKw) {
+        btnReloadKw.addEventListener('click', () => loadKeywordsSection());
+    }
+
+    // Backfill button
+    const btnBackfill = document.getElementById('btn-kw-backfill');
+    if (btnBackfill) {
+        btnBackfill.addEventListener('click', async () => {
+            if (!confirm('Migrar dados historicos de keywords do JSONB? Isso pode levar alguns segundos.')) return;
+            btnBackfill.disabled = true;
+            btnBackfill.textContent = 'Migrando...';
+            try {
+                const res = await fetch('/api/keywords/backfill', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+                alert('Migrados: ' + (res.migrated || 0) + ' registros');
+                loadKeywordsSection();
+            } catch (e) {
+                alert('Erro ao migrar: ' + e.message);
+            } finally {
+                btnBackfill.disabled = false;
+                btnBackfill.textContent = 'Migrar dados historicos';
+            }
+        });
+    }
+
+    // Close modal on overlay click
+    const kwModal = document.getElementById('modal-keyword-detail');
+    if (kwModal) {
+        kwModal.addEventListener('click', (e) => {
+            if (e.target === kwModal) kwModal.style.display = 'none';
+        });
+    }
+});
+

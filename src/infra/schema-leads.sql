@@ -92,3 +92,31 @@ CREATE INDEX IF NOT EXISTS idx_leads_log_client ON leads_log(client_id);
 CREATE INDEX IF NOT EXISTS idx_leads_log_phone ON leads_log(phone);
 CREATE INDEX IF NOT EXISTS idx_webhook_events_created ON webhook_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_clients_slug ON clients(slug);
+
+-- Keywords Conversions (Google Ads keyword tracking)
+CREATE TABLE IF NOT EXISTS keyword_conversions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID REFERENCES clients(id),
+    keyword VARCHAR(500),
+    campaign VARCHAR(255),
+    utm_source VARCHAR(100),
+    utm_medium VARCHAR(100),
+    utm_content VARCHAR(255),
+    gclid VARCHAR(500),
+    landing_page VARCHAR(500),
+    device_type VARCHAR(50),
+    location_state VARCHAR(100),
+    lead_phone VARCHAR(50),
+    lead_name VARCHAR(255),
+    lead_status VARCHAR(255),
+    product VARCHAR(255),
+    sale_amount DECIMAL(12,2) DEFAULT 0,
+    converted BOOLEAN DEFAULT FALSE,
+    webhook_event_id UUID,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kc_client ON keyword_conversions(client_id);
+CREATE INDEX IF NOT EXISTS idx_kc_keyword ON keyword_conversions(keyword);
+CREATE INDEX IF NOT EXISTS idx_kc_created ON keyword_conversions(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kc_client_keyword ON keyword_conversions(client_id, keyword);
