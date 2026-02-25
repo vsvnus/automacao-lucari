@@ -52,7 +52,7 @@ async function loadClients() {
     try {
         const result = await pool.query("SELECT name, slug, spreadsheet_id FROM clients WHERE active = true");
         for (const row of result.rows) {
-            CLIENTS[row.slug] = { name: row.name, spreadsheetId: row.spreadsheet_id };
+            CLIENTS[row.slug.toLowerCase()] = { name: row.name, spreadsheetId: row.spreadsheet_id };
         }
         console.log(`Clientes carregados do DB: ${Object.keys(CLIENTS).join(', ')}`);
     } catch (e) {
@@ -101,7 +101,7 @@ function isAutoLead(name) {
 // ── Fix 1: Perim Advocacia ────────────────────────────────────────
 
 async function fixPerim(sheets) {
-    const client = CLIENTS['perim-advocacia'] || CLIENTS['perim'];
+    const client = CLIENTS['perim-advocacia'];
     if (!client) {
         console.log('SKIP: Perim não encontrado nos clientes');
         return;
@@ -374,7 +374,7 @@ function adaptFormulaToRow(formula, targetRow) {
 // ── Fix 4: Lucas Raydan — Fórmulas DIA ───────────────────────────
 
 async function fixRaydan(sheets) {
-    const client = CLIENTS['lucas-raydan'] || CLIENTS['raydan'] || CLIENTS['lucas-raydan-advogados'];
+    const client = CLIENTS['raydan-advogados'];
     if (!client) {
         console.log('\nSKIP: Raydan não encontrado');
         return;
@@ -442,14 +442,14 @@ async function main() {
 
     // 2. Mar das Ilhas — comentários N → M
     try {
-        await fixCommentColumn(sheets, 'mar-das-ilhas');
+        await fixCommentColumn(sheets, 'mar-das-ilhas'); // slug: Mar-Das-Ilhas → lowercase
     } catch (e) {
         console.error('ERRO Mar das Ilhas:', e.message);
     }
 
     // 3. Rotta do Vale — comentários N → M
     try {
-        await fixCommentColumn(sheets, 'rotta-do-vale');
+        await fixCommentColumn(sheets, 'rotta-do-valle'); // slug: Rotta-do-valle → lowercase
     } catch (e) {
         console.error('ERRO Rotta:', e.message);
     }
