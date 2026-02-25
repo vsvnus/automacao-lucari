@@ -1204,6 +1204,240 @@ class PgService {
         }
     }
 
+
+// ============================================================
+    // KEYWORDS (Google Ads keyword tracking)
+    // ============================================================
+
+    async saveKeywordConversion(data) {
+        if (!this.isAvailable()) return null;
+        try {
+            const { rows } = await this.query(
+                `INSERT INTO keyword_conversions
+                 (client_id, keyword, campaign, utm_source, utm_medium, utm_content, gclid,
+                  landing_page, device_type, location_state, lead_phone, lead_name, lead_status, product,
+                  sale_amount, converted)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                 RETURNING id`,
+                [data.clientId, data.keyword, data.campaign, data.utmSource, data.utmMedium,
+                 data.utmContent, data.gclid, data.landingPage, data.deviceType, data.locationState,
+                 data.leadPhone, data.leadName, data.leadStatus, data.product,
+                 data.saleAmount || 0, data.converted || false]
+            );
+            return rows[0]?.id || null;
+        } catch (error) {
+            logger.error("Erro ao salvar keyword conversion", { error: error.message });
+            return null;
+        }
+    }
+
+    async upsertKeywordConversion(phone, data) {
+        if (!this.isAvailable()) return;
+        try {
+            const { rowCount } = await this.query(
+                `UPDATE keyword_conversions
+                 SET sale_amount = $1, converted = true, lead_status = COALESCE($2, lead_status)
+                 WHERE id = (SELECT id FROM keyword_conversions WHERE lead_phone = $3 ORDER BY created_at DESC LIMIT 1)`,
+                [data.saleAmount || 0, data.leadStatus || null, phone]
+            );
+            if (rowCount === 0 && data.keywordData) {
+                await this.saveKeywordConversion(data.keywordData);
+            }
+        } catch (error) {
+            logger.error("Erro ao upsert keyword conversion", { error: error.message });
+        }
+    }
+
+    async getKeywordsOverview(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT keyword, campaign,
+                       COUNT(*) as leads,
+                       SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions,
+                       ROUND(SUM(CASE WHEN converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as rate,
+                       SUM(sale_amount) as total_value,
+                       MAX(created_at) as last_date
+                FROM keyword_conversions
+                ${where}
+                GROUP BY keyword, campaign
+                ORDER BY leads DESC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar keywords overview", { error: error.message });
+            return [];
+        }
+    }
+
+    async getKeywordsStats(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return { uniqueKeywords: 0, totalLeads: 0, topKeyword: null, conversionRate: 0 };
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT
+                    COUNT(DISTINCT keyword) as unique_keywords,
+                    COUNT(*) as total_leads,
+                    SUM(CASE WHEN converted THEN 1 ELSE 0 END) as total_conversions,
+                    ROUND(SUM(CASE WHEN converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as conversion_rate,
+                    SUM(sale_amount) as total_value
+                FROM keyword_conversions
+                ${where}
+            `, params);
+
+            // Top keyword
+            const { rows: topRows } = await this.query(`
+                SELECT keyword, COUNT(*) as cnt
+                FROM keyword_conversions
+                ${where} AND keyword IS NOT NULL AND keyword != ''
+                GROUP BY keyword ORDER BY cnt DESC LIMIT 1
+            `, params);
+
+            const stats = rows[0] || {};
+            return {
+                uniqueKeywords: parseInt(stats.unique_keywords || 0, 10),
+                totalLeads: parseInt(stats.total_leads || 0, 10),
+                totalConversions: parseInt(stats.total_conversions || 0, 10),
+                conversionRate: parseFloat(stats.conversion_rate || 0),
+                totalValue: parseFloat(stats.total_value || 0),
+                topKeyword: topRows[0]?.keyword || null,
+            };
+        } catch (error) {
+            logger.error("Erro ao buscar keywords stats", { error: error.message });
+            return { uniqueKeywords: 0, totalLeads: 0, topKeyword: null, conversionRate: 0 };
+        }
+    }
+
+    async getKeywordsTrend(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT DATE(created_at AT TIME ZONE 'America/Sao_Paulo') as day,
+                       COUNT(*) as leads,
+                       SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions
+                FROM keyword_conversions
+                ${where}
+                GROUP BY day
+                ORDER BY day ASC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar keywords trend", { error: error.message });
+            return [];
+        }
+    }
+
+    async getKeywordDetail(keyword, clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE keyword = $1";
+            const params = [keyword];
+            let idx = 2;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT kc.*, c.name as client_name
+                FROM keyword_conversions kc
+                LEFT JOIN clients c ON c.id = kc.client_id
+                ${where}
+                ORDER BY kc.created_at DESC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar keyword detail", { error: error.message });
+            return [];
+        }
+    }
+
+    async getCampaignsOverview(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT campaign,
+                       COUNT(*) as leads,
+                       COUNT(DISTINCT keyword) as keywords,
+                       SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions,
+                       SUM(sale_amount) as total_value
+                FROM keyword_conversions
+                ${where}
+                GROUP BY campaign
+                ORDER BY leads DESC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar campaigns overview", { error: error.message });
+            return [];
+        }
+    }
+
+    async backfillKeywords() {
+        if (!this.isAvailable()) return 0;
+        try {
+            const { rowCount } = await this.query(`
+                INSERT INTO keyword_conversions (client_id, keyword, campaign, utm_source, utm_medium, utm_content,
+                    gclid, landing_page, device_type, location_state, lead_phone, lead_name, lead_status, product, created_at)
+                SELECT
+                    w.client_id,
+                    COALESCE(w.payload->>'utm_term', w.payload->'visit'->'params'->>'utm_term'),
+                    COALESCE(w.payload->>'utm_campaign', w.payload->'visit'->'params'->>'utm_campaign'),
+                    COALESCE(w.payload->>'utm_source', 'google'),
+                    COALESCE(w.payload->>'utm_medium', 'cpc'),
+                    w.payload->>'utm_content',
+                    w.payload->'visit'->'params'->>'gclid',
+                    w.payload->'visit'->>'name',
+                    w.payload->'visit'->'meta'->'http_user_agent'->'device'->>'type',
+                    w.payload->'location'->>'state',
+                    w.payload->>'phone',
+                    COALESCE(w.payload->>'chatName', w.payload->>'name', ''),
+                    'Lead Gerado',
+                    '',
+                    w.created_at
+                FROM webhook_events w
+                WHERE ((w.payload->>'utm_term' IS NOT NULL AND length(w.payload->>'utm_term') > 0)
+                   OR (w.payload->'visit'->'params'->>'utm_term' IS NOT NULL AND length(w.payload->'visit'->'params'->>'utm_term') > 0))
+                AND NOT EXISTS (
+                    SELECT 1 FROM keyword_conversions kc
+                    WHERE kc.lead_phone = w.payload->>'phone'
+                      AND kc.created_at = w.created_at
+                )
+            `);
+            logger.info(`Backfill keywords: ${rowCount} registros migrados`);
+            return rowCount;
+        } catch (error) {
+            logger.error("Erro ao executar backfill de keywords", { error: error.message });
+            return 0;
+        }
+    }
+
     // SCHEMA MIGRATION (auto-create tables on first run)
     // ============================================================
 

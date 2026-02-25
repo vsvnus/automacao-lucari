@@ -571,6 +571,50 @@ app.post("/api/alerts/webhook/:id/resend", requireAuth, async (req, res) => {
 // ====================================================
 
 // ====================================================
+// Keywords API (Palavras-Chave Google Ads)
+// ====================================================
+
+app.get('/api/keywords/stats', requireAuth, async (req, res) => {
+    const { client, from, to } = req.query;
+    const stats = await pgService.getKeywordsStats(client || null, from || null, to || null);
+    res.json(stats);
+});
+
+app.get('/api/keywords/overview', requireAuth, async (req, res) => {
+    const { client, from, to } = req.query;
+    const data = await pgService.getKeywordsOverview(client || null, from || null, to || null);
+    res.json(data);
+});
+
+app.get('/api/keywords/trend', requireAuth, async (req, res) => {
+    const { client, from, to } = req.query;
+    const data = await pgService.getKeywordsTrend(client || null, from || null, to || null);
+    res.json(data);
+});
+
+app.get('/api/keywords/detail', requireAuth, async (req, res) => {
+    const { keyword, client, from, to } = req.query;
+    if (!keyword) return res.status(400).json({ error: 'keyword is required' });
+    const data = await pgService.getKeywordDetail(keyword, client || null, from || null, to || null);
+    res.json(data);
+});
+
+app.get('/api/keywords/campaigns', requireAuth, async (req, res) => {
+    const { client, from, to } = req.query;
+    const data = await pgService.getCampaignsOverview(client || null, from || null, to || null);
+    res.json(data);
+});
+
+app.post('/api/keywords/backfill', requireAuth, async (_req, res) => {
+    try {
+        const count = await pgService.backfillKeywords();
+        res.json({ success: true, migrated: count });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ====================================================
 // Trail & Alerts API (novo sistema de rastreamento)
 // ====================================================
 

@@ -232,6 +232,30 @@ class WebhookHandler {
         const origin = detectOrigin(payload);
         await trail.step("origin_detected", "ok", `Origem: ${origin.channel}`, { channel: origin.channel, source: payload.source, utmSource: payload.utm_source || payload.utmSource });
 
+        // keyword_extracted - save Google Ads keyword data
+        if (origin.channel === "Google Ads") {
+            const keywordData = {
+                clientId: client.id,
+                keyword: payload.utm_term || (payload.visit && payload.visit.params && payload.visit.params.utm_term) || null,
+                campaign: payload.utm_campaign || (payload.visit && payload.visit.params && payload.visit.params.utm_campaign) || null,
+                utmSource: payload.utm_source || "google",
+                utmMedium: payload.utm_medium || "cpc",
+                utmContent: payload.utm_content || null,
+                gclid: (payload.visit && payload.visit.params && payload.visit.params.gclid) || null,
+                landingPage: (payload.visit && payload.visit.name) || null,
+                deviceType: (payload.visit && payload.visit.meta && payload.visit.meta.http_user_agent && payload.visit.meta.http_user_agent.device && payload.visit.meta.http_user_agent.device.type) || null,
+                locationState: (payload.location && payload.location.state) || null,
+                leadPhone: phone,
+                leadName: payload.chatName || "",
+                leadStatus: extractStatusName(payload) || "Lead Gerado",
+                product: "",
+            };
+            pgService.saveKeywordConversion(keywordData);
+            await trail.step("keyword_extracted", "ok",
+                `Keyword: "${keywordData.keyword || "N/A"}" | Campaign: ${keywordData.campaign || "N/A"}`,
+                { keyword: keywordData.keyword, campaign: keywordData.campaign });
+        }
+
         // organic_filtered
         const PAID_CHANNELS = ["Meta Ads", "Google Ads"];
         if (!PAID_CHANNELS.includes(origin.channel)) {
@@ -330,6 +354,33 @@ class WebhookHandler {
             if (saleAmount) {
                 updateData.saleAmount = parseFloat(saleAmount);
                 updateData.comment += ` | Valor: R$ ${parseFloat(saleAmount).toFixed(2).replace(".", ",")}`;
+            }
+            // Upsert keyword conversion if Google Ads
+            if (origin.channel === "Google Ads") {
+                const phone = payload.phone || payload.phone_e164?.replace("+", "") || "";
+                const keywordData = {
+                    clientId: client.id,
+                    keyword: payload.utm_term || (payload.visit && payload.visit.params && payload.visit.params.utm_term) || null,
+                    campaign: payload.utm_campaign || (payload.visit && payload.visit.params && payload.visit.params.utm_campaign) || null,
+                    utmSource: payload.utm_source || "google",
+                    utmMedium: payload.utm_medium || "cpc",
+                    utmContent: payload.utm_content || null,
+                    gclid: (payload.visit && payload.visit.params && payload.visit.params.gclid) || null,
+                    landingPage: (payload.visit && payload.visit.name) || null,
+                    deviceType: (payload.visit && payload.visit.meta && payload.visit.meta.http_user_agent && payload.visit.meta.http_user_agent.device && payload.visit.meta.http_user_agent.device.type) || null,
+                    locationState: (payload.location && payload.location.state) || null,
+                    leadPhone: phone,
+                    leadName: payload.chatName || payload.name || "",
+                    leadStatus: statusName,
+                    product: detectProduct(payload) || "",
+                    saleAmount: saleAmount ? parseFloat(saleAmount) : 0,
+                    converted: true,
+                };
+                pgService.upsertKeywordConversion(phone, {
+                    saleAmount: saleAmount ? parseFloat(saleAmount) : 0,
+                    leadStatus: statusName,
+                    keywordData: keywordData,
+                });
             }
         } else {
             updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
