@@ -3868,7 +3868,7 @@ async function loadKeywordsSection() {
             const clients = await fetch('/admin/clients', { credentials: 'same-origin' }).then(r => r.json());
             clients.forEach(c => {
                 const opt = document.createElement('option');
-                opt.value = c.id;
+                opt.value = c._db_id || c.id;
                 opt.textContent = c.name;
                 select.appendChild(opt);
             });
