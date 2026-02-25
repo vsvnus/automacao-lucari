@@ -196,3 +196,20 @@ Novos campos na aba Configuração do tenant SDR:
 ## Owner
 - **Vinicius Pimentel** (vinnipimentelgestor@gmail.com)
 - GitHub: vsvnus | Company: Lucari
+
+### Fix: Desalinhamento de Colunas nas Planilhas (2026-02-25)
+
+**Problema**: Cada planilha tinha estrutura diferente (Perim: 14 cols com Cidade, Mar das Ilhas/Rotta: 13 cols), mas `insertLead` usava posições hardcoded (A-N com 14 colunas fixas), causando:
+- Perim: Status escrito em Produto (col H), Status real (col I) vazio
+- Mar das Ilhas/Rotta: Comentários em col N (deveria M)
+- Todos: Fórmulas DIA sobrescritas com strings vazias
+
+**Solução**:
+- `getColumnMapping(spreadsheetId, sheetName)` — lê headers reais e mapeia por aliases
+- `insertLead` agora usa `batchUpdate` com células individuais (nunca toca DIA/Cidade)
+- `updateLeadStatus` usa mapeamento dinâmico (não mais colunas hardcoded E/F/H/N)
+- `ensureSheet` copia headers da aba anterior (preserva estrutura do cliente)
+- `copyActiveLeadsFromSheet` usa mapeamento para filtro/limpeza
+- Correção retroativa executada: Perim (20), Mar das Ilhas (112), Rotta (37), Raydan (70 fórmulas DIA)
+
+**Colunas DIA**: NUNCA são escritas pela automação. Preserva fórmulas e preenchimento manual.
