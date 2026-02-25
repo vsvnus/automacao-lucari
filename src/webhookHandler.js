@@ -299,7 +299,7 @@ class WebhookHandler {
             origin: origin.channel,
             date: formatDateBR(payload.moment),
             product: product,
-            status: extractStatusName(payload) || "Lead Gerado",
+            status: "Lead Gerado",
             phoneRaw: phone,
             message: payload.text?.message || "",
             messageId: payload.messageId || "",
