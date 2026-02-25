@@ -3415,8 +3415,7 @@ async function openRelatorioModal(client = null) {
 
     $('#modal-relatorio-title').textContent = isEdit ? 'Editar Cliente' : 'Novo Cliente';
     $('#relatorio-client-edit-id').value = client?.id || '';
-    $('#rel-semanal-tab').value = client?.semanal_tab_name || 'Atualizar Projeção Semanal';
-    $('#rel-mensal-tab').value = client?.mensal_tab_name || 'Métricas Gerenciadores';
+
     $('#rel-lead-metric-ig').checked = client?.lead_metric === 'ig:new_followers_count';
     $('#rel-notes').value = client?.notes || '';
     $('#rel-spreadsheet-url').value = client?.spreadsheet_id || '';
@@ -3771,8 +3770,7 @@ $('#form-relatorio-client')?.addEventListener('submit', async (e) => {
         meta_ads_integration_id: $('#rel-meta-select')?.value || null,
         google_ads_integration_id: $('#rel-google-select')?.value || null,
         spreadsheet_id: sheetId,
-        semanal_tab_name: $('#rel-semanal-tab').value.trim() || 'Atualizar Projeção Semanal',
-        mensal_tab_name: $('#rel-mensal-tab').value.trim() || 'Métricas Gerenciadores',
+
         lead_metric: $('#rel-lead-metric-ig').checked ? 'ig:new_followers_count' : null,
         metrics_config: metricsConfig,
         notes: $('#rel-notes').value.trim() || null,
