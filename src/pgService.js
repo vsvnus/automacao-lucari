@@ -1424,6 +1424,9 @@ class PgService {
                 FROM webhook_events w
                 WHERE ((w.payload->>'utm_term' IS NOT NULL AND length(w.payload->>'utm_term') > 0)
                    OR (w.payload->'visit'->'params'->>'utm_term' IS NOT NULL AND length(w.payload->'visit'->'params'->>'utm_term') > 0))
+                AND COALESCE(w.payload->>'utm_source', '') NOT IN ('fb', 'facebook', 'instagram', 'ig')
+                AND COALESCE(LOWER(w.payload->>'source'), '') NOT LIKE '%meta%'
+                AND COALESCE(LOWER(w.payload->>'source'), '') NOT LIKE '%facebook%'
                 AND NOT EXISTS (
                     SELECT 1 FROM keyword_conversions kc
                     WHERE kc.lead_phone = w.payload->>'phone'
