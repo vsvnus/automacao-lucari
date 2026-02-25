@@ -526,9 +526,7 @@ class SheetsService {
 
                 // Status: usa valor do leadData (default "Lead Gerado")
                 addCell('status', leadData.status || 'Lead Gerado');
-
-                // Comentários: usa coluna mapeada
-                addCell('comentarios', leadData.originComment || 'Lead recebido via automação');
+                // Comentários: deixados vazios (equipe preenche manualmente)
 
                 // Para leads recuperados: escreve fechamento/valor se fornecidos
                 if (leadData.closeDate) {
@@ -551,10 +549,13 @@ class SheetsService {
                 await this.sheets.spreadsheets.values.batchUpdate({
                     spreadsheetId,
                     requestBody: {
-                        valueInputOption: 'RAW',
+                        valueInputOption: 'USER_ENTERED',
                         data: updates,
                     },
                 });
+
+                // Escrever fórmulas DIA (cadência de follow-up)
+                await this.writeDiaFormulas(spreadsheetId, sheetName, nextRow, colMap);
 
                 // Formatar "(Auto)" em verde na célula do nome
                 await this.formatAutoTag(spreadsheetId, sheetName, nextRow, leadData.name);
@@ -896,6 +897,154 @@ class SheetsService {
         } catch (error) {
             // Não falhar a inserção por causa da formatação
             logger.warn('Erro ao formatar tag (Auto)', { error: error.message });
+        }
+    }
+
+
+    /**
+     * Lê o padrão de fórmulas DIA de linhas existentes na planilha.
+     * Retorna os offsets (ex: [1, 2, 4, 5]) e se usa IF wrapper.
+     * Cache por spreadsheetId:sheetName.
+     */
+    async getDiaFormulaOffsets(spreadsheetId, sheetName, colMap) {
+        const cacheKey = `${spreadsheetId}:${sheetName}:diaOffsets`;
+        if (this.spreadsheetCache.has(cacheKey)) {
+            return this.spreadsheetCache.get(cacheKey);
+        }
+
+        const diaFields = ['dia1', 'dia2', 'dia3', 'dia4', 'dia5'].filter(f => colMap[f]);
+        if (diaFields.length === 0) return null;
+
+        const dataCol = colMap.data ? colMap.data.letter : 'D';
+
+        try {
+            const totalCols = colMap._totalCols || 14;
+            const lastCol = String.fromCharCode(64 + totalCols);
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!A2:${lastCol}100`,
+                valueRenderOption: 'FORMULA',
+            });
+            const rows = response.data.values || [];
+
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const firstDiaIdx = colMap[diaFields[0]].index;
+                const cellFormula = (row[firstDiaIdx] || '').toString();
+
+                if (!cellFormula.startsWith('=')) continue;
+
+                const offsets = [];
+                const hasIfWrapper = cellFormula.toUpperCase().includes('IF(');
+
+                for (const field of diaFields) {
+                    const idx = colMap[field].index;
+                    const formula = (row[idx] || '').toString();
+                    const match = formula.match(/[A-Z]\d+\+(\d+)/i);
+                    if (match) offsets.push(parseInt(match[1]));
+                }
+
+                if (offsets.length > 0) {
+                    const result = { dataCol, offsets, hasIfWrapper, diaFields };
+                    this.spreadsheetCache.set(cacheKey, result);
+                    logger.info(`Padrão DIA detectado para "${sheetName}": offsets=[${offsets}], wrapper=${hasIfWrapper}`);
+                    return result;
+                }
+            }
+        } catch (error) {
+            logger.warn(`Erro ao ler padrão DIA de "${sheetName}"`, { error: error.message });
+        }
+
+        // Padrão default se nenhuma fórmula encontrada
+        const defaultOffsets = diaFields.length >= 5 ? [1, 2, 4, 5] : [1, 2, 4, 5];
+        const result = { dataCol, offsets: defaultOffsets.slice(0, diaFields.length), hasIfWrapper: true, diaFields };
+        this.spreadsheetCache.set(cacheKey, result);
+        logger.info(`Usando padrão DIA default para "${sheetName}": offsets=[${result.offsets}]`);
+        return result;
+    }
+
+    /**
+     * Escreve fórmulas DIA na linha do lead inserido.
+     * Usa o padrão detectado da planilha ou default [1, 2, 4, 5].
+     * Aplica formatação de data (dd/MM/yyyy) nas células.
+     */
+    async writeDiaFormulas(spreadsheetId, sheetName, row, colMap) {
+        try {
+            const pattern = await this.getDiaFormulaOffsets(spreadsheetId, sheetName, colMap);
+            if (!pattern) return;
+
+            const { dataCol, offsets, hasIfWrapper, diaFields } = pattern;
+
+            const updates = [];
+            for (let i = 0; i < Math.min(diaFields.length, offsets.length); i++) {
+                const field = diaFields[i];
+                const offset = offsets[i];
+                const letter = colMap[field].letter;
+
+                let formula;
+                if (hasIfWrapper) {
+                    formula = `=IF(${dataCol}${row}="";"";${dataCol}${row}+${offset})`;
+                } else {
+                    formula = `=${dataCol}${row}+${offset}`;
+                }
+
+                updates.push({
+                    range: `'${sheetName}'!${letter}${row}`,
+                    values: [[formula]],
+                });
+            }
+
+            if (updates.length === 0) return;
+
+            // Escrever fórmulas
+            await this.sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId,
+                requestBody: {
+                    valueInputOption: 'USER_ENTERED',
+                    data: updates,
+                },
+            });
+
+            // Aplicar formatação de data nas células DIA
+            const sheetId = await this.getSheetIdByName(spreadsheetId, sheetName);
+            if (sheetId !== null) {
+                const diaStartCol = colMap[diaFields[0]].index;
+                const diaEndCol = colMap[diaFields[Math.min(diaFields.length, offsets.length) - 1]].index + 1;
+
+                await this.sheets.spreadsheets.batchUpdate({
+                    spreadsheetId,
+                    requestBody: {
+                        requests: [{
+                            repeatCell: {
+                                range: {
+                                    sheetId,
+                                    startRowIndex: row - 1,
+                                    endRowIndex: row,
+                                    startColumnIndex: diaStartCol,
+                                    endColumnIndex: diaEndCol,
+                                },
+                                cell: {
+                                    userEnteredFormat: {
+                                        numberFormat: {
+                                            type: 'DATE',
+                                            pattern: 'dd/MM/yyyy',
+                                        },
+                                    },
+                                },
+                                fields: 'userEnteredFormat.numberFormat',
+                            },
+                        }],
+                    },
+                });
+            }
+
+            logger.info(`Fórmulas DIA escritas para linha ${row} de "${sheetName}"`, {
+                offsets,
+                columns: updates.map(u => u.range.split('!')[1]),
+            });
+        } catch (error) {
+            // Não falhar a inserção por causa das fórmulas DIA
+            logger.warn(`Erro ao escrever fórmulas DIA na linha ${row}`, { error: error.message });
         }
     }
 

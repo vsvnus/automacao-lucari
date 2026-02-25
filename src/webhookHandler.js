@@ -297,7 +297,6 @@ class WebhookHandler {
             name: (payload.chatName || formatPhoneBR(phone)) + " (Auto)",
             phone: formatPhoneBR(phone),
             origin: origin.channel,
-            originComment: origin.comment,
             date: formatDateBR(payload.moment),
             product: product,
             status: extractStatusName(payload) || "Lead Gerado",
@@ -350,10 +349,8 @@ class WebhookHandler {
 
         if (isSaleStatus(statusName) || saleAmount) {
             updateData.closeDate = formatDateBR(new Date().toISOString());
-            updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
             if (saleAmount) {
                 updateData.saleAmount = parseFloat(saleAmount);
-                updateData.comment += ` | Valor: R$ ${parseFloat(saleAmount).toFixed(2).replace(".", ",")}`;
             }
             // Upsert keyword conversion if Google Ads
             if (origin.channel === "Google Ads") {
@@ -382,8 +379,6 @@ class WebhookHandler {
                     keywordData: keywordData,
                 });
             }
-        } else {
-            updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
         }
 
         // status_updated
