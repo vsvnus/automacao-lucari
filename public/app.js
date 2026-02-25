@@ -3879,7 +3879,6 @@ async function loadKeywordsSection() {
         loadKeywordsStats(),
         loadKeywordsOverview(),
         loadKeywordsTrend(),
-        loadKeywordsCampaigns(),
     ]);
 }
 
@@ -3901,7 +3900,7 @@ async function loadKeywordsOverview() {
         if (!tbody) return;
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma keyword encontrada no periodo</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhuma keyword encontrada no periodo</td></tr>';
             return;
         }
 
@@ -3914,8 +3913,10 @@ async function loadKeywordsOverview() {
             const barWidth = maxLeads > 0 ? (leads / maxLeads * 100) : 0;
             const lastDate = row.last_date ? new Date(row.last_date).toLocaleDateString('pt-BR') : '—';
             const keyword = row.keyword || '(sem keyword)';
+            const campaign = row.campaign || '(sem campanha)';
             return '<tr class="kw-row-clickable" data-keyword="' + escapeHtml(keyword) + '">' +
                 '<td><div class="kw-cell-bar"><div class="kw-bar" style="width:' + barWidth + '%"></div><span class="kw-keyword-text">' + escapeHtml(keyword) + '</span></div></td>' +
+                '<td>' + escapeHtml(campaign) + '</td>' +
                 '<td>' + leads + '</td>' +
                 '<td>' + conversions + '</td>' +
                 '<td>' + rate + '%</td>' +
@@ -4029,29 +4030,6 @@ function renderKwTrendChart(data) {
     });
 }
 
-async function loadKeywordsCampaigns() {
-    try {
-        const data = await fetch('/api/keywords/campaigns?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
-        const tbody = document.getElementById('kw-campaigns-body');
-        if (!tbody) return;
-
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma campanha encontrada</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = data.map(row => {
-            const value = parseFloat(row.total_value || 0);
-            return '<tr>' +
-                '<td>' + escapeHtml(row.campaign || '(sem campanha)') + '</td>' +
-                '<td>' + (row.leads || 0) + '</td>' +
-                '<td>' + (row.keywords || 0) + '</td>' +
-                '<td>' + (row.conversions || 0) + '</td>' +
-                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
-                '</tr>';
-        }).join('');
-    } catch (e) { console.error('Keywords campaigns error', e); }
-}
 
 async function openKeywordDetail(keyword) {
     const modal = document.getElementById('modal-keyword-detail');

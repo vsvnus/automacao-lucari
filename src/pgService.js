@@ -1215,12 +1215,14 @@ class PgService {
             const { rows } = await this.query(
                 `INSERT INTO keyword_conversions
                  (client_id, keyword, campaign, utm_source, utm_medium, utm_content, gclid,
-                  landing_page, device_type, location_state, lead_phone, lead_name, lead_status, product)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                  landing_page, device_type, location_state, lead_phone, lead_name, lead_status, product,
+                  sale_amount, converted)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
                  RETURNING id`,
                 [data.clientId, data.keyword, data.campaign, data.utmSource, data.utmMedium,
                  data.utmContent, data.gclid, data.landingPage, data.deviceType, data.locationState,
-                 data.leadPhone, data.leadName, data.leadStatus, data.product]
+                 data.leadPhone, data.leadName, data.leadStatus, data.product,
+                 data.saleAmount || 0, data.converted || false]
             );
             return rows[0]?.id || null;
         } catch (error) {
@@ -1229,17 +1231,20 @@ class PgService {
         }
     }
 
-    async updateKeywordConversion(phone, data) {
+    async upsertKeywordConversion(phone, data) {
         if (!this.isAvailable()) return;
         try {
-            await this.query(
+            const { rowCount } = await this.query(
                 `UPDATE keyword_conversions
-                 SET sale_amount = $1, converted = $2, lead_status = COALESCE($3, lead_status)
-                 WHERE id = (SELECT id FROM keyword_conversions WHERE lead_phone = $4 ORDER BY created_at DESC LIMIT 1)`,
-                [data.saleAmount || 0, data.converted || false, data.leadStatus || null, phone]
+                 SET sale_amount = $1, converted = true, lead_status = COALESCE($2, lead_status)
+                 WHERE id = (SELECT id FROM keyword_conversions WHERE lead_phone = $3 ORDER BY created_at DESC LIMIT 1)`,
+                [data.saleAmount || 0, data.leadStatus || null, phone]
             );
+            if (rowCount === 0 && data.keywordData) {
+                await this.saveKeywordConversion(data.keywordData);
+            }
         } catch (error) {
-            logger.error("Erro ao atualizar keyword conversion", { error: error.message });
+            logger.error("Erro ao upsert keyword conversion", { error: error.message });
         }
     }
 
@@ -1254,7 +1259,7 @@ class PgService {
             if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
 
             const { rows } = await this.query(`
-                SELECT keyword,
+                SELECT keyword, campaign,
                        COUNT(*) as leads,
                        SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions,
                        ROUND(SUM(CASE WHEN converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as rate,
@@ -1262,7 +1267,7 @@ class PgService {
                        MAX(created_at) as last_date
                 FROM keyword_conversions
                 ${where}
-                GROUP BY keyword
+                GROUP BY keyword, campaign
                 ORDER BY leads DESC
             `, params);
             return rows;
