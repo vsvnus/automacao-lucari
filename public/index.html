@@ -48,25 +48,32 @@
 
             <div class="nav-group-label">APLICAÇÕES</div>
 
-            <a href="#" class="nav-item nav-app-automacao" data-section="automacao">
-                <span class="nav-app-dot dot-automacao"></span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                </svg>
-                <span>Automação Leads</span>
-                <span class="nav-badge" id="alerts-badge" style="display:none;">0</span>
-            </a>
-            <a href="#" class="nav-item nav-app-keywords" data-section="keywords">
-                <span class="nav-app-dot dot-keywords"></span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                <span>Palavras-Chave</span>
-            </a>
+            <div class="nav-group-parent" id="nav-tintim">
+                <a href="#" class="nav-item nav-app-tintim" data-toggle="tintim">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20V10"></path>
+                        <path d="M18 20V4"></path>
+                        <path d="M6 20v-4"></path>
+                    </svg>
+                    <span>Dados Tintim</span>
+                    <svg class="nav-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </a>
+                <div class="nav-submenu" id="submenu-tintim">
+                    <a href="#" class="nav-item nav-sub-item nav-app-automacao" data-section="automacao">
+                        <span class="nav-app-dot dot-automacao"></span>
+                        <span>Automação Leads</span>
+                        <span class="nav-badge" id="alerts-badge" style="display:none;">0</span>
+                    </a>
+                    <a href="#" class="nav-item nav-sub-item nav-app-keywords" data-section="keywords">
+                        <span class="nav-app-dot dot-keywords"></span>
+                        <span>Palavras-Chave</span>
+                    </a>
+                </div>
+            </div>
             <a href="#" class="nav-item nav-app-sdr" data-section="sdr">
                 <span class="nav-app-dot dot-sdr"></span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"

@@ -33,6 +33,7 @@ const refs = {
 
 // Sections that belong to Automação Leads app
 const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts'];
+const TINTIM_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'keywords'];
 
 function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
@@ -48,11 +49,19 @@ function navigateTo(section, replace = false) {
     const target = $(`#section-${section}`);
     if (target) target.classList.add('active');
 
-    // Update sidebar active state - Automação sections all highlight 'automacao'
+    // Update sidebar active state
     const sidebarSection = AUTOMACAO_SECTIONS.includes(section) ? 'automacao' : section;
     $$('.nav-item').forEach(item => {
         item.classList.toggle('active', item.dataset.section === sidebarSection);
     });
+
+    // Auto-open Tintim submenu when navigating to its sections
+    const tintimParent = document.querySelector('.nav-app-tintim');
+    const tintimSubmenu = document.getElementById('submenu-tintim');
+    if (tintimParent && tintimSubmenu && TINTIM_SECTIONS.includes(section)) {
+        tintimParent.classList.add('open');
+        tintimSubmenu.classList.add('open');
+    }
 
     // Update automacao tab bar active state across all sections that have it
     if (AUTOMACAO_SECTIONS.includes(section)) {
@@ -1379,6 +1388,17 @@ async function init() {
     // 1. Initial Navigation (Routing)
     const initialSection = getSectionFromUrl();
     // Use replace=true to correctly set the initial history state without pushing a new entry
+    // Tintim submenu toggle
+    const tintimToggle = document.querySelector('[data-toggle="tintim"]');
+    if (tintimToggle) {
+        tintimToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            tintimToggle.classList.toggle('open');
+            const submenu = document.getElementById('submenu-tintim');
+            if (submenu) submenu.classList.toggle('open');
+        });
+    }
+
     navigateTo(initialSection, true);
 
     // 2. Load Data
