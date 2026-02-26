@@ -28,6 +28,7 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const { logger } = require('./utils/logger');
 const webhookHandler = require('./webhookHandler');
+const kommoHandler = require('./kommoHandler');
 const clientManager = require('./clientManager');
 const sheetsService = require('./sheetsService');
 const pgService = require('./pgService');
@@ -48,6 +49,10 @@ app.set('trust proxy', 1);
 // Skip JSON body parsing for SDR knowledge upload (multipart/form-data)
 app.use((req, res, next) => {
     if (req.path.match(/^\/api\/sdr\/tenants\/[^/]+\/knowledge$/) && req.method === 'POST') {
+        return next();
+    }
+    // Skip JSON for Kommo webhook (uses x-www-form-urlencoded)
+    if (req.path === '/webhook/kommo' && req.method === 'POST') {
         return next();
     }
     express.json({ limit: '1mb' })(req, res, next);
@@ -204,6 +209,38 @@ app.post('/webhook/tintim', async (req, res) => {
     } catch (error) {
         logger.error('Erro no webhook', { error: error.message });
         res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Kommo CRM Webhook (x-www-form-urlencoded with raw body for signature verification)
+app.post('/webhook/kommo', express.urlencoded({
+    extended: true,
+    verify: function(req, _res, buf) { req.rawBody = buf.toString('utf8'); },
+}), async (req, res) => {
+    // Rate limiting (shared with Tintim)
+    const ip = req.ip;
+    const now = Date.now();
+
+    if (!webhookRateLimit.has(ip)) {
+        webhookRateLimit.set(ip, { count: 1, start: now });
+    } else {
+        const entry = webhookRateLimit.get(ip);
+        entry.count++;
+        if (entry.count > MAX_REQUESTS) {
+            logger.warn('Rate limit excedido para Kommo webhook IP ' + ip);
+            return res.status(429).json({ error: 'Too many requests' });
+        }
+    }
+
+    // Responder IMEDIATAMENTE (Kommo exige resposta em 2 segundos)
+    res.status(200).json({ success: true });
+
+    // Processar assincronamente
+    try {
+        const signature = req.headers['x-signature'] || '';
+        await kommoHandler.processWebhook(req.body, req.rawBody, signature);
+    } catch (error) {
+        logger.error('Erro no webhook Kommo', { error: error.message });
     }
 });
 
@@ -748,6 +785,7 @@ async function startServer() {
             const stats = clientManager.getStats();
             logger.info(`Servidor rodando em http://localhost:${PORT}`);
             logger.info(`Webhook Tintim: http://localhost:${PORT}/webhook/tintim`);
+            logger.info(`Webhook Kommo: http://localhost:${PORT}/webhook/kommo`);
             logger.info(`Dashboard: http://localhost:${PORT}`);
             logger.info(`Fonte de dados: ${stats.dataSource}`);
         });

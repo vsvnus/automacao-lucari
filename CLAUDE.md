@@ -173,6 +173,61 @@ Novos campos na aba Configuração do tenant SDR:
 - Events: `lead.create`, `lead.update`
 - Filtro: só Meta/Google Ads → planilha (orgânico ignorado)
 
+
+
+## Kommo CRM Integration (2026-02-26)
+
+### Overview
+Kommo CRM (formerly amoCRM) webhook receiver. Processes lead events from Kommo in parallel with existing Tintim webhooks.
+
+### Endpoint
+- `POST /webhook/kommo` (public, rate-limited)
+- Content-Type: `application/x-www-form-urlencoded` (Kommo's native format)
+- Auth: `X-Signature` header HMAC-SHA1 (verified against `KOMMO_CLIENT_SECRET` env var)
+- Response: Must return 200 within 2 seconds (Kommo auto-disables after 100+ failures in 2h)
+
+### Client Configuration
+Each client has:
+- `webhook_source`: `tintim` | `kommo` | `both` (default: `tintim`)
+- `kommo_pipeline_id`: Pipeline ID in Kommo that maps to this client
+
+Client matching: Kommo webhook includes `pipeline_id` in lead events. Each client is matched by their `kommo_pipeline_id`.
+
+### Events Handled
+| Kommo Event | Handler | Action |
+|-------------|---------|--------|
+| `leads[add]` | handleLeadAdded | Insert lead in Google Sheets |
+| `leads[update]` | handleLeadUpdated | Log update |
+| `leads[status]` (142) | handleLeadStatus | SALE: update sheet + keyword_conversions |
+| `leads[status]` (143) | handleLeadStatus | LOST: log as Perdido (Kommo) |
+| `contacts[add/update]` | handleContactEvent | Extract phone, link to lead |
+
+### System Stage IDs (fixed across all Kommo accounts)
+- `142` = Closed Won (venda)
+- `143` = Closed Lost (perda)
+
+### Phone Number Flow
+1. Kommo lead events do NOT contain phone numbers directly
+2. Phone comes from linked contact events (`contacts[add]` with `custom_fields` code `PHONE`)
+3. Contact events include `linked_leads_id` mapping contact to lead
+4. `findPhoneForKommoLead()` queries `kommo_events` for the phone linked to a lead
+5. On sale detection (142), phone is used to update sheet and keyword_conversions
+
+### Database
+- `kommo_events` table: raw JSONB payload storage (like `webhook_events` for Tintim)
+- Columns: `client_id`, `event_type`, `kommo_lead_id`, `kommo_account_id`, `payload`, `processing_result`
+- `clients.webhook_source`: tintim/kommo/both
+- `clients.kommo_pipeline_id`: maps pipeline to client
+
+### Environment Variables
+- `KOMMO_CLIENT_SECRET`: HMAC-SHA1 secret for webhook signature verification (optional in dev)
+
+### Files
+- `src/kommoHandler.js`: Main webhook processor
+- `src/server.js`: Route `/webhook/kommo` with urlencoded middleware + async processing
+- `src/pgService.js`: Updated CRUD with `webhook_source` and `kommo_pipeline_id`
+- `public/index.html`: Client modal with source selector
+- `public/app.js`: Toggle Kommo pipeline field based on source selection
 ## Problemas Comuns
 
 ### "Google Sheets não disponível"
