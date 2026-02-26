@@ -342,15 +342,18 @@
             <div class="card" style="margin-top:24px;">
                 <div class="card-header">
                     <h3 class="card-title">Resumo por Cliente</h3>
-                    <span class="text-secondary" id="client-summary-period">Últimos 7 dias</span>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="text-secondary" id="client-summary-period">Carregando...</span>
+                        <span class="text-secondary" id="client-summary-comparison" style="font-size:0.8rem;"></span>
+                    </div>
                 </div>
                 <div class="card-body" style="padding:0;">
                     <table class="data-table" id="client-summary-table">
                         <thead>
                             <tr>
                                 <th>Cliente</th>
+                                <th>Produto</th>
                                 <th style="text-align:right;">Leads</th>
-                                <th style="text-align:right;">Hoje</th>
                                 <th style="text-align:right;">Vendas</th>
                                 <th style="text-align:right;">Receita</th>
                             </tr>
@@ -379,6 +382,17 @@
                     <div class="card-body" id="origin-breakdown-container">
                         <div style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Google Ads — Palavras-chave mini-card -->
+            <div class="card" style="margin-top:20px;" id="keywords-overview-card">
+                <div class="card-header">
+                    <h3 class="card-title">Google Ads — Palavras-chave</h3>
+                    <a href="#" onclick="navigateTo('keywords');return false;" style="font-size:0.8rem;color:var(--accent-primary);text-decoration:none;">Ver análise completa →</a>
+                </div>
+                <div class="card-body" id="keywords-overview-stats">
+                    <div style="text-align:center;color:var(--text-tertiary);padding:16px;">Carregando...</div>
                 </div>
             </div>
         </section>

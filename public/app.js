@@ -566,9 +566,14 @@ async function loadDashboardOverview() {
 
 async function loadOverviewEnhanced() {
     try {
-        const res = await fetch('/api/dashboard/overview');
+        const qs = buildDateQS();
+        const res = await fetch(`/api/dashboard/overview${qs}`);
         if (!res.ok) return;
         const data = await res.json();
+
+        // Update period label in client table header
+        const periodLabel = document.getElementById('client-summary-period');
+        if (periodLabel) periodLabel.textContent = getPeriodLabel();
 
         // Render client summary table
         renderClientSummary(data.clients, data.comparison);
@@ -578,6 +583,9 @@ async function loadOverviewEnhanced() {
 
         // Render origin breakdown
         renderOriginBreakdown(data.origins);
+
+        // Render Google Ads keywords mini-card
+        renderKeywordsOverview(data.keywords);
     } catch (e) {
         console.error('Failed to load enhanced overview:', e);
     }
@@ -592,18 +600,20 @@ function renderClientSummary(clients, comparison) {
         return;
     }
 
-    // Update comparison label
-    const periodLabel = document.getElementById('client-summary-period');
-    if (periodLabel && comparison) {
+    // Update today vs yesterday chip
+    const comparisonEl = document.getElementById('client-summary-comparison');
+    if (comparisonEl && comparison) {
         const diff = comparison.today - comparison.yesterday;
         const arrow = diff > 0 ? '\u2191' : diff < 0 ? '\u2193' : '';
         const color = diff > 0 ? 'var(--accent-green)' : diff < 0 ? 'var(--accent-red)' : 'var(--text-tertiary)';
-        periodLabel.innerHTML = `Hoje: <strong>${comparison.today}</strong> leads <span style="color:${color}">${arrow} ${diff !== 0 ? Math.abs(diff) : ''} vs ontem</span>`;
+        comparisonEl.innerHTML = `Hoje: <strong>${comparison.today}</strong> leads <span style="color:${color}">${arrow} ${diff !== 0 ? Math.abs(diff) : ''} vs ontem</span>`;
     }
 
     tbody.innerHTML = clients.map(c => {
-        const staleClass = c.todayLeads === 0 && c.totalLeads > 0 ? ' style="color:var(--accent-orange)"' : '';
         const revenue = c.revenue > 0 ? `R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
+        const productBadge = c.mainProduct
+            ? `<span class="badge badge-subtle" style="font-size:0.65rem;padding:2px 6px;">${escapeHtml(c.mainProduct)}</span>`
+            : '<span style="color:var(--text-tertiary);font-size:0.75rem;">\u2014</span>';
         return `<tr>
             <td>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -611,8 +621,8 @@ function renderClientSummary(clients, comparison) {
                     <span>${escapeHtml(c.name)}</span>
                 </div>
             </td>
+            <td>${productBadge}</td>
             <td style="text-align:right;">${c.totalLeads}</td>
-            <td style="text-align:right;"${staleClass}>${c.todayLeads}</td>
             <td style="text-align:right;">${c.sales}</td>
             <td style="text-align:right;">${revenue}</td>
         </tr>`;
@@ -633,7 +643,12 @@ function renderFunnel(funnel) {
 
     const max = Math.max(stages[0].value, 1);
 
-    container.innerHTML = stages.map((s, i) => {
+    // Show product badges at the top of the funnel
+    const productsHtml = funnel.productsInFunnel && funnel.productsInFunnel.length
+        ? `<div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;">${funnel.productsInFunnel.map(p => `<span class="badge badge-subtle" style="font-size:0.7rem;">${escapeHtml(p)}</span>`).join('')}</div>`
+        : '';
+
+    container.innerHTML = productsHtml + stages.map((s, i) => {
         const pct = Math.max((s.value / max) * 100, 4);
         const dropoff = i > 0 && stages[i - 1].value > 0
             ? ` <span style="color:var(--text-tertiary);font-size:0.7rem;">(-${Math.round((1 - s.value / stages[i - 1].value) * 100)}%)</span>`
@@ -649,7 +664,7 @@ function renderFunnel(funnel) {
         </div>`;
     }).join('') + (funnel.receitaTotal > 0
         ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.8rem;color:var(--text-secondary);">Receita Total (30d)</span>
+            <span style="font-size:0.8rem;color:var(--text-secondary);">Receita Total</span>
             <span style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">R$ ${funnel.receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
         </div>`
         : `<div style="margin-top:8px;padding:8px;background:var(--accent-orange-subtle);border-radius:8px;font-size:0.75rem;color:var(--accent-orange);">
@@ -693,6 +708,52 @@ function renderOriginBreakdown(origins) {
             ${o.sales > 0 ? `<div style="font-size:0.7rem;color:var(--accent-green);margin-top:4px;">${o.sales} venda${o.sales !== 1 ? 's' : ''} \u00b7 R$ ${o.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</div>` : ''}
         </div>`;
     }).join('');
+}
+
+function renderKeywordsOverview(kw) {
+    const container = document.getElementById('keywords-overview-stats');
+    if (!container) return;
+
+    if (!kw || kw.totalLeads === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:16px;font-size:0.85rem;">Sem leads Google Ads no per\u00edodo</div>';
+        return;
+    }
+
+    const convRate = kw.totalLeads > 0 ? ((kw.conversions / kw.totalLeads) * 100).toFixed(0) : 0;
+    const revenue = kw.revenue > 0 ? `R$ ${kw.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
+
+    const statsHtml = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;color:var(--accent-google);">${kw.uniqueKeywords}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Keywords</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;">${kw.totalLeads}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Leads Google</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;color:var(--accent-green);">${kw.conversions} <span style="font-size:0.75rem;">(${convRate}%)</span></div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Convers\u00f5es</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">${revenue}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Receita</div>
+        </div>
+    </div>`;
+
+    const topKwHtml = kw.topKeywords && kw.topKeywords.length
+        ? `<div style="border-top:1px solid var(--border-subtle);padding-top:12px;">
+            ${kw.topKeywords.map(k => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">
+                <span style="font-size:0.8rem;color:var(--text-secondary);">${escapeHtml(k.keyword || '\u2014')}</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:0.8rem;font-weight:600;">${k.leads}</span>
+                    ${k.converted ? '<span style="font-size:0.65rem;color:var(--accent-green);">&#10003; convertido</span>' : ''}
+                </div>
+            </div>`).join('')}
+        </div>`
+        : '';
+
+    container.innerHTML = statsHtml + topKwHtml;
 }
 
 // ============================================
