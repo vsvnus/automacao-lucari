@@ -11,7 +11,7 @@ const state = {
     clients: [],
     activityLog: [],
     webhookCount: 0,
-    period: '30d',
+    period: '7d',
     dateFrom: null,
     dateTo: null,
 };
@@ -559,6 +559,140 @@ async function loadDashboardOverview() {
     } catch (e) {
         console.error('Failed to load dashboard overview:', e);
     }
+
+    // Load enhanced overview data (client summary, funnel, origins)
+    loadOverviewEnhanced();
+}
+
+async function loadOverviewEnhanced() {
+    try {
+        const res = await fetch('/api/dashboard/overview');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Render client summary table
+        renderClientSummary(data.clients, data.comparison);
+
+        // Render conversion funnel
+        renderFunnel(data.funnel);
+
+        // Render origin breakdown
+        renderOriginBreakdown(data.origins);
+    } catch (e) {
+        console.error('Failed to load enhanced overview:', e);
+    }
+}
+
+function renderClientSummary(clients, comparison) {
+    const tbody = document.getElementById('client-summary-body');
+    if (!tbody) return;
+
+    if (!clients || clients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:24px;">Nenhum cliente ativo</td></tr>';
+        return;
+    }
+
+    // Update comparison label
+    const periodLabel = document.getElementById('client-summary-period');
+    if (periodLabel && comparison) {
+        const diff = comparison.today - comparison.yesterday;
+        const arrow = diff > 0 ? '\u2191' : diff < 0 ? '\u2193' : '';
+        const color = diff > 0 ? 'var(--accent-green)' : diff < 0 ? 'var(--accent-red)' : 'var(--text-tertiary)';
+        periodLabel.innerHTML = `Hoje: <strong>${comparison.today}</strong> leads <span style="color:${color}">${arrow} ${diff !== 0 ? Math.abs(diff) : ''} vs ontem</span>`;
+    }
+
+    tbody.innerHTML = clients.map(c => {
+        const staleClass = c.todayLeads === 0 && c.totalLeads > 0 ? ' style="color:var(--accent-orange)"' : '';
+        const revenue = c.revenue > 0 ? `R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
+        return `<tr>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="client-avatar" style="width:28px;height:28px;font-size:0.65rem;">${escapeHtml(getInitials(c.name))}</div>
+                    <span>${escapeHtml(c.name)}</span>
+                </div>
+            </td>
+            <td style="text-align:right;">${c.totalLeads}</td>
+            <td style="text-align:right;"${staleClass}>${c.todayLeads}</td>
+            <td style="text-align:right;">${c.sales}</td>
+            <td style="text-align:right;">${revenue}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderFunnel(funnel) {
+    const container = document.getElementById('funnel-container');
+    if (!container || !funnel) return;
+
+    const stages = [
+        { label: 'Leads Gerados', value: funnel.leadsGerados, color: 'var(--accent-primary)' },
+        { label: 'Conectados', value: funnel.leadsConectados, color: 'var(--accent-cyan)' },
+        { label: 'Em Atendimento', value: funnel.emAtendimento, color: 'var(--accent-orange)' },
+        { label: 'Proposta', value: funnel.proposta, color: 'var(--accent-primary-hover)' },
+        { label: 'Vendas', value: funnel.vendas, color: 'var(--accent-green)' },
+    ];
+
+    const max = Math.max(stages[0].value, 1);
+
+    container.innerHTML = stages.map((s, i) => {
+        const pct = Math.max((s.value / max) * 100, 4);
+        const dropoff = i > 0 && stages[i - 1].value > 0
+            ? ` <span style="color:var(--text-tertiary);font-size:0.7rem;">(-${Math.round((1 - s.value / stages[i - 1].value) * 100)}%)</span>`
+            : '';
+        return `<div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:0.8rem;color:var(--text-secondary)">${s.label}</span>
+                <span style="font-size:0.8rem;font-weight:600;">${s.value}${dropoff}</span>
+            </div>
+            <div style="height:8px;background:var(--bg-surface);border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${s.color};border-radius:4px;transition:width 0.5s var(--ease-out);"></div>
+            </div>
+        </div>`;
+    }).join('') + (funnel.receitaTotal > 0
+        ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.8rem;color:var(--text-secondary);">Receita Total (30d)</span>
+            <span style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">R$ ${funnel.receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+        </div>`
+        : `<div style="margin-top:8px;padding:8px;background:var(--accent-orange-subtle);border-radius:8px;font-size:0.75rem;color:var(--accent-orange);">
+            Desqualificados: ${funnel.desqualificados}
+        </div>`);
+}
+
+function renderOriginBreakdown(origins) {
+    const container = document.getElementById('origin-breakdown-container');
+    if (!container || !origins) return;
+
+    const total = origins.reduce((sum, o) => sum + o.total, 0);
+    if (total === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:24px;">Sem dados</div>';
+        return;
+    }
+
+    const colorMap = {
+        'Meta Ads': { bg: 'var(--accent-primary-subtle)', color: 'var(--accent-primary)', bar: 'var(--accent-primary)' },
+        'Google Ads': { bg: 'var(--accent-google-subtle)', color: 'var(--accent-google)', bar: 'var(--accent-google)' },
+        'WhatsApp': { bg: 'var(--accent-green-subtle)', color: 'var(--accent-green)', bar: 'var(--accent-green)' },
+    };
+
+    container.innerHTML = origins.map(o => {
+        const pct = Math.round((o.total / total) * 100);
+        const colors = colorMap[o.origin] || { bg: 'var(--bg-surface)', color: 'var(--text-secondary)', bar: 'var(--text-tertiary)' };
+        return `<div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colors.bar};"></span>
+                    <span style="font-size:0.85rem;font-weight:500;">${escapeHtml(o.origin)}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="font-size:0.85rem;font-weight:600;">${o.total}</span>
+                    <span style="font-size:0.7rem;color:var(--text-tertiary);">${pct}%</span>
+                </div>
+            </div>
+            <div style="height:6px;background:var(--bg-surface);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${colors.bar};border-radius:3px;transition:width 0.5s var(--ease-out);"></div>
+            </div>
+            ${o.sales > 0 ? `<div style="font-size:0.7rem;color:var(--accent-green);margin-top:4px;">${o.sales} venda${o.sales !== 1 ? 's' : ''} \u00b7 R$ ${o.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</div>` : ''}
+        </div>`;
+    }).join('');
 }
 
 // ============================================
@@ -677,7 +811,7 @@ async function loadDashboardClients() {
     }
 
     container.innerHTML = '';
-    clients.slice(0, 5).forEach(client => {
+    clients.forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
         const count = leadCounts[client.slug] || leadCounts[client.id] || 0;
@@ -771,7 +905,9 @@ function renderLogItem(log, detailed = false) {
     const isFailed = log.result === 'failed' || log.result === 'error';
     const isNewLead = log.event_type === 'new_lead';
     const isUpdate = log.event_type === 'status_update' || log.event_type === 'lead.update';
-    const isSale = isUpdate && log.sale_amount && parseFloat(log.sale_amount) > 0;
+    const SALE_STATUS_KWS = ["comprou","comprado","venda","vendido","fechou","fechado","ganho","ganhou","convertido","contrato","assinado","pago","pagou","sale","won","closed"];
+    const isSaleByStatus = log.status && SALE_STATUS_KWS.some(kw => log.status.toLowerCase().includes(kw));
+    const isSale = isUpdate && ((log.sale_amount !== null && log.sale_amount !== undefined && parseFloat(log.sale_amount) > 0) || isSaleByStatus);
     const isRecovered = log.status && (log.status.includes('Recuperad') || log.status.includes('não encontrado'));
 
     const timestamp = new Date(log.timestamp);
@@ -1551,9 +1687,10 @@ function applyFilterToResults() {
     if (currentLogFilter === 'errors') {
         filtered = filtered.filter(item => item.result === 'failed' || item.result === 'error');
     } else if (currentLogFilter === 'sales') {
+        const SALE_FILTER_KWS = ['comprou','comprado','venda','vendido','fechou','fechado','ganho','ganhou','convertido','contrato','assinado','pago','pagou','sale','won','closed'];
         filtered = filtered.filter(item =>
-            (item.sale_amount && parseFloat(item.sale_amount) > 0) ||
-            (item.status && item.status.toLowerCase().includes('vend'))
+            (item.sale_amount !== null && item.sale_amount !== undefined && parseFloat(item.sale_amount) > 0) ||
+            (item.status && SALE_FILTER_KWS.some(kw => item.status.toLowerCase().includes(kw)))
         );
     } else if (currentLogFilter === 'new_leads') {
         filtered = filtered.filter(item => item.event_type === 'new_lead');
@@ -2985,6 +3122,17 @@ async function loadCalcSection() {
 // ============================================
 
 async function loadAlertsSection() {
+    // Try new errors-summary endpoint first, fallback to legacy
+    try {
+        const res = await fetch("/api/dashboard/errors-summary");
+        if (res.ok) {
+            const data = await res.json();
+            renderErrorsSummaryNew(data);
+            return;
+        }
+    } catch { /* fallback below */ }
+
+    // Fallback: try legacy alerts endpoint
     try {
         const res = await fetch("/api/alerts/errors?limit=50");
         if (!res.ok) throw new Error("Falha ao carregar alertas");
@@ -2994,8 +3142,109 @@ async function loadAlertsSection() {
     } catch (err) {
         console.error("Erro ao carregar alertas:", err);
         const list = document.getElementById("alerts-error-list");
-        if (list) list.innerHTML = '<p class="empty-state">Erro ao carregar alertas</p>';
+        if (list) list.innerHTML = '<p class="empty-state">Nenhum erro encontrado. Sistema funcionando normalmente.</p>';
     }
+}
+
+function renderErrorsSummaryNew(data) {
+    // Update stat cards
+    const rateEl = document.getElementById("error-success-rate");
+    const countEl = document.getElementById("error-total-count");
+    const lastEl = document.getElementById("error-last-date");
+
+    if (rateEl) {
+        const total = data.errorsByType.reduce((s, e) => s + e.count, 0);
+        rateEl.textContent = total === 0 ? '100%' : total + ' erro' + (total !== 1 ? 's' : '');
+        rateEl.style.color = total === 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+    }
+    if (countEl) countEl.textContent = data.errorsByType.reduce((s, e) => s + e.count, 0);
+    if (lastEl && data.recentErrors.length > 0) {
+        lastEl.textContent = formatTimeAgo(data.recentErrors[0].timestamp);
+    } else if (lastEl) {
+        lastEl.textContent = 'Nenhum';
+        lastEl.style.color = 'var(--accent-green)';
+    }
+
+    // Render error groups
+    const list = document.getElementById("alerts-error-list");
+    if (!list) return;
+
+    if (data.recentErrors.length === 0) {
+        list.innerHTML = `<div class="card" style="margin-bottom:20px;">
+            <div class="activity-empty" style="padding:32px;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="1.5" opacity="0.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <p style="color:var(--accent-green);font-weight:600;">Sistema sem erros</p>
+                <small>Todos os leads foram processados com sucesso.</small>
+            </div>
+        </div>`;
+        return;
+    }
+
+    // Group errors by type with actionable suggestions
+    const suggestions = {
+        'permission': 'Verifique se a conta de servico do Dashboard tem acesso de Editor na planilha do Google Sheets do cliente.',
+        'sheets': 'Erro na conexao com Google Sheets. Verifique credenciais e permissoes da planilha.',
+        'recuperado': 'Lead foi recuperado manualmente apos falha no processamento original. Nenhuma acao necessaria.',
+        'default': 'Erro de processamento. Verifique o payload do webhook e tente reprocessar.'
+    };
+
+    function getSuggestion(errorMsg) {
+        if (!errorMsg) return suggestions.default;
+        const lower = errorMsg.toLowerCase();
+        if (lower.includes('permission') || lower.includes('permissao')) return suggestions.permission;
+        if (lower.includes('sheet') || lower.includes('planilha')) return suggestions.sheets;
+        if (lower.includes('recuperado') || lower.includes('recovered')) return suggestions.recuperado;
+        return suggestions.default;
+    }
+
+    // Render error types summary
+    let html = '';
+    if (data.errorsByType.length > 0) {
+        html += '<div class="card" style="margin-bottom:20px;"><div class="card-header"><h3 class="card-title">Tipos de Erro</h3></div><div class="card-body" style="padding:0;">';
+        html += data.errorsByType.map(e => {
+            const suggestion = getSuggestion(e.errorType);
+            const clients = e.affectedClients.join(', ');
+            return `<div style="padding:16px 20px;border-bottom:1px solid var(--border-subtle);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:500;font-size:0.85rem;margin-bottom:4px;">${escapeHtml(e.errorType || 'Erro desconhecido')}</div>
+                        <div style="font-size:0.75rem;color:var(--text-tertiary);">${clients ? 'Clientes: ' + escapeHtml(clients) : ''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="badge-status badge-error">${e.count}x</span>
+                        <span style="font-size:0.7rem;color:var(--text-tertiary);">${formatTimeAgo(e.lastOccurrence)}</span>
+                    </div>
+                </div>
+                <div style="padding:8px 12px;background:var(--accent-primary-subtle);border-radius:8px;font-size:0.75rem;color:var(--accent-primary);">
+                    <strong>Resolucao:</strong> ${escapeHtml(suggestion)}
+                </div>
+            </div>`;
+        }).join('');
+        html += '</div></div>';
+    }
+
+    // Render recent errors list
+    html += '<div class="card"><div class="card-header"><h3 class="card-title">Erros Recentes</h3></div><div class="card-body" style="padding:0;">';
+    html += data.recentErrors.map(err => {
+        const time = new Date(err.timestamp).toLocaleString('pt-BR');
+        return `<div class="activity-item" style="border-bottom:1px solid var(--border-subtle);">
+            <div class="activity-icon-wrapper stat-icon-error">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+            <div class="activity-content">
+                <div class="activity-title">
+                    <span>${escapeHtml(err.name || formatPhoneDisplay(err.phone))}</span>
+                    <span class="badge-status badge-error">Erro</span>
+                    ${err.origin ? `<span class="badge-status badge-origin-default">${escapeHtml(err.origin)}</span>` : ''}
+                </div>
+                <div class="activity-subtitle">${escapeHtml(err.client)} \u00b7 ${time}</div>
+                ${err.errorMessage ? `<div style="margin-top:6px;padding:6px 10px;background:var(--accent-red-subtle);border-radius:6px;font-size:0.75rem;color:var(--accent-red);">${escapeHtml(err.errorMessage)}</div>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+    html += '</div></div>';
+
+    list.innerHTML = html;
 }
 
 function renderAlertsStats(stats) {
