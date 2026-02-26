@@ -1585,27 +1585,27 @@ class PgService {
                 `, [todayStart, yesterdayStart]),
                 // Google Ads keywords summary — respects period
                 this.query(`
-                    SELECT
-                        count(DISTINCT keyword) AS unique_keywords,
-                        count(*) AS total_kw_leads,
-                        count(*) FILTER (WHERE converted) AS kw_conversions,
-                        COALESCE(sum(sale_amount) FILTER (WHERE converted AND sale_amount > 0), 0) AS kw_revenue,
-                        json_agg(
-                            json_build_object('keyword', keyword, 'leads', kw_count, 'converted', kw_converted)
-                            ORDER BY kw_count DESC
-                        ) AS top_keywords
-                    FROM (
+                    WITH all_kw AS (
                         SELECT keyword,
                                count(*) AS kw_count,
                                bool_or(converted) AS kw_converted,
-                               sum(sale_amount) AS sale_amount,
-                               bool_or(converted) AS converted
+                               COALESCE(sum(sale_amount) FILTER (WHERE converted AND sale_amount > 0), 0) AS sale_amount
                         FROM keyword_conversions
                         WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
                         GROUP BY keyword
-                        ORDER BY kw_count DESC
-                        LIMIT 5
-                    ) top_kw
+                    )
+                    SELECT
+                        (SELECT count(*) FROM all_kw) AS unique_keywords,
+                        (SELECT COALESCE(sum(kw_count), 0) FROM all_kw) AS total_kw_leads,
+                        (SELECT count(*) FROM all_kw WHERE kw_converted) AS kw_conversions,
+                        (SELECT COALESCE(sum(sale_amount), 0) FROM all_kw WHERE kw_converted) AS kw_revenue,
+                        (
+                            SELECT json_agg(
+                                json_build_object('keyword', keyword, 'leads', kw_count, 'converted', kw_converted)
+                                ORDER BY kw_count DESC
+                            )
+                            FROM (SELECT * FROM all_kw ORDER BY kw_count DESC LIMIT 5) top5
+                        ) AS top_keywords
                 `, [fromTs, toTs])
             ]);
 
