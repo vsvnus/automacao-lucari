@@ -164,6 +164,7 @@ app.get('/health', async (_req, res) => {
 
     res.json({
         status: sheetsOk ? 'ok' : 'degraded',
+        commit: process.env.SOURCE_COMMIT || 'unknown',
         uptime: process.uptime(),
         clients: stats.totalActiveClients,
         integrations: {
