@@ -3,8 +3,10 @@
  *
  * Endpoints:
  *   GET  /              → Dashboard Admin
- *   GET  /health        → Health check
- *   POST /webhook/tintim → Recebimento de leads do Tintim
+ *   GET  /health        → Health check (expanded with pool + queue stats)
+ *   GET  /metrics       → Prometheus metrics
+ *   POST /webhook/tintim → Recebimento de leads do Tintim (async via BullMQ)
+ *   POST /webhook/kommo  → Recebimento de leads do Kommo CRM
  *
  *   Auth:
  *   POST /api/auth/login  → Login
@@ -17,6 +19,11 @@
  *   PUT    /admin/clients/:id  → Atualizar
  *   DELETE /admin/clients/:id  → Remover
  *   POST   /admin/reload       → Forçar recarga
+ *
+ *   Admin:
+ *   /admin/queues              → Bull Board UI
+ *   /api/admin/dlq/:queue      → Dead Letter Queue management
+ *   /api/admin/features/:slug  → Feature flags per client
  */
 
 require('dotenv').config();
@@ -33,11 +40,29 @@ const clientManager = require('./clientManager');
 const sheetsService = require('./sheetsService');
 const pgService = require('./pgService');
 
+// Phase 1: Queue infrastructure
+const { isRedisConnected } = require('./infra/redis');
+const { getTintimQueue, getKommoQueue, closeQueues } = require('./infra/queues');
+const { startWorkers, closeWorkers } = require('./workers/webhookWorker');
+const { setupBullBoard } = require('./infra/bullBoard');
+
+// Phase 2: Cache
+const cache = require('./infra/cache');
+
+// Phase 3: Observability
+const metrics = require('./infra/metrics');
+const { startBusinessAlerts, stopBusinessAlerts } = require('./infra/businessAlerts');
+
+// Phase 4: Config & DLQ
+const clientConfig = require('./infra/clientConfig');
+const dlqHandler = require('./workers/dlqHandler');
+
 // Inicializar PostgreSQL ANTES de tudo
 pgService.initialize();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+let httpServer = null;
 
 // Trust reverse proxy (Coolify/Traefik) for correct session handling behind HTTPS
 app.set('trust proxy', 1);
@@ -45,6 +70,16 @@ app.set('trust proxy', 1);
 // ====================================================
 // Middlewares
 // ====================================================
+
+// Phase 3: HTTP request timing middleware
+app.use((req, res, next) => {
+    const end = metrics.httpRequestDuration.startTimer();
+    res.on('finish', () => {
+        const route = metrics.normalizeRoute(req.route?.path || req.path);
+        end({ method: req.method, route, status_code: res.statusCode });
+    });
+    next();
+});
 
 // Skip JSON body parsing for SDR knowledge upload (multipart/form-data)
 app.use((req, res, next) => {
@@ -65,6 +100,7 @@ app.use((_req, res, next) => {
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.removeHeader('X-Powered-By');
     if (process.env.NODE_ENV === 'production') {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
@@ -95,7 +131,38 @@ app.use(session(sessionConfig));
 // Servir Dashboard (arquivos estáticos)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Rate limiter para webhook
+// Phase 1: Rate limiting with Redis persistence (fallback to in-memory Map)
+async function checkRateLimit(key, maxRequests, windowSeconds) {
+    if (isRedisConnected()) {
+        try {
+            const redis = require('./infra/redis').getRedis();
+            const redisKey = `ratelimit:${key}`;
+            const count = await redis.incr(redisKey);
+            if (count === 1) {
+                await redis.expire(redisKey, windowSeconds);
+            }
+            return count > maxRequests;
+        } catch (err) {
+            // Fall through to in-memory
+        }
+    }
+
+    // Fallback: in-memory Map
+    const now = Date.now();
+    const windowMs = windowSeconds * 1000;
+    if (!webhookRateLimit.has(key)) {
+        webhookRateLimit.set(key, { count: 1, start: now });
+        return false;
+    }
+    const entry = webhookRateLimit.get(key);
+    if (now - entry.start > windowMs) {
+        webhookRateLimit.set(key, { count: 1, start: now });
+        return false;
+    }
+    entry.count++;
+    return entry.count > maxRequests;
+}
+
 const webhookRateLimit = new Map();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minuto
 const MAX_REQUESTS = 60; // 60 requests/minuto
@@ -142,6 +209,17 @@ function requireAuth(req, res, next) {
 // Rotas Públicas
 // ====================================================
 
+// Phase 3: Prometheus metrics endpoint
+app.get('/metrics', async (_req, res) => {
+    try {
+        res.set('Content-Type', metrics.register.contentType);
+        res.end(await metrics.register.metrics());
+    } catch (err) {
+        res.status(500).end(err.message);
+    }
+});
+
+// Phase 4: Expanded health check with pool + queue stats
 app.get('/health', async (_req, res) => {
     const stats = clientManager.getStats();
     const sheetsOk = sheetsService.sheets !== null;
@@ -167,6 +245,33 @@ app.get('/health', async (_req, res) => {
         evolutionOk = sdrHealth && sdrHealth.evolution === true;
     } catch (e) { }
 
+    // Pool stats
+    let poolStats = null;
+    if (pgService.isAvailable() && pgService.pool) {
+        poolStats = {
+            total: pgService.pool.totalCount,
+            idle: pgService.pool.idleCount,
+            waiting: pgService.pool.waitingCount,
+        };
+    }
+
+    // Queue stats
+    let queueStats = null;
+    if (isRedisConnected()) {
+        try {
+            const tq = getTintimQueue();
+            const kq = getKommoQueue();
+            const [tw, ta, tf, kw, ka, kf] = await Promise.all([
+                tq.getWaitingCount(), tq.getActiveCount(), tq.getFailedCount(),
+                kq.getWaitingCount(), kq.getActiveCount(), kq.getFailedCount(),
+            ]);
+            queueStats = {
+                tintim: { waiting: tw, active: ta, failed: tf },
+                kommo: { waiting: kw, active: ka, failed: kf },
+            };
+        } catch (e) { }
+    }
+
     res.json({
         status: sheetsOk ? 'ok' : 'degraded',
         commit: process.env.SOURCE_COMMIT || 'unknown',
@@ -175,12 +280,15 @@ app.get('/health', async (_req, res) => {
         integrations: {
             googleSheets: sheetsOk ? 'connected' : 'disconnected',
             postgresql: pgService.isAvailable() ? 'connected' : 'disconnected',
+            redis: isRedisConnected() ? 'connected' : 'disconnected',
             evolution: evolutionOk ? 'connected' : 'disconnected',
-        }
+        },
+        pool: poolStats,
+        queues: queueStats,
     });
 });
 
-// Webhook Principal
+// Phase 1: Webhook Principal — async via BullMQ with synchronous fallback
 app.post('/webhook/tintim', async (req, res) => {
     // Auth: validate shared secret
     const webhookSecret = process.env.WEBHOOK_SECRET;
@@ -189,20 +297,28 @@ app.post('/webhook/tintim', async (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const ip = req.ip;
-    const now = Date.now();
+    // Rate limiting
+    const rateLimited = await checkRateLimit(`webhook:${req.ip}`, MAX_REQUESTS, 60);
+    if (rateLimited) {
+        logger.warn(`Rate limit excedido para IP ${req.ip}`);
+        return res.status(429).json({ error: 'Too many requests' });
+    }
 
-    if (!webhookRateLimit.has(ip)) {
-        webhookRateLimit.set(ip, { count: 1, start: now });
-    } else {
-        const entry = webhookRateLimit.get(ip);
-        entry.count++;
-        if (entry.count > MAX_REQUESTS) {
-            logger.warn(`Rate limit excedido para IP ${ip}`);
-            return res.status(429).json({ error: 'Too many requests' });
+    // Try async queue first, fallback to synchronous processing
+    if (isRedisConnected()) {
+        try {
+            const job = await getTintimQueue().add('tintim-webhook', {
+                payload: req.body,
+                receivedAt: new Date().toISOString(),
+                ip: req.ip,
+            });
+            return res.json({ status: 'queued', jobId: job.id });
+        } catch (err) {
+            logger.warn('Failed to queue webhook, falling back to sync', { error: err.message });
         }
     }
 
+    // Synchronous fallback (Redis offline or queue error)
     try {
         await webhookHandler.processWebhook(req.body);
         res.json({ status: 'received' });
@@ -213,31 +329,40 @@ app.post('/webhook/tintim', async (req, res) => {
 });
 
 // Kommo CRM Webhook (x-www-form-urlencoded with raw body for signature verification)
+// Phase 1: Also queued via BullMQ with sync fallback
 app.post('/webhook/kommo', express.urlencoded({
     extended: true,
     verify: function(req, _res, buf) { req.rawBody = buf.toString('utf8'); },
 }), async (req, res) => {
-    // Rate limiting (shared with Tintim)
-    const ip = req.ip;
-    const now = Date.now();
-
-    if (!webhookRateLimit.has(ip)) {
-        webhookRateLimit.set(ip, { count: 1, start: now });
-    } else {
-        const entry = webhookRateLimit.get(ip);
-        entry.count++;
-        if (entry.count > MAX_REQUESTS) {
-            logger.warn('Rate limit excedido para Kommo webhook IP ' + ip);
-            return res.status(429).json({ error: 'Too many requests' });
-        }
+    // Rate limiting
+    const rateLimited = await checkRateLimit(`webhook:${req.ip}`, MAX_REQUESTS, 60);
+    if (rateLimited) {
+        logger.warn('Rate limit excedido para Kommo webhook IP ' + req.ip);
+        return res.status(429).json({ error: 'Too many requests' });
     }
 
     // Responder IMEDIATAMENTE (Kommo exige resposta em 2 segundos)
     res.status(200).json({ success: true });
 
-    // Processar assincronamente
+    const signature = req.headers['x-signature'] || '';
+
+    // Try async queue first
+    if (isRedisConnected()) {
+        try {
+            await getKommoQueue().add('kommo-webhook', {
+                body: req.body,
+                rawBody: req.rawBody,
+                signature,
+                receivedAt: new Date().toISOString(),
+            });
+            return; // Queued successfully, response already sent
+        } catch (err) {
+            logger.warn('Failed to queue Kommo webhook, falling back to sync', { error: err.message });
+        }
+    }
+
+    // Synchronous fallback
     try {
-        const signature = req.headers['x-signature'] || '';
         await kommoHandler.processWebhook(req.body, req.rawBody, signature);
     } catch (error) {
         logger.error('Erro no webhook Kommo', { error: error.message });
@@ -382,6 +507,8 @@ app.get('/admin/clients', requireAuth, async (_req, res) => {
 app.post('/admin/clients', requireAuth, async (req, res) => {
     try {
         const newClient = await clientManager.addClient(req.body);
+        // Phase 2: Invalidate client cache
+        await cache.invalidatePattern('clients:*');
         res.status(201).json(newClient);
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -392,6 +519,8 @@ app.put('/admin/clients/:id', requireAuth, async (req, res) => {
     try {
         const updated = await clientManager.updateClient(req.params.id, req.body);
         if (!updated) return res.status(404).json({ error: 'Cliente não encontrado' });
+        // Phase 2: Invalidate client cache
+        await cache.invalidatePattern('clients:*');
         res.json(updated);
     } catch (error) {
         res.status(400).json({ error: error.message });
@@ -402,6 +531,8 @@ app.delete('/admin/clients/:id', requireAuth, async (req, res) => {
     try {
         const success = await clientManager.deleteClient(req.params.id);
         if (!success) return res.status(404).json({ error: 'Cliente não encontrado' });
+        // Phase 2: Invalidate client cache
+        await cache.invalidatePattern('clients:*');
         res.json({ status: 'deleted' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -410,6 +541,7 @@ app.delete('/admin/clients/:id', requireAuth, async (req, res) => {
 
 app.post('/admin/reload', requireAuth, async (_req, res) => {
     await clientManager.reloadClients();
+    await cache.invalidatePattern('clients:*');
     res.json({ status: 'reloaded' });
 });
 
@@ -426,12 +558,19 @@ app.get('/admin/status', requireAuth, (_req, res) => {
 
 // ====================================================
 // Dashboard & Investigação API (protegido por auth)
+// Phase 2: All dashboard endpoints cached via Redis
 // ====================================================
 
 app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
     const { from, to } = req.query;
+    const cacheKey = `dashboard:stats:${from || ''}:${to || ''}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const stats = await pgService.getDashboardStats(from, to);
     if (!stats) return res.status(500).json({ error: 'Erro ao carregar estatísticas' });
+
+    await cache.set(cacheKey, stats, 60);
     res.json(stats);
 });
 
@@ -467,8 +606,14 @@ app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
 // Overview Stats (enhanced dashboard data)
 app.get('/api/dashboard/overview', requireAuth, async (req, res) => {
     const { from, to } = req.query;
+    const cacheKey = `dashboard:overview:${from || ''}:${to || ''}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const overview = await pgService.getOverviewStats({ from, to });
     if (!overview) return res.status(500).json({ error: 'Erro ao carregar overview' });
+
+    await cache.set(cacheKey, overview, 120);
     res.json(overview);
 });
 
@@ -671,11 +816,17 @@ app.post("/api/alerts/webhook/:id/resend", requireAuth, async (req, res) => {
 
 // ====================================================
 // Keywords API (Palavras-Chave Google Ads)
+// Phase 2: Cached responses
 // ====================================================
 
 app.get('/api/keywords/stats', requireAuth, async (req, res) => {
     const { client, from, to } = req.query;
+    const cacheKey = `keywords:stats:${client || ''}:${from || ''}:${to || ''}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
     const stats = await pgService.getKeywordsStats(client || null, from || null, to || null);
+    await cache.set(cacheKey, stats, 120);
     res.json(stats);
 });
 
@@ -762,6 +913,70 @@ app.get("/api/alerts/error-count", requireAuth, async (_req, res) => {
     res.json(stats);
 });
 
+// ====================================================
+// Phase 4: DLQ Management API
+// ====================================================
+
+app.get('/api/admin/dlq/:queue', requireAuth, async (req, res) => {
+    const queueName = req.params.queue;
+    let queue;
+    if (queueName === 'webhook-tintim') queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    else return res.status(400).json({ error: 'Queue not found. Use: webhook-tintim or webhook-kommo' });
+
+    const jobs = await dlqHandler.getFailedJobs(queue);
+    res.json(jobs);
+});
+
+app.post('/api/admin/dlq/:queue/retry/:jobId', requireAuth, async (req, res) => {
+    const queueName = req.params.queue;
+    let queue;
+    if (queueName === 'webhook-tintim') queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    else return res.status(400).json({ error: 'Queue not found' });
+
+    const result = await dlqHandler.retryJob(queue, req.params.jobId);
+    res.json(result);
+});
+
+app.post('/api/admin/dlq/:queue/retry-all', requireAuth, async (req, res) => {
+    const queueName = req.params.queue;
+    let queue;
+    if (queueName === 'webhook-tintim') queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    else return res.status(400).json({ error: 'Queue not found' });
+
+    const result = await dlqHandler.retryAll(queue);
+    res.json(result);
+});
+
+app.delete('/api/admin/dlq/:queue/:jobId', requireAuth, async (req, res) => {
+    const queueName = req.params.queue;
+    let queue;
+    if (queueName === 'webhook-tintim') queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    else return res.status(400).json({ error: 'Queue not found' });
+
+    const result = await dlqHandler.removeJob(queue, req.params.jobId);
+    res.json(result);
+});
+
+// ====================================================
+// Phase 4: Feature Flags API
+// ====================================================
+
+app.get('/api/admin/features/:slug', requireAuth, async (req, res) => {
+    const flags = await clientConfig.getFlags(pgService, req.params.slug);
+    res.json(flags);
+});
+
+app.put('/api/admin/features/:slug', requireAuth, async (req, res) => {
+    const result = await clientConfig.setFlags(pgService, req.params.slug, req.body);
+    if (!result) return res.status(404).json({ error: 'Client not found' });
+    await cache.invalidatePattern('clients:*');
+    res.json(result);
+});
+
 
 async function startServer() {
     try {
@@ -781,14 +996,78 @@ async function startServer() {
             logger.warn(`Google Sheets não disponível/inicializado: ${err.message}`);
         }
 
-        app.listen(PORT, () => {
+        // Phase 1: Start BullMQ workers
+        if (isRedisConnected()) {
+            startWorkers();
+            logger.info('BullMQ workers started');
+        } else {
+            logger.warn('Redis not connected — running in synchronous mode (no queues)');
+        }
+
+        httpServer = app.listen(PORT, () => {
             const stats = clientManager.getStats();
             logger.info(`Servidor rodando em http://localhost:${PORT}`);
             logger.info(`Webhook Tintim: http://localhost:${PORT}/webhook/tintim`);
             logger.info(`Webhook Kommo: http://localhost:${PORT}/webhook/kommo`);
             logger.info(`Dashboard: http://localhost:${PORT}`);
             logger.info(`Fonte de dados: ${stats.dataSource}`);
+            logger.info(`Redis: ${isRedisConnected() ? 'connected (async mode)' : 'disconnected (sync mode)'}`);
         });
+
+        // Phase 1: Setup Bull Board UI
+        if (isRedisConnected()) {
+            setupBullBoard(app, requireAuth);
+            logger.info('Bull Board mounted at /admin/queues');
+        }
+
+        // Phase 2: Materialized view refresh every 15 minutes
+        if (pgService.isAvailable()) {
+            setInterval(async () => {
+                try {
+                    await pgService.query('REFRESH MATERIALIZED VIEW CONCURRENTLY mv_dashboard_daily_stats');
+                    logger.debug('Materialized view refreshed');
+                } catch (err) {
+                    // View may not exist yet (first deploy)
+                    if (!err.message.includes('does not exist')) {
+                        logger.error('Failed to refresh materialized view', { error: err.message });
+                    }
+                }
+            }, 15 * 60 * 1000);
+        }
+
+        // Phase 3: Pool monitoring — update Prometheus gauges every 15s
+        if (pgService.isAvailable() && pgService.pool) {
+            setInterval(() => {
+                metrics.pgPoolActive.set(pgService.pool.totalCount - pgService.pool.idleCount);
+                metrics.pgPoolTotal.set(pgService.pool.totalCount);
+                metrics.pgPoolWaiting.set(pgService.pool.waitingCount);
+            }, 15 * 1000);
+        }
+
+        // Phase 3: Queue depth monitoring every 30s
+        if (isRedisConnected()) {
+            setInterval(async () => {
+                try {
+                    const tq = getTintimQueue();
+                    const kq = getKommoQueue();
+                    const [tw, ta, tf, kw, ka, kf] = await Promise.all([
+                        tq.getWaitingCount(), tq.getActiveCount(), tq.getFailedCount(),
+                        kq.getWaitingCount(), kq.getActiveCount(), kq.getFailedCount(),
+                    ]);
+                    metrics.queueWaiting.set({ queue: 'webhook-tintim' }, tw);
+                    metrics.queueActive.set({ queue: 'webhook-tintim' }, ta);
+                    metrics.queueFailed.set({ queue: 'webhook-tintim' }, tf);
+                    metrics.queueWaiting.set({ queue: 'webhook-kommo' }, kw);
+                    metrics.queueActive.set({ queue: 'webhook-kommo' }, ka);
+                    metrics.queueFailed.set({ queue: 'webhook-kommo' }, kf);
+                } catch (err) {
+                    // Queue monitoring is best-effort
+                }
+            }, 30 * 1000);
+        }
+
+        // Phase 3: Start business alerts
+        startBusinessAlerts(pgService);
 
         // ====================================================
         // Cross-Service Proxy (SDR + Calculadora)
@@ -907,5 +1186,58 @@ async function startServer() {
         process.exit(1);
     }
 }
+
+// ====================================================
+// Phase 4: Graceful shutdown
+// ====================================================
+
+async function gracefulShutdown(signal) {
+    logger.info(`Received ${signal}. Starting graceful shutdown...`);
+
+    const SHUTDOWN_TIMEOUT = 30000;
+    const shutdownTimer = setTimeout(() => {
+        logger.error('Graceful shutdown timed out, forcing exit');
+        process.exit(1);
+    }, SHUTDOWN_TIMEOUT);
+
+    try {
+        // 1. Stop accepting new connections
+        if (httpServer) {
+            await new Promise((resolve) => httpServer.close(resolve));
+            logger.info('HTTP server closed');
+        }
+
+        // 2. Stop business alerts
+        stopBusinessAlerts();
+
+        // 3. Close BullMQ workers (drain current jobs)
+        await closeWorkers();
+
+        // 4. Close queues
+        await closeQueues();
+
+        // 5. Close Redis
+        const { closeRedis } = require('./infra/redis');
+        await closeRedis();
+        logger.info('Redis closed');
+
+        // 6. Close PG pool
+        if (pgService.isAvailable() && pgService.pool) {
+            await pgService.pool.end();
+            logger.info('PostgreSQL pool closed');
+        }
+
+        clearTimeout(shutdownTimer);
+        logger.info('Graceful shutdown complete');
+        process.exit(0);
+    } catch (err) {
+        logger.error('Error during graceful shutdown', { error: err.message });
+        clearTimeout(shutdownTimer);
+        process.exit(1);
+    }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 startServer();
