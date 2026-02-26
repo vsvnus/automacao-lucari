@@ -1156,6 +1156,9 @@ async function loadClients() {
     clients.forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
+        const webhookSource = client.webhook_source || 'tintim';
+        const sourceBadge = webhookSource === 'both' ? 'Tintim + Kommo'
+            : webhookSource === 'kommo' ? 'Kommo' : 'Tintim';
         const instanceShort = client.tintim_instance_id
             ? client.tintim_instance_id.substring(0, 12) + '...'
             : 'Não configurado';
@@ -1264,6 +1267,8 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         spreadsheet_id: $('#client-sheet').value.trim(),
         sheet_name: 'auto',
         active: true,
+        webhook_source: $('#client-webhook-source').value,
+        kommo_pipeline_id: $('#client-kommo-pipeline').value.trim() || null,
     };
 
     try {
@@ -1285,6 +1290,23 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         showToast(err.message || 'Erro ao salvar cliente', 'error');
     }
 });
+
+// Toggle Kommo Pipeline field visibility based on webhook source
+function toggleKommoPipelineField() {
+    const source = document.getElementById('client-webhook-source');
+    const group = document.getElementById('kommo-pipeline-group');
+    const instanceGroup = document.getElementById('client-instance');
+    if (!source || !group) return;
+    const val = source.value;
+    group.style.display = (val === 'kommo' || val === 'both') ? '' : 'none';
+    // Tintim instance is optional when source is kommo-only
+    if (instanceGroup) {
+        instanceGroup.required = (val !== 'kommo');
+    }
+}
+
+// Listen for source change
+document.getElementById('client-webhook-source')?.addEventListener('change', toggleKommoPipelineField);
 
 async function updateClient(clientData) {
     const res = await fetch(`/admin/clients/${clientData.id}`, {
@@ -2022,6 +2044,9 @@ function openModalForEdit(client) {
     $('#client-name').value = client.name;
     $('#client-instance').value = client.tintim_instance_id;
     $('#client-sheet').value = client.spreadsheet_id;
+    $('#client-webhook-source').value = client.webhook_source || 'tintim';
+    $('#client-kommo-pipeline').value = client.kommo_pipeline_id || '';
+    toggleKommoPipelineField();
 
     // Change UI to "Edit" mode
     const title = refs.modal.querySelector('h3');

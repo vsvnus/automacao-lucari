@@ -97,6 +97,8 @@ class PgService {
                 spreadsheet_id: c.spreadsheet_id,
                 sheet_name: c.sheet_name || 'auto',
                 active: c.active,
+                webhook_source: c.webhook_source || 'tintim',
+                kommo_pipeline_id: c.kommo_pipeline_id || '',
             }));
         } catch (error) {
             logger.error('Erro ao carregar clientes do PostgreSQL', { error: error.message });
@@ -121,6 +123,8 @@ class PgService {
                 spreadsheet_id: c.spreadsheet_id,
                 sheet_name: c.sheet_name || 'auto',
                 active: c.active,
+                webhook_source: c.webhook_source || 'tintim',
+                kommo_pipeline_id: c.kommo_pipeline_id || '',
                 created_at: c.created_at,
                 updated_at: c.updated_at,
             }));
@@ -135,8 +139,8 @@ class PgService {
 
         try {
             const { rows } = await this.query(
-                `INSERT INTO clients (slug, name, tintim_instance_id, tintim_account_code, tintim_account_token, spreadsheet_id, sheet_name, active)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                `INSERT INTO clients (slug, name, tintim_instance_id, tintim_account_code, tintim_account_token, spreadsheet_id, sheet_name, active, webhook_source, kommo_pipeline_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                  RETURNING *`,
                 [
                     clientData.id,
@@ -147,6 +151,8 @@ class PgService {
                     clientData.spreadsheet_id,
                     clientData.sheet_name || 'auto',
                     clientData.active !== false,
+                    clientData.webhook_source || 'tintim',
+                    clientData.kommo_pipeline_id || null,
                 ]
             );
 
@@ -171,8 +177,10 @@ class PgService {
                     spreadsheet_id = $5,
                     sheet_name = $6,
                     active = $7,
+                    webhook_source = $8,
+                    kommo_pipeline_id = $9,
                     updated_at = NOW()
-                 WHERE slug = $8
+                 WHERE slug = $10
                  RETURNING *`,
                 [
                     updates.name,
@@ -182,6 +190,8 @@ class PgService {
                     updates.spreadsheet_id,
                     updates.sheet_name || 'auto',
                     updates.active !== false,
+                    updates.webhook_source || 'tintim',
+                    updates.kommo_pipeline_id || null,
                     slug,
                 ]
             );

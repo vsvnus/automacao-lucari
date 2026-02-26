@@ -1906,7 +1906,7 @@
                 </div>
                 <div class="form-group">
                     <label for="client-instance">Tintim Instance ID</label>
-                    <input type="text" id="client-instance" placeholder="UUID do Tintim (instanceId)" required>
+                    <input type="text" id="client-instance" placeholder="UUID do Tintim (instanceId)">
                     <small class="form-hint">Encontre no painel do Tintim do cliente</small>
                 </div>
                 <div class="form-group">
@@ -1914,6 +1914,20 @@
                     <input type="text" id="client-sheet" placeholder="ID extraído da URL da planilha" required>
                     <small class="form-hint">Da URL:
                         docs.google.com/spreadsheets/d/<strong>ESSE_ID</strong>/edit</small>
+                </div>
+                <div class="form-group">
+                    <label for="client-webhook-source">Fonte de Leads</label>
+                    <select id="client-webhook-source">
+                        <option value="tintim">Tintim</option>
+                        <option value="kommo">Kommo CRM</option>
+                        <option value="both">Ambos (Tintim + Kommo)</option>
+                    </select>
+                    <small class="form-hint">De onde chegam os webhooks de leads deste cliente</small>
+                </div>
+                <div class="form-group" id="kommo-pipeline-group" style="display:none">
+                    <label for="client-kommo-pipeline">Kommo Pipeline ID</label>
+                    <input type="text" id="client-kommo-pipeline" placeholder="ID do pipeline no Kommo">
+                    <small class="form-hint">Encontre em Kommo > Leads > URL do pipeline</small>
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
