@@ -14,6 +14,9 @@ const state = {
     period: '7d',
     dateFrom: null,
     dateTo: null,
+    dashPeriod: '30d',
+    dashFrom: null,
+    dashTo: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -564,12 +567,80 @@ async function loadDashboardOverview() {
     loadOverviewEnhanced();
 }
 
+
+function getDashboardDateRange() {
+    const SP_OFFSET = -3;
+    function spMidnightToUTC(date) {
+        const d = new Date(date); d.setHours(0,0,0,0);
+        return new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate(),-SP_OFFSET,0,0));
+    }
+    function spNow() {
+        const now = new Date();
+        return new Date(now.getTime() + now.getTimezoneOffset()*60000 + SP_OFFSET*3600000);
+    }
+    const today = spNow();
+    let from, to;
+    switch (state.dashPeriod) {
+        case 'today':   from = spMidnightToUTC(today); to = null; break;
+        case '7d':      { const d=new Date(today); d.setDate(d.getDate()-6); from=spMidnightToUTC(d); to=null; break; }
+        case '30d':     { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; break; }
+        case 'custom':
+            if (state.dashFrom) { const p=state.dashFrom.split('-'); from=spMidnightToUTC(new Date(+p[0],p[1]-1,+p[2])); }
+            if (state.dashTo)   { const p=state.dashTo.split('-'); const e=new Date(+p[0],p[1]-1,+p[2]); e.setDate(e.getDate()+1); to=spMidnightToUTC(e); }
+            break;
+        default:        { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; }
+    }
+    return { from: from?.toISOString(), to: to?.toISOString() };
+}
+
+function buildDashboardQS() {
+    const { from, to } = getDashboardDateRange();
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return qs ? '?' + qs : '';
+}
+
+function setupDashboardPeriodSelector() {
+    const pills = document.querySelectorAll('.dashboard-period-pill');
+    const customRange = document.getElementById('dashboard-period-custom-range');
+    const btnApply = document.getElementById('btn-dashboard-period-apply');
+
+    pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+            pills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.dashPeriod = pill.dataset.period;
+            if (state.dashPeriod === 'custom') {
+                if (customRange) customRange.style.display = 'flex';
+            } else {
+                if (customRange) customRange.style.display = 'none';
+                loadOverviewEnhanced();
+            }
+        });
+    });
+
+    if (btnApply) {
+        btnApply.addEventListener('click', () => {
+            state.dashFrom = document.getElementById('dashboard-period-from')?.value || null;
+            state.dashTo   = document.getElementById('dashboard-period-to')?.value || null;
+            if (customRange) customRange.style.display = 'none';
+            pills.forEach(p => p.classList.toggle('active', p.dataset.period === 'custom'));
+            loadOverviewEnhanced();
+        });
+    }
+}
+
 async function loadOverviewEnhanced() {
     try {
-        const qs = buildDateQS();
-        const res = await fetch(`/api/dashboard/overview${qs}`);
-        if (!res.ok) return;
-        const data = await res.json();
+        const qs = buildDashboardQS();
+        const [overviewRes, sdrPipelineRes] = await Promise.all([
+            fetch(`/api/dashboard/overview${qs}`),
+            fetch('/api/sdr/global/pipeline').catch(() => null),
+        ]);
+        if (!overviewRes.ok) return;
+        const data = await overviewRes.json();
 
         // Update period label in client table header
         const periodLabel = document.getElementById('client-summary-period');
@@ -578,8 +649,9 @@ async function loadOverviewEnhanced() {
         // Render client summary table
         renderClientSummary(data.clients, data.comparison);
 
-        // Render conversion funnel
-        renderFunnel(data.funnel);
+        // Render SDR funnel
+        const sdrPipeline = (sdrPipelineRes && sdrPipelineRes.ok) ? await sdrPipelineRes.json() : null;
+        renderFunnel(sdrPipeline);
 
         // Render origin breakdown
         renderOriginBreakdown(data.origins);
@@ -596,7 +668,7 @@ function renderClientSummary(clients, comparison) {
     if (!tbody) return;
 
     if (!clients || clients.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:24px;">Nenhum cliente ativo</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:24px;">Nenhum cliente ativo</td></tr>';
         return;
     }
 
@@ -611,9 +683,6 @@ function renderClientSummary(clients, comparison) {
 
     tbody.innerHTML = clients.map(c => {
         const revenue = c.revenue > 0 ? `R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
-        const productBadge = c.mainProduct
-            ? `<span class="badge badge-subtle" style="font-size:0.65rem;padding:2px 6px;">${escapeHtml(c.mainProduct)}</span>`
-            : '<span style="color:var(--text-tertiary);font-size:0.75rem;">\u2014</span>';
         return `<tr>
             <td>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -621,7 +690,6 @@ function renderClientSummary(clients, comparison) {
                     <span>${escapeHtml(c.name)}</span>
                 </div>
             </td>
-            <td>${productBadge}</td>
             <td style="text-align:right;">${c.totalLeads}</td>
             <td style="text-align:right;">${c.sales}</td>
             <td style="text-align:right;">${revenue}</td>
@@ -629,27 +697,29 @@ function renderClientSummary(clients, comparison) {
     }).join('');
 }
 
-function renderFunnel(funnel) {
+function renderFunnel(sdrData) {
     const container = document.getElementById('funnel-container');
-    if (!container || !funnel) return;
+    if (!container) return;
 
+    if (!sdrData || !sdrData.pipeline) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:24px;">SDR de IA indispon\u00edvel</div>';
+        return;
+    }
+
+    const p = sdrData.pipeline;
     const stages = [
-        { label: 'Leads Gerados', value: funnel.leadsGerados, color: 'var(--accent-primary)' },
-        { label: 'Conectados', value: funnel.leadsConectados, color: 'var(--accent-cyan)' },
-        { label: 'Em Atendimento', value: funnel.emAtendimento, color: 'var(--accent-orange)' },
-        { label: 'Proposta', value: funnel.proposta, color: 'var(--accent-primary-hover)' },
-        { label: 'Vendas', value: funnel.vendas, color: 'var(--accent-green)' },
+        { label: 'Conversas iniciadas', value: sdrData.conversations, color: 'var(--accent-primary)' },
+        { label: 'Leads capturados',    value: p.new + p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-cyan)' },
+        { label: 'Interessados',        value: p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-orange)' },
+        { label: 'Qualificados',        value: p.qualified + p.proposal + p.won, color: 'var(--accent-primary-hover)' },
+        { label: 'Proposta enviada',    value: p.proposal + p.won, color: 'var(--accent-yellow, #f0a500)' },
+        { label: 'Convertidos',         value: p.won, color: 'var(--accent-green)' },
     ];
 
     const max = Math.max(stages[0].value, 1);
 
-    // Show product badges at the top of the funnel
-    const productsHtml = funnel.productsInFunnel && funnel.productsInFunnel.length
-        ? `<div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;">${funnel.productsInFunnel.map(p => `<span class="badge badge-subtle" style="font-size:0.7rem;">${escapeHtml(p)}</span>`).join('')}</div>`
-        : '';
-
-    container.innerHTML = productsHtml + stages.map((s, i) => {
-        const pct = Math.max((s.value / max) * 100, 4);
+    container.innerHTML = stages.map((s, i) => {
+        const pct = Math.max((s.value / max) * 100, 2);
         const dropoff = i > 0 && stages[i - 1].value > 0
             ? ` <span style="color:var(--text-tertiary);font-size:0.7rem;">(-${Math.round((1 - s.value / stages[i - 1].value) * 100)}%)</span>`
             : '';
@@ -662,14 +732,11 @@ function renderFunnel(funnel) {
                 <div style="height:100%;width:${pct}%;background:${s.color};border-radius:4px;transition:width 0.5s var(--ease-out);"></div>
             </div>
         </div>`;
-    }).join('') + (funnel.receitaTotal > 0
-        ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.8rem;color:var(--text-secondary);">Receita Total</span>
-            <span style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">R$ ${funnel.receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+    }).join('') + (p.lost > 0
+        ? `<div style="margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:8px;font-size:0.75rem;color:var(--text-tertiary);display:flex;justify-content:space-between;">
+            <span>Perdidos</span><span>${p.lost}</span>
         </div>`
-        : `<div style="margin-top:8px;padding:8px;background:var(--accent-orange-subtle);border-radius:8px;font-size:0.75rem;color:var(--accent-orange);">
-            Desqualificados: ${funnel.desqualificados}
-        </div>`);
+        : '');
 }
 
 function renderOriginBreakdown(origins) {
@@ -1611,6 +1678,7 @@ async function init() {
     // 3. Setup Listeners
     setupInvestigationListeners();
     setupPeriodSelector();
+    setupDashboardPeriodSelector();
     updatePeriodLabels();
 }
 
