@@ -104,6 +104,19 @@ setInterval(() => {
     }
 }, 5 * 60 * 1000);
 
+// Rate limiter para login (brute force protection)
+const loginRateLimit = new Map();
+const LOGIN_WINDOW = 15 * 60 * 1000; // 15 minutos
+const LOGIN_MAX_PER_IP = 10;
+const LOGIN_MAX_PER_EMAIL = 10;
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of loginRateLimit) {
+        if (now - entry.start > LOGIN_WINDOW) loginRateLimit.delete(key);
+    }
+}, LOGIN_WINDOW);
+
 app.use((req, _res, next) => {
     logger.debug(`${req.method} ${req.path}`);
     next();
@@ -163,6 +176,13 @@ app.get('/health', async (_req, res) => {
 
 // Webhook Principal
 app.post('/webhook/tintim', async (req, res) => {
+    // Auth: validate shared secret
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+    if (webhookSecret && req.query.token !== webhookSecret) {
+        logger.warn('Webhook rejected: invalid token', { ip: req.ip });
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     const ip = req.ip;
     const now = Date.now();
 
@@ -243,6 +263,32 @@ app.post('/api/auth/setup', async (req, res) => {
 // Login
 app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
+    const ip = req.ip;
+    const now = Date.now();
+
+    // Rate limit por IP
+    const ipKey = `ip:${ip}`;
+    const ipEntry = loginRateLimit.get(ipKey) || { count: 0, start: now };
+    if (now - ipEntry.start > LOGIN_WINDOW) { ipEntry.count = 0; ipEntry.start = now; }
+    ipEntry.count++;
+    loginRateLimit.set(ipKey, ipEntry);
+    if (ipEntry.count > LOGIN_MAX_PER_IP) {
+        logger.warn(`Login rate limit (IP): ${ip}`);
+        return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos.' });
+    }
+
+    // Rate limit por email
+    if (email) {
+        const emailKey = `email:${email.toLowerCase()}`;
+        const emailEntry = loginRateLimit.get(emailKey) || { count: 0, start: now };
+        if (now - emailEntry.start > LOGIN_WINDOW) { emailEntry.count = 0; emailEntry.start = now; }
+        emailEntry.count++;
+        loginRateLimit.set(emailKey, emailEntry);
+        if (emailEntry.count > LOGIN_MAX_PER_EMAIL) {
+            logger.warn(`Login rate limit (email): ${email}`);
+            return res.status(429).json({ error: 'Muitas tentativas. Aguarde 15 minutos.' });
+        }
+    }
 
     const user = await pgService.findUserByEmail(email);
 
