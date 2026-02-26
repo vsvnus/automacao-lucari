@@ -1,5 +1,8 @@
 /**
  * Redis — Singleton ioredis connection for BullMQ and caching
+ *
+ * Supports REDIS_URL (standard format) or individual env vars:
+ *   REDIS_HOST, REDIS_PORT, REDIS_PASSWORD
  */
 
 const Redis = require('ioredis');
@@ -8,16 +11,45 @@ const { logger } = require('../utils/logger');
 let redis = null;
 let isConnected = false;
 
-function getRedisUrl() {
-    return process.env.REDIS_URL || 'redis://localhost:6379';
+function buildRedisOptions() {
+    const url = process.env.REDIS_URL;
+
+    if (url) {
+        // Parse URL manually to avoid Node.js URL parsing issues with special chars
+        // Format: redis://:password@host:port
+        const match = url.match(/^redis:\/\/:?([^@]*)@([^:]+):(\d+)/);
+        if (match) {
+            return {
+                host: match[2],
+                port: parseInt(match[3], 10),
+                password: match[1] ? decodeURIComponent(match[1]) : undefined,
+            };
+        }
+        // Try as simple redis://host:port
+        const simple = url.match(/^redis:\/\/([^:]+):(\d+)/);
+        if (simple) {
+            return {
+                host: simple[1],
+                port: parseInt(simple[2], 10),
+            };
+        }
+    }
+
+    // Fallback to individual env vars or localhost
+    return {
+        host: process.env.REDIS_HOST || 'localhost',
+        port: parseInt(process.env.REDIS_PORT || '6379', 10),
+        password: process.env.REDIS_PASSWORD || undefined,
+    };
 }
 
 function createRedis() {
     if (redis) return redis;
 
-    const url = getRedisUrl();
+    const opts = buildRedisOptions();
 
-    redis = new Redis(url, {
+    redis = new Redis({
+        ...opts,
         maxRetriesPerRequest: null, // Required by BullMQ
         enableReadyCheck: true,
         retryStrategy(times) {
@@ -29,7 +61,7 @@ function createRedis() {
 
     redis.on('connect', () => {
         isConnected = true;
-        logger.info('Redis connected');
+        logger.info('Redis connected', { host: opts.host, port: opts.port });
     });
 
     redis.on('error', (err) => {
@@ -54,6 +86,33 @@ function isRedisConnected() {
     return isConnected && redis && redis.status === 'ready';
 }
 
+async function waitForConnection(timeoutMs = 5000) {
+    if (isRedisConnected()) return true;
+    if (!redis) createRedis();
+
+    return new Promise((resolve) => {
+        if (redis.status === 'ready') {
+            isConnected = true;
+            return resolve(true);
+        }
+
+        const timer = setTimeout(() => {
+            resolve(false);
+        }, timeoutMs);
+
+        redis.once('ready', () => {
+            clearTimeout(timer);
+            isConnected = true;
+            resolve(true);
+        });
+
+        redis.once('error', () => {
+            clearTimeout(timer);
+            resolve(false);
+        });
+    });
+}
+
 async function closeRedis() {
     if (redis) {
         await redis.quit();
@@ -62,4 +121,4 @@ async function closeRedis() {
     }
 }
 
-module.exports = { getRedis, createRedis, isRedisConnected, closeRedis };
+module.exports = { getRedis, createRedis, isRedisConnected, waitForConnection, closeRedis };

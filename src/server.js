@@ -41,7 +41,7 @@ const sheetsService = require('./sheetsService');
 const pgService = require('./pgService');
 
 // Phase 1: Queue infrastructure
-const { isRedisConnected } = require('./infra/redis');
+const { isRedisConnected, waitForConnection } = require('./infra/redis');
 const { getTintimQueue, getKommoQueue, closeQueues } = require('./infra/queues');
 const { startWorkers, closeWorkers } = require('./workers/webhookWorker');
 const { setupBullBoard } = require('./infra/bullBoard');
@@ -996,8 +996,9 @@ async function startServer() {
             logger.warn(`Google Sheets não disponível/inicializado: ${err.message}`);
         }
 
-        // Phase 1: Start BullMQ workers
-        if (isRedisConnected()) {
+        // Phase 1: Wait for Redis connection, then start BullMQ workers
+        const redisReady = await waitForConnection(5000);
+        if (redisReady) {
             startWorkers();
             logger.info('BullMQ workers started');
         } else {
