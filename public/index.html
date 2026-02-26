@@ -210,15 +210,17 @@
                 </button>
             </div>
 
-            <!-- Seletor de periodo: Visao Geral -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
-                <button class="dashboard-period-pill active" data-period="30d">30 dias</button>
-                <button class="dashboard-period-pill" data-period="7d">7 dias</button>
-                <button class="dashboard-period-pill" data-period="today">Hoje</button>
-                <button class="dashboard-period-pill" data-period="custom">Personalizado</button>
-                <div id="dashboard-period-custom-range" style="display:none;align-items:center;gap:6px;">
+            <!-- Seletor de período: Visão Geral -->
+            <div class="period-selector" style="margin-bottom:20px;">
+                <div class="period-pills">
+                    <button class="dashboard-period-pill active" data-period="30d">30 dias</button>
+                    <button class="dashboard-period-pill" data-period="7d">7 dias</button>
+                    <button class="dashboard-period-pill" data-period="today">Hoje</button>
+                    <button class="dashboard-period-pill" data-period="custom">Personalizado</button>
+                </div>
+                <div id="dashboard-period-custom-range" class="period-custom-range" style="display:none;">
                     <input type="date" class="period-date-input" id="dashboard-period-from" />
-                    <span style="color:var(--text-tertiary);font-size:0.8rem;">até</span>
+                    <span class="period-range-sep">até</span>
                     <input type="date" class="period-date-input" id="dashboard-period-to" />
                     <button class="btn-primary btn-sm" id="btn-dashboard-period-apply">Aplicar</button>
                 </div>

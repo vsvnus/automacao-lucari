@@ -716,6 +716,41 @@ body {
     }
 }
 
+
+/* Dashboard overview period pills (mirrors .period-pill) */
+.dashboard-period-pill {
+    padding: 7px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.dashboard-period-pill:hover {
+    color: var(--text-primary);
+    border-color: var(--border-active);
+    background: var(--bg-surface);
+}
+
+.dashboard-period-pill.active {
+    background: var(--accent-primary-subtle);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary-hover);
+}
+
+@media (max-width: 768px) {
+    .dashboard-period-pill {
+        padding: 6px 12px;
+        font-size: 0.75rem;
+    }
+}
+
 /* --- Stats --- */
 /* --- Stats (New Grid) --- */
 .stats-grid {
