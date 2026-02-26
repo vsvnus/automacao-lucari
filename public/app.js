@@ -14,6 +14,9 @@ const state = {
     period: '7d',
     dateFrom: null,
     dateTo: null,
+    dashPeriod: '30d',
+    dashFrom: null,
+    dashTo: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -564,9 +567,74 @@ async function loadDashboardOverview() {
     loadOverviewEnhanced();
 }
 
+
+function getDashboardDateRange() {
+    const SP_OFFSET = -3;
+    function spMidnightToUTC(date) {
+        const d = new Date(date); d.setHours(0,0,0,0);
+        return new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate(),-SP_OFFSET,0,0));
+    }
+    function spNow() {
+        const now = new Date();
+        return new Date(now.getTime() + now.getTimezoneOffset()*60000 + SP_OFFSET*3600000);
+    }
+    const today = spNow();
+    let from, to;
+    switch (state.dashPeriod) {
+        case 'today':   from = spMidnightToUTC(today); to = null; break;
+        case '7d':      { const d=new Date(today); d.setDate(d.getDate()-6); from=spMidnightToUTC(d); to=null; break; }
+        case '30d':     { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; break; }
+        case 'custom':
+            if (state.dashFrom) { const p=state.dashFrom.split('-'); from=spMidnightToUTC(new Date(+p[0],p[1]-1,+p[2])); }
+            if (state.dashTo)   { const p=state.dashTo.split('-'); const e=new Date(+p[0],p[1]-1,+p[2]); e.setDate(e.getDate()+1); to=spMidnightToUTC(e); }
+            break;
+        default:        { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; }
+    }
+    return { from: from?.toISOString(), to: to?.toISOString() };
+}
+
+function buildDashboardQS() {
+    const { from, to } = getDashboardDateRange();
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return qs ? '?' + qs : '';
+}
+
+function setupDashboardPeriodSelector() {
+    const pills = document.querySelectorAll('.dashboard-period-pill');
+    const customRange = document.getElementById('dashboard-period-custom-range');
+    const btnApply = document.getElementById('btn-dashboard-period-apply');
+
+    pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+            pills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.dashPeriod = pill.dataset.period;
+            if (state.dashPeriod === 'custom') {
+                if (customRange) customRange.style.display = 'flex';
+            } else {
+                if (customRange) customRange.style.display = 'none';
+                loadOverviewEnhanced();
+            }
+        });
+    });
+
+    if (btnApply) {
+        btnApply.addEventListener('click', () => {
+            state.dashFrom = document.getElementById('dashboard-period-from')?.value || null;
+            state.dashTo   = document.getElementById('dashboard-period-to')?.value || null;
+            if (customRange) customRange.style.display = 'none';
+            pills.forEach(p => p.classList.toggle('active', p.dataset.period === 'custom'));
+            loadOverviewEnhanced();
+        });
+    }
+}
+
 async function loadOverviewEnhanced() {
     try {
-        const qs = buildDateQS();
+        const qs = buildDashboardQS();
         const res = await fetch(`/api/dashboard/overview${qs}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -1611,6 +1679,7 @@ async function init() {
     // 3. Setup Listeners
     setupInvestigationListeners();
     setupPeriodSelector();
+    setupDashboardPeriodSelector();
     updatePeriodLabels();
 }
 

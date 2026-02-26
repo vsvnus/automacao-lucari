@@ -1554,14 +1554,13 @@ class PgService {
                            OR pe.status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%'])
                         GROUP BY COALESCE(fo.lead_origin, pe.origin, 'WhatsApp')
                     )
-                    SELECT lo.origin,
+                    SELECT COALESCE(lo.origin, so.origin) AS origin,
                            COALESCE(lo.total, 0) AS total,
                            COALESCE(so.sales, 0) AS sales,
                            COALESCE(so.revenue, 0) AS revenue
                     FROM leads_by_origin lo
-                    LEFT JOIN sales_by_true_origin so ON so.origin = lo.origin
-                    WHERE lo.total > 0
-                    ORDER BY lo.total DESC
+                    FULL OUTER JOIN sales_by_true_origin so ON so.origin = lo.origin
+                    ORDER BY COALESCE(lo.total, 0) DESC
                 `, [fromTs, toTs]),
                 // Health stats (always fixed windows — not period-filtered)
                 this.query(`

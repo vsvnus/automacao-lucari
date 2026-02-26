@@ -210,6 +210,20 @@
                 </button>
             </div>
 
+            <!-- Seletor de periodo: Visao Geral -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+                <button class="dashboard-period-pill active" data-period="30d">30 dias</button>
+                <button class="dashboard-period-pill" data-period="7d">7 dias</button>
+                <button class="dashboard-period-pill" data-period="today">Hoje</button>
+                <button class="dashboard-period-pill" data-period="custom">Personalizado</button>
+                <div id="dashboard-period-custom-range" style="display:none;align-items:center;gap:6px;">
+                    <input type="date" class="period-date-input" id="dashboard-period-from" />
+                    <span style="color:var(--text-tertiary);font-size:0.8rem;">até</span>
+                    <input type="date" class="period-date-input" id="dashboard-period-to" />
+                    <button class="btn-primary btn-sm" id="btn-dashboard-period-apply">Aplicar</button>
+                </div>
+            </div>
+
             <!-- Overview Grid: 4 App Cards -->
             <div class="overview-grid">
                 <!-- Card: Automação de Leads -->
@@ -341,7 +355,9 @@
             <!-- Resumo por Cliente -->
             <div class="card" style="margin-top:24px;">
                 <div class="card-header">
-                    <h3 class="card-title">Resumo por Cliente</h3>
+                    <h3 class="card-title">Resumo por Cliente
+                        <span class="badge badge-subtle" style="font-size:0.65rem;margin-left:8px;vertical-align:middle;">Automação de Leads</span>
+                    </h3>
                     <div style="display:flex;align-items:center;gap:12px;">
                         <span class="text-secondary" id="client-summary-period">Carregando...</span>
                         <span class="text-secondary" id="client-summary-comparison" style="font-size:0.8rem;"></span>
@@ -369,7 +385,9 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Funil de Conversão</h3>
+                        <h3 class="card-title">Funil de Conversão
+                            <span class="badge badge-subtle" style="font-size:0.65rem;margin-left:8px;vertical-align:middle;">Automação de Leads</span>
+                        </h3>
                     </div>
                     <div class="card-body" id="funnel-container">
                         <div style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</div>
@@ -377,7 +395,9 @@
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Origem dos Leads</h3>
+                        <h3 class="card-title">Origem dos Leads
+                            <span class="badge badge-subtle" style="font-size:0.65rem;margin-left:8px;vertical-align:middle;">Automação de Leads</span>
+                        </h3>
                     </div>
                     <div class="card-body" id="origin-breakdown-container">
                         <div style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</div>
