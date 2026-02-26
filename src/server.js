@@ -427,8 +427,9 @@ app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
 });
 
 // Overview Stats (enhanced dashboard data)
-app.get('/api/dashboard/overview', requireAuth, async (_req, res) => {
-    const overview = await pgService.getOverviewStats();
+app.get('/api/dashboard/overview', requireAuth, async (req, res) => {
+    const { from, to } = req.query;
+    const overview = await pgService.getOverviewStats({ from, to });
     if (!overview) return res.status(500).json({ error: 'Erro ao carregar overview' });
     res.json(overview);
 });

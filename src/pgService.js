@@ -1474,55 +1474,96 @@ class PgService {
         }
     }
 
-    async getOverviewStats() {
+    async getOverviewStats({ from, to } = {}) {
         if (!this.isAvailable()) return null;
 
         try {
             const todayStart = getTodayStartISO();
             const yesterdayStart = new Date(new Date(todayStart).getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-            const [clientSummary, funnel, origins, healthStats, todayVsYesterday] = await Promise.all([
-                // Per-client summary
+            // Period bounds: use caller-supplied dates or default to 7d
+            const fromTs = from || new Date(Date.now() - 7 * 86400000).toISOString();
+            const toTs = to || null;
+
+            const [clientSummary, funnel, origins, healthStats, todayVsYesterday, keywordsSummary] = await Promise.all([
+                // Per-client summary — respects selected period, includes main product
                 this.query(`
                     SELECT c.name, c.slug,
-                        count(l.id) FILTER (WHERE l.processing_result = 'success' AND l.event_type = 'new_lead') AS total_leads,
-                        count(l.id) FILTER (WHERE l.processing_result = 'success' AND l.event_type = 'new_lead' AND l.created_at >= $1) AS today_leads,
-                        count(l.id) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0) AS sales,
-                        COALESCE(sum(l.sale_amount) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0), 0) AS revenue,
-                        count(l.id) FILTER (WHERE l.processing_result = 'filtered') AS filtered,
-                        count(l.id) FILTER (WHERE l.processing_result = 'failed') AS errors,
+                        mode() WITHIN GROUP (ORDER BY l.product)
+                            FILTER (WHERE l.product IS NOT NULL AND l.product != '') AS main_product,
+                        count(l.id) FILTER (
+                            WHERE l.processing_result = 'success' AND l.event_type = 'new_lead'
+                        ) AS total_leads,
+                        count(l.id) FILTER (
+                            WHERE l.sale_amount > 0
+                               OR (l.processing_result = 'success' AND l.status ILIKE ANY(
+                                    ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']
+                               ))
+                        ) AS sales,
+                        COALESCE(sum(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue,
                         max(l.created_at) FILTER (WHERE l.processing_result = 'success') AS last_lead_at
                     FROM clients c
-                    LEFT JOIN leads_log l ON l.client_id = c.id AND l.created_at >= NOW() - INTERVAL '7 days'
+                    LEFT JOIN leads_log l ON l.client_id = c.id
+                        AND l.created_at >= $1
+                        AND ($2::timestamptz IS NULL OR l.created_at < $2)
                     WHERE c.active = true
                     GROUP BY c.id, c.name, c.slug
                     ORDER BY total_leads DESC
-                `, [todayStart]),
-                // Conversion funnel
+                `, [fromTs, toTs]),
+                // Conversion funnel — respects period, includes product context
                 this.query(`
                     SELECT
                         count(*) FILTER (WHERE processing_result = 'success' AND event_type = 'new_lead') AS leads_gerados,
                         count(*) FILTER (WHERE status = 'Lead Conectado') AS leads_conectados,
                         count(*) FILTER (WHERE status ILIKE '%atendimento%') AS em_atendimento,
                         count(*) FILTER (WHERE status ILIKE '%proposta%') AS proposta,
-                        count(*) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0) AS vendas,
+                        count(*) FILTER (WHERE sale_amount > 0 OR status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%'])) AS vendas,
                         count(*) FILTER (WHERE status ILIKE '%desqualificado%') AS desqualificados,
-                        COALESCE(sum(sale_amount) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0), 0) AS receita_total
+                        json_agg(DISTINCT product) FILTER (WHERE product IS NOT NULL AND product != '') AS products_in_funnel,
+                        COALESCE(sum(sale_amount) FILTER (WHERE sale_amount > 0), 0) AS receita_total
                     FROM leads_log
-                    WHERE created_at >= NOW() - INTERVAL '30 days'
-                `),
-                // Origin breakdown
+                    WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+                      AND processing_result = 'success'
+                `, [fromTs, toTs]),
+                // Origin breakdown — sales attributed to original lead origin (not status-update channel)
                 this.query(`
-                    SELECT origin,
-                        count(*) AS total,
-                        count(*) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0) AS sales,
-                        COALESCE(sum(sale_amount) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0), 0) AS revenue
-                    FROM leads_log
-                    WHERE processing_result = 'success' AND created_at >= NOW() - INTERVAL '30 days'
-                    GROUP BY origin
-                    ORDER BY total DESC
-                `),
-                // Health stats (errors in last 24h + 30d)
+                    WITH period_events AS (
+                        SELECT phone, origin, sale_amount, event_type, processing_result, status
+                        FROM leads_log
+                        WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+                    ),
+                    first_origin_per_phone AS (
+                        SELECT DISTINCT ON (phone) phone, origin AS lead_origin
+                        FROM leads_log
+                        WHERE event_type = 'new_lead' AND processing_result = 'success'
+                        ORDER BY phone, created_at ASC
+                    ),
+                    leads_by_origin AS (
+                        SELECT COALESCE(pe.origin, 'WhatsApp') AS origin,
+                               count(*) FILTER (WHERE pe.event_type = 'new_lead' AND pe.processing_result = 'success') AS total
+                        FROM period_events pe
+                        GROUP BY COALESCE(pe.origin, 'WhatsApp')
+                    ),
+                    sales_by_true_origin AS (
+                        SELECT COALESCE(fo.lead_origin, pe.origin, 'WhatsApp') AS origin,
+                               count(*) AS sales,
+                               COALESCE(sum(pe.sale_amount) FILTER (WHERE pe.sale_amount > 0), 0) AS revenue
+                        FROM period_events pe
+                        LEFT JOIN first_origin_per_phone fo ON fo.phone = pe.phone
+                        WHERE pe.sale_amount > 0
+                           OR pe.status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%'])
+                        GROUP BY COALESCE(fo.lead_origin, pe.origin, 'WhatsApp')
+                    )
+                    SELECT lo.origin,
+                           COALESCE(lo.total, 0) AS total,
+                           COALESCE(so.sales, 0) AS sales,
+                           COALESCE(so.revenue, 0) AS revenue
+                    FROM leads_by_origin lo
+                    LEFT JOIN sales_by_true_origin so ON so.origin = lo.origin
+                    WHERE lo.total > 0
+                    ORDER BY lo.total DESC
+                `, [fromTs, toTs]),
+                // Health stats (always fixed windows — not period-filtered)
                 this.query(`
                     SELECT
                         count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') AS total_24h,
@@ -1532,7 +1573,7 @@ class PgService {
                         max(created_at) FILTER (WHERE processing_result IN ('failed', 'invalid')) AS last_error_at
                     FROM webhook_events
                 `),
-                // Today vs Yesterday comparison
+                // Today vs Yesterday comparison (always fixed to today)
                 this.query(`
                     SELECT
                         count(*) FILTER (WHERE created_at >= $1
@@ -1541,19 +1582,41 @@ class PgService {
                             AND created_at < $1
                             AND processing_result = 'success' AND event_type = 'new_lead') AS yesterday
                     FROM leads_log
-                `, [todayStart, yesterdayStart])
+                `, [todayStart, yesterdayStart]),
+                // Google Ads keywords summary — respects period
+                this.query(`
+                    WITH all_kw AS (
+                        SELECT keyword,
+                               count(*) AS kw_count,
+                               bool_or(converted) AS kw_converted,
+                               COALESCE(sum(sale_amount) FILTER (WHERE converted AND sale_amount > 0), 0) AS sale_amount
+                        FROM keyword_conversions
+                        WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+                        GROUP BY keyword
+                    )
+                    SELECT
+                        (SELECT count(*) FROM all_kw) AS unique_keywords,
+                        (SELECT COALESCE(sum(kw_count), 0) FROM all_kw) AS total_kw_leads,
+                        (SELECT count(*) FROM all_kw WHERE kw_converted) AS kw_conversions,
+                        (SELECT COALESCE(sum(sale_amount), 0) FROM all_kw WHERE kw_converted) AS kw_revenue,
+                        (
+                            SELECT json_agg(
+                                json_build_object('keyword', keyword, 'leads', kw_count, 'converted', kw_converted)
+                                ORDER BY kw_count DESC
+                            )
+                            FROM (SELECT * FROM all_kw ORDER BY kw_count DESC LIMIT 5) top5
+                        ) AS top_keywords
+                `, [fromTs, toTs])
             ]);
 
             return {
                 clients: clientSummary.rows.map(r => ({
                     name: r.name,
                     slug: r.slug,
+                    mainProduct: r.main_product || null,
                     totalLeads: parseInt(r.total_leads),
-                    todayLeads: parseInt(r.today_leads),
                     sales: parseInt(r.sales),
                     revenue: parseFloat(r.revenue),
-                    filtered: parseInt(r.filtered),
-                    errors: parseInt(r.errors),
                     lastLeadAt: r.last_lead_at,
                 })),
                 funnel: {
@@ -1563,6 +1626,7 @@ class PgService {
                     proposta: parseInt(funnel.rows[0]?.proposta || 0),
                     vendas: parseInt(funnel.rows[0]?.vendas || 0),
                     desqualificados: parseInt(funnel.rows[0]?.desqualificados || 0),
+                    productsInFunnel: (funnel.rows[0]?.products_in_funnel || []).filter(Boolean),
                     receitaTotal: parseFloat(funnel.rows[0]?.receita_total || 0),
                 },
                 origins: origins.rows.map(r => ({
@@ -1584,6 +1648,13 @@ class PgService {
                 comparison: {
                     today: parseInt(todayVsYesterday.rows[0]?.today || 0),
                     yesterday: parseInt(todayVsYesterday.rows[0]?.yesterday || 0),
+                },
+                keywords: {
+                    uniqueKeywords: parseInt(keywordsSummary.rows[0]?.unique_keywords || 0),
+                    totalLeads: parseInt(keywordsSummary.rows[0]?.total_kw_leads || 0),
+                    conversions: parseInt(keywordsSummary.rows[0]?.kw_conversions || 0),
+                    revenue: parseFloat(keywordsSummary.rows[0]?.kw_revenue || 0),
+                    topKeywords: keywordsSummary.rows[0]?.top_keywords || [],
                 },
             };
         } catch (error) {
