@@ -664,7 +664,7 @@ function renderClientSummary(clients, comparison) {
     if (!tbody) return;
 
     if (!clients || clients.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:24px;">Nenhum cliente ativo</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:24px;">Nenhum cliente ativo</td></tr>';
         return;
     }
 
@@ -679,9 +679,6 @@ function renderClientSummary(clients, comparison) {
 
     tbody.innerHTML = clients.map(c => {
         const revenue = c.revenue > 0 ? `R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
-        const productBadge = c.mainProduct
-            ? `<span class="badge badge-subtle" style="font-size:0.65rem;padding:2px 6px;">${escapeHtml(c.mainProduct)}</span>`
-            : '<span style="color:var(--text-tertiary);font-size:0.75rem;">\u2014</span>';
         return `<tr>
             <td>
                 <div style="display:flex;align-items:center;gap:8px;">
@@ -689,7 +686,6 @@ function renderClientSummary(clients, comparison) {
                     <span>${escapeHtml(c.name)}</span>
                 </div>
             </td>
-            <td>${productBadge}</td>
             <td style="text-align:right;">${c.totalLeads}</td>
             <td style="text-align:right;">${c.sales}</td>
             <td style="text-align:right;">${revenue}</td>

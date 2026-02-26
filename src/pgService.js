@@ -1533,10 +1533,25 @@ class PgService {
                         WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
                     ),
                     first_origin_per_phone AS (
-                        SELECT DISTINCT ON (phone) phone, origin AS lead_origin
-                        FROM leads_log
-                        WHERE event_type = 'new_lead' AND processing_result = 'success'
-                        ORDER BY phone, created_at ASC
+                        SELECT DISTINCT ON (payload->>'phone')
+                               payload->>'phone' AS phone,
+                               CASE
+                                   WHEN (payload->>'source') ILIKE '%google%'
+                                     OR (payload->>'utm_source') ILIKE '%google%'
+                                     OR (payload->>'gclid') IS NOT NULL
+                                   THEN 'Google Ads'
+                                   WHEN (payload->>'source') ILIKE '%meta%'
+                                     OR (payload->>'source') ILIKE '%facebook%'
+                                     OR (payload->>'source') ILIKE '%instagram%'
+                                     OR (payload->>'utm_source') ILIKE '%facebook%'
+                                     OR (payload->>'utm_source') ILIKE '%meta%'
+                                     OR (payload->>'fbclid') IS NOT NULL
+                                   THEN 'Meta Ads'
+                                   ELSE NULL
+                               END AS lead_origin
+                        FROM webhook_events
+                        WHERE payload->>'phone' IS NOT NULL
+                        ORDER BY payload->>'phone', created_at ASC
                     ),
                     leads_by_origin AS (
                         SELECT COALESCE(pe.origin, 'WhatsApp') AS origin,
