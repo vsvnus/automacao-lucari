@@ -10,6 +10,7 @@
  * Filtro de origem: campo custom "Fonte de prospeccao" — so trafego pago vai pra planilha
  * Deteccao de venda: status_id === 142 (Closed Won)
  * Deteccao de perda: status_id === 143 (Closed Lost)
+ * Telefone: buscado via API Kommo (lead -> contacts embedded -> contact details -> PHONE)
  */
 
 const crypto = require('crypto');
@@ -120,6 +121,120 @@ function findClientByAccount(accountId) {
     }) || null;
 }
 
+// ---- Kommo API helpers ----
+
+/**
+ * Busca detalhes de um lead via API Kommo, incluindo contatos vinculados.
+ * GET https://{subdomain}.kommo.com/api/v4/leads/{id}?with=contacts
+ */
+async function fetchLeadFromAPI(leadId) {
+    var subdomain = process.env.KOMMO_SUBDOMAIN;
+    var token = process.env.KOMMO_ACCESS_TOKEN;
+    if (!subdomain || !token) {
+        logger.warn('[Kommo API] KOMMO_SUBDOMAIN ou KOMMO_ACCESS_TOKEN nao configurado');
+        return null;
+    }
+    var url = 'https://' + subdomain + '.kommo.com/api/v4/leads/' + leadId + '?with=contacts';
+    try {
+        var res = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json',
+            },
+        });
+        if (!res.ok) {
+            logger.warn('[Kommo API] Falha ao buscar lead ' + leadId + ': HTTP ' + res.status);
+            return null;
+        }
+        return await res.json();
+    } catch (err) {
+        logger.error('[Kommo API] Erro ao buscar lead ' + leadId + ': ' + err.message);
+        return null;
+    }
+}
+
+/**
+ * Busca detalhes de um contato via API Kommo.
+ * GET https://{subdomain}.kommo.com/api/v4/contacts/{id}
+ */
+async function fetchContactFromAPI(contactId) {
+    var subdomain = process.env.KOMMO_SUBDOMAIN;
+    var token = process.env.KOMMO_ACCESS_TOKEN;
+    if (!subdomain || !token) return null;
+    var url = 'https://' + subdomain + '.kommo.com/api/v4/contacts/' + contactId;
+    try {
+        var res = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json',
+            },
+        });
+        if (!res.ok) {
+            logger.warn('[Kommo API] Falha ao buscar contato ' + contactId + ': HTTP ' + res.status);
+            return null;
+        }
+        return await res.json();
+    } catch (err) {
+        logger.error('[Kommo API] Erro ao buscar contato ' + contactId + ': ' + err.message);
+        return null;
+    }
+}
+
+/**
+ * Extrai telefone de um contato retornado pela API Kommo.
+ * O campo PHONE esta em custom_fields_values com field_code: "PHONE".
+ */
+function extractPhoneFromContact(contact) {
+    if (!contact || !contact.custom_fields_values) return null;
+    for (var i = 0; i < contact.custom_fields_values.length; i++) {
+        var field = contact.custom_fields_values[i];
+        if (field.field_code === 'PHONE') {
+            if (field.values && field.values.length > 0) {
+                return field.values[0].value || null;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Extrai nome de um contato retornado pela API Kommo.
+ */
+function extractNameFromContact(contact) {
+    if (!contact) return null;
+    return contact.name || null;
+}
+
+/**
+ * Busca telefone e nome do contato principal de um lead via API Kommo.
+ * Fluxo: lead (with=contacts) -> contact IDs -> fetch contact -> PHONE
+ * Retorna { phone, contactName } ou { phone: null, contactName: null }
+ */
+async function fetchPhoneViaAPI(leadId) {
+    var lead = await fetchLeadFromAPI(leadId);
+    if (!lead) return { phone: null, contactName: null };
+
+    // Lead retorna _embedded.contacts com array de { id, is_main }
+    var contacts = (lead._embedded && lead._embedded.contacts) || [];
+    if (contacts.length === 0) {
+        logger.info('[Kommo API] Lead ' + leadId + ' nao tem contatos vinculados');
+        return { phone: null, contactName: null };
+    }
+
+    // Priorizar contato principal (is_main = true)
+    var mainContact = contacts.find(function(c) { return c.is_main; }) || contacts[0];
+    var contactData = await fetchContactFromAPI(mainContact.id);
+    if (!contactData) return { phone: null, contactName: null };
+
+    var phone = extractPhoneFromContact(contactData);
+    var contactName = extractNameFromContact(contactData);
+
+    logger.info('[Kommo API] Lead ' + leadId + ' -> contato ' + mainContact.id + ': phone=' + (phone || 'N/A') + ', name=' + (contactName || 'N/A'));
+    return { phone: phone, contactName: contactName };
+}
+
 class KommoHandler {
     /**
      * Processa o webhook completo do Kommo.
@@ -188,6 +303,7 @@ class KommoHandler {
     /**
      * Lead adicionado no Kommo.
      * Filtra por trafego pago antes de inserir na planilha.
+     * Busca telefone via API Kommo (nao depende de evento de contato).
      */
     async handleLeadAdded(lead, account, client) {
         var leadId = lead.id;
@@ -233,18 +349,28 @@ class KommoHandler {
             return { type: 'lead.add', leadId: leadId, status: 'filtered_organic', source: sourceValue };
         }
 
-        // Lead de trafego pago — inserir na planilha
+        // Lead de trafego pago — buscar telefone via API e inserir na planilha
         try {
             var sheetName = await sheetsService.resolveSheetName(client);
             var createdAt = lead.date_create
                 ? new Date(parseInt(lead.date_create, 10) * 1000)
                 : new Date();
 
-            // Buscar telefone do contato vinculado (se ja existir)
-            var phone = await this.findPhoneForKommoLead(leadId);
+            // Buscar telefone via API Kommo (contato vinculado ao lead)
+            var apiResult = await fetchPhoneViaAPI(leadId);
+            var phone = apiResult.phone;
+            var contactName = apiResult.contactName;
+
+            // Se nao encontrou via API, tentar nos eventos anteriores (fallback)
+            if (!phone) {
+                phone = await this.findPhoneForKommoLead(leadId);
+            }
+
+            // Usar nome do contato se disponivel (mais completo que o nome do lead)
+            var displayName = contactName || leadName || (phone ? formatPhoneBR(phone) : 'Lead Kommo');
 
             var leadData = {
-                name: (leadName || (phone ? formatPhoneBR(phone) : 'Lead Kommo')) + ' (Kommo)',
+                name: displayName + ' (Kommo)',
                 phone: phone ? formatPhoneBR(phone) : '',
                 origin: channel,
                 date: formatDateBR(createdAt.toISOString()),
@@ -256,7 +382,7 @@ class KommoHandler {
 
             var result = await sheetsService.insertLead(client, leadData);
             if (result.success) {
-                logger.info('[Kommo] Lead inserido na planilha: ' + leadName + ' -> ' + client.name + ' (' + channel + ')');
+                logger.info('[Kommo] Lead inserido na planilha: ' + displayName + ' -> ' + client.name + ' (' + channel + ') phone=' + (phone || 'N/A'));
                 pgService.logLead(client._db_id, {
                     eventType: 'new_lead',
                     phone: phone || '',
@@ -279,7 +405,7 @@ class KommoHandler {
                     error: 'Falha Planilha: ' + (result.error || 'erro desconhecido'),
                 });
             }
-            return { type: 'lead.add', leadId: leadId, status: 'success', client: client.name, channel: channel };
+            return { type: 'lead.add', leadId: leadId, status: 'success', client: client.name, channel: channel, phone: phone || null };
         } catch (err) {
             logger.error('[Kommo] Erro ao inserir lead: ' + err.message);
             return { type: 'lead.add', leadId: leadId, status: 'error', error: err.message };
@@ -311,6 +437,7 @@ class KommoHandler {
     /**
      * Lead mudou de status/estagio no Kommo.
      * Detecta vendas (142) e perdas (143).
+     * Busca telefone via API Kommo para atualizar planilha na venda.
      */
     async handleLeadStatus(lead, account, client) {
         var statusId = parseInt(lead.status_id, 10);
@@ -348,7 +475,14 @@ class KommoHandler {
             logger.info('[Kommo] VENDA DETECTADA! Lead ' + leadId + ' (' + leadName + ') -> Closed Won (R$ ' + price + ') -> ' + client.name);
 
             try {
-                var phone = await this.findPhoneForKommoLead(leadId);
+                // Buscar telefone via API Kommo
+                var apiResult = await fetchPhoneViaAPI(leadId);
+                var phone = apiResult.phone;
+
+                // Fallback: buscar nos eventos anteriores
+                if (!phone) {
+                    phone = await this.findPhoneForKommoLead(leadId);
+                }
 
                 if (phone) {
                     var updateData = {
@@ -363,6 +497,8 @@ class KommoHandler {
                         saleAmount: price,
                         leadStatus: 'Comprou (Kommo)',
                     });
+                } else {
+                    logger.warn('[Kommo] Venda sem telefone para lead ' + leadId + ' — nao foi possivel atualizar planilha');
                 }
 
                 pgService.logLead(client._db_id, {
@@ -443,7 +579,8 @@ class KommoHandler {
     }
 
     /**
-     * Busca telefone vinculado a um lead Kommo nos eventos anteriores.
+     * Busca telefone vinculado a um lead Kommo nos eventos anteriores (fallback).
+     * Usado quando a API nao retorna contato (ex: contato criado depois).
      */
     async findPhoneForKommoLead(kommoLeadId) {
         if (!pgService.isAvailable()) return null;
