@@ -635,9 +635,12 @@ function setupDashboardPeriodSelector() {
 async function loadOverviewEnhanced() {
     try {
         const qs = buildDashboardQS();
-        const res = await fetch(`/api/dashboard/overview${qs}`);
-        if (!res.ok) return;
-        const data = await res.json();
+        const [overviewRes, sdrPipelineRes] = await Promise.all([
+            fetch(`/api/dashboard/overview${qs}`),
+            fetch('/api/sdr/global/pipeline').catch(() => null),
+        ]);
+        if (!overviewRes.ok) return;
+        const data = await overviewRes.json();
 
         // Update period label in client table header
         const periodLabel = document.getElementById('client-summary-period');
@@ -646,8 +649,9 @@ async function loadOverviewEnhanced() {
         // Render client summary table
         renderClientSummary(data.clients, data.comparison);
 
-        // Render conversion funnel
-        renderFunnel(data.funnel);
+        // Render SDR funnel
+        const sdrPipeline = (sdrPipelineRes && sdrPipelineRes.ok) ? await sdrPipelineRes.json() : null;
+        renderFunnel(sdrPipeline);
 
         // Render origin breakdown
         renderOriginBreakdown(data.origins);
@@ -693,27 +697,29 @@ function renderClientSummary(clients, comparison) {
     }).join('');
 }
 
-function renderFunnel(funnel) {
+function renderFunnel(sdrData) {
     const container = document.getElementById('funnel-container');
-    if (!container || !funnel) return;
+    if (!container) return;
 
+    if (!sdrData || !sdrData.pipeline) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:24px;">SDR de IA indispon\u00edvel</div>';
+        return;
+    }
+
+    const p = sdrData.pipeline;
     const stages = [
-        { label: 'Leads Gerados', value: funnel.leadsGerados, color: 'var(--accent-primary)' },
-        { label: 'Conectados', value: funnel.leadsConectados, color: 'var(--accent-cyan)' },
-        { label: 'Em Atendimento', value: funnel.emAtendimento, color: 'var(--accent-orange)' },
-        { label: 'Proposta', value: funnel.proposta, color: 'var(--accent-primary-hover)' },
-        { label: 'Vendas', value: funnel.vendas, color: 'var(--accent-green)' },
+        { label: 'Conversas iniciadas', value: sdrData.conversations, color: 'var(--accent-primary)' },
+        { label: 'Leads capturados',    value: p.new + p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-cyan)' },
+        { label: 'Interessados',        value: p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-orange)' },
+        { label: 'Qualificados',        value: p.qualified + p.proposal + p.won, color: 'var(--accent-primary-hover)' },
+        { label: 'Proposta enviada',    value: p.proposal + p.won, color: 'var(--accent-yellow, #f0a500)' },
+        { label: 'Convertidos',         value: p.won, color: 'var(--accent-green)' },
     ];
 
     const max = Math.max(stages[0].value, 1);
 
-    // Show product badges at the top of the funnel
-    const productsHtml = funnel.productsInFunnel && funnel.productsInFunnel.length
-        ? `<div style="margin-bottom:12px;display:flex;gap:6px;flex-wrap:wrap;">${funnel.productsInFunnel.map(p => `<span class="badge badge-subtle" style="font-size:0.7rem;">${escapeHtml(p)}</span>`).join('')}</div>`
-        : '';
-
-    container.innerHTML = productsHtml + stages.map((s, i) => {
-        const pct = Math.max((s.value / max) * 100, 4);
+    container.innerHTML = stages.map((s, i) => {
+        const pct = Math.max((s.value / max) * 100, 2);
         const dropoff = i > 0 && stages[i - 1].value > 0
             ? ` <span style="color:var(--text-tertiary);font-size:0.7rem;">(-${Math.round((1 - s.value / stages[i - 1].value) * 100)}%)</span>`
             : '';
@@ -726,14 +732,11 @@ function renderFunnel(funnel) {
                 <div style="height:100%;width:${pct}%;background:${s.color};border-radius:4px;transition:width 0.5s var(--ease-out);"></div>
             </div>
         </div>`;
-    }).join('') + (funnel.receitaTotal > 0
-        ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.8rem;color:var(--text-secondary);">Receita Total</span>
-            <span style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">R$ ${funnel.receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</span>
+    }).join('') + (p.lost > 0
+        ? `<div style="margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:8px;font-size:0.75rem;color:var(--text-tertiary);display:flex;justify-content:space-between;">
+            <span>Perdidos</span><span>${p.lost}</span>
         </div>`
-        : `<div style="margin-top:8px;padding:8px;background:var(--accent-orange-subtle);border-radius:8px;font-size:0.75rem;color:var(--accent-orange);">
-            Desqualificados: ${funnel.desqualificados}
-        </div>`);
+        : '');
 }
 
 function renderOriginBreakdown(origins) {
