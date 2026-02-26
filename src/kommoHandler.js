@@ -6,6 +6,11 @@
  *   leads[add], leads[update], leads[status], leads[delete]
  *   contacts[add], contacts[update]
  *
+ * IMPORTANTE: Kommo frequentemente NAO envia leads[add] para leads criados
+ * via Digital Pipeline ou formularios. Leads novos chegam como leads[status]
+ * (primeira mudanca de estagio). O handler detecta isso e insere na planilha
+ * no primeiro evento de status quando o lead ainda nao foi processado.
+ *
  * Matching de cliente: por kommo_account_id (conta Kommo inteira, todos os pipelines)
  * Filtro de origem: campo custom "Fonte de prospeccao" — so trafego pago vai pra planilha
  * Deteccao de venda: status_id === 142 (Closed Won)
@@ -301,6 +306,87 @@ class KommoHandler {
     }
 
     /**
+     * Verifica se um lead Kommo ja foi inserido na planilha (lead.add ou lead.first_status).
+     * Retorna true se ja foi processado como novo lead.
+     */
+    async isLeadAlreadyInserted(kommoLeadId) {
+        if (!pgService.isAvailable()) return false;
+        try {
+            var result = await pgService.query(
+                "SELECT COUNT(*) as cnt FROM kommo_events WHERE kommo_lead_id = $1 AND event_type IN ('lead.add', 'lead.first_status') AND processing_result IN ('success', 'filtered_organic')",
+                [String(kommoLeadId)]
+            );
+            return parseInt(result.rows[0].cnt, 10) > 0;
+        } catch (err) {
+            logger.error('[Kommo] Erro ao verificar lead ' + kommoLeadId + ': ' + err.message);
+            return false;
+        }
+    }
+
+    /**
+     * Insere lead de trafego pago na planilha.
+     * Compartilhado entre handleLeadAdded e handleLeadStatus (primeiro evento).
+     */
+    async insertLeadToSheet(leadId, leadName, lead, client, channel, sourceValue) {
+        var sheetName = await sheetsService.resolveSheetName(client);
+        var createdAt = lead.date_create
+            ? new Date(parseInt(lead.date_create, 10) * 1000)
+            : new Date();
+
+        // Buscar telefone via API Kommo (contato vinculado ao lead)
+        var apiResult = await fetchPhoneViaAPI(leadId);
+        var phone = apiResult.phone;
+        var contactName = apiResult.contactName;
+
+        // Se nao encontrou via API, tentar nos eventos anteriores (fallback)
+        if (!phone) {
+            phone = await this.findPhoneForKommoLead(leadId);
+        }
+
+        // Usar nome do contato se disponivel (mais completo que o nome do lead)
+        var displayName = contactName || leadName || (phone ? formatPhoneBR(phone) : 'Lead Kommo');
+
+        var leadData = {
+            name: displayName + ' (Kommo)',
+            phone: phone ? formatPhoneBR(phone) : '',
+            origin: channel,
+            date: formatDateBR(createdAt.toISOString()),
+            product: '',
+            status: 'Lead Gerado',
+            phoneRaw: phone || '',
+            leadId: uuidv4(),
+        };
+
+        var result = await sheetsService.insertLead(client, leadData);
+        if (result.success) {
+            logger.info('[Kommo] Lead inserido na planilha: ' + displayName + ' -> ' + client.name + ' (' + channel + ') phone=' + (phone || 'N/A'));
+            pgService.logLead(client._db_id, {
+                eventType: 'new_lead',
+                phone: phone || '',
+                name: leadData.name,
+                status: 'Lead Gerado',
+                origin: channel,
+                sheetName: result.sheetName,
+                result: 'success',
+                error: null,
+            });
+        } else {
+            logger.error('[Kommo] Falha ao inserir lead na planilha: ' + (result.error || 'erro desconhecido'));
+            pgService.logLead(client._db_id, {
+                eventType: 'new_lead',
+                phone: phone || '',
+                name: leadData.name,
+                status: 'Erro',
+                origin: channel,
+                result: 'failed',
+                error: 'Falha Planilha: ' + (result.error || 'erro desconhecido'),
+            });
+        }
+
+        return { success: result.success, phone: phone, displayName: displayName };
+    }
+
+    /**
      * Lead adicionado no Kommo.
      * Filtra por trafego pago antes de inserir na planilha.
      * Busca telefone via API Kommo (nao depende de evento de contato).
@@ -308,9 +394,7 @@ class KommoHandler {
     async handleLeadAdded(lead, account, client) {
         var leadId = lead.id;
         var leadName = lead.name || 'Sem nome';
-        var price = parseFloat(lead.price) || 0;
         var pipelineId = lead.pipeline_id;
-        var statusId = lead.status_id;
         var accountId = String(account.id || '');
 
         // Detectar origem pelo custom field
@@ -351,61 +435,8 @@ class KommoHandler {
 
         // Lead de trafego pago — buscar telefone via API e inserir na planilha
         try {
-            var sheetName = await sheetsService.resolveSheetName(client);
-            var createdAt = lead.date_create
-                ? new Date(parseInt(lead.date_create, 10) * 1000)
-                : new Date();
-
-            // Buscar telefone via API Kommo (contato vinculado ao lead)
-            var apiResult = await fetchPhoneViaAPI(leadId);
-            var phone = apiResult.phone;
-            var contactName = apiResult.contactName;
-
-            // Se nao encontrou via API, tentar nos eventos anteriores (fallback)
-            if (!phone) {
-                phone = await this.findPhoneForKommoLead(leadId);
-            }
-
-            // Usar nome do contato se disponivel (mais completo que o nome do lead)
-            var displayName = contactName || leadName || (phone ? formatPhoneBR(phone) : 'Lead Kommo');
-
-            var leadData = {
-                name: displayName + ' (Kommo)',
-                phone: phone ? formatPhoneBR(phone) : '',
-                origin: channel,
-                date: formatDateBR(createdAt.toISOString()),
-                product: '',
-                status: 'Lead Gerado',
-                phoneRaw: phone || '',
-                leadId: uuidv4(),
-            };
-
-            var result = await sheetsService.insertLead(client, leadData);
-            if (result.success) {
-                logger.info('[Kommo] Lead inserido na planilha: ' + displayName + ' -> ' + client.name + ' (' + channel + ') phone=' + (phone || 'N/A'));
-                pgService.logLead(client._db_id, {
-                    eventType: 'new_lead',
-                    phone: phone || '',
-                    name: leadData.name,
-                    status: 'Lead Gerado',
-                    origin: channel,
-                    sheetName: result.sheetName,
-                    result: 'success',
-                    error: null,
-                });
-            } else {
-                logger.error('[Kommo] Falha ao inserir lead na planilha: ' + (result.error || 'erro desconhecido'));
-                pgService.logLead(client._db_id, {
-                    eventType: 'new_lead',
-                    phone: phone || '',
-                    name: leadData.name,
-                    status: 'Erro',
-                    origin: channel,
-                    result: 'failed',
-                    error: 'Falha Planilha: ' + (result.error || 'erro desconhecido'),
-                });
-            }
-            return { type: 'lead.add', leadId: leadId, status: 'success', client: client.name, channel: channel, phone: phone || null };
+            var insertResult = await this.insertLeadToSheet(leadId, leadName, lead, client, channel, sourceValue);
+            return { type: 'lead.add', leadId: leadId, status: 'success', client: client.name, channel: channel, phone: insertResult.phone || null };
         } catch (err) {
             logger.error('[Kommo] Erro ao inserir lead: ' + err.message);
             return { type: 'lead.add', leadId: leadId, status: 'error', error: err.message };
@@ -436,8 +467,13 @@ class KommoHandler {
 
     /**
      * Lead mudou de status/estagio no Kommo.
+     *
+     * IMPORTANTE: Kommo frequentemente NAO envia leads[add]. Leads novos
+     * chegam como leads[status] (primeira mudanca de estagio). Quando vemos
+     * um lead pela primeira vez aqui, inserimos na planilha como lead novo.
+     *
      * Detecta vendas (142) e perdas (143).
-     * Busca telefone via API Kommo para atualizar planilha na venda.
+     * Busca telefone via API Kommo.
      */
     async handleLeadStatus(lead, account, client) {
         var statusId = parseInt(lead.status_id, 10);
@@ -450,29 +486,88 @@ class KommoHandler {
 
         var sourceValue = extractLeadSource(lead.custom_fields);
         var channel = mapSourceToChannel(sourceValue);
+        var isPaid = isPaidSource(sourceValue);
 
         logger.info('[Kommo] Lead ' + leadId + ' (' + (leadName || 'sem nome') + ') status: ' + oldStatusId + ' -> ' + statusId + ' (pipeline: ' + pipelineId + ', fonte: ' + (sourceValue || 'N/A') + ')');
 
         var isSale = statusId === KOMMO_STAGE.CLOSED_WON;
         var isLost = statusId === KOMMO_STAGE.CLOSED_LOST;
 
-        var eventType = isSale ? 'lead.won' : isLost ? 'lead.lost' : 'lead.status';
-        this.logKommoEvent(
-            client ? client._db_id : null,
-            eventType,
-            String(leadId),
-            accountId,
-            { lead: lead, account: account, detectedSource: sourceValue, detectedChannel: channel },
-            client ? 'success' : 'no_client'
-        );
-
         if (!client) {
+            var eventType = isSale ? 'lead.won' : isLost ? 'lead.lost' : 'lead.status';
+            this.logKommoEvent(null, eventType, String(leadId), accountId,
+                { lead: lead, account: account, detectedSource: sourceValue, detectedChannel: channel },
+                'no_client'
+            );
             logger.warn('[Kommo] Nenhum cliente mapeado para account ' + accountId);
             return { type: 'lead.status', leadId: leadId, statusId: statusId, status: 'no_client' };
         }
 
+        // Verificar se este lead ja foi inserido na planilha
+        var alreadyInserted = await this.isLeadAlreadyInserted(leadId);
+
+        // Se nunca foi inserido e nao eh venda/perda, tratar como lead novo
+        if (!alreadyInserted && !isSale && !isLost) {
+            logger.info('[Kommo] Primeiro evento de status para lead ' + leadId + ' — tratando como lead novo');
+
+            this.logKommoEvent(
+                client._db_id,
+                'lead.first_status',
+                String(leadId),
+                accountId,
+                { lead: lead, account: account, detectedSource: sourceValue, detectedChannel: channel, isPaid: isPaid },
+                isPaid ? 'success' : 'filtered_organic'
+            );
+
+            if (!isPaid) {
+                logger.info('[Kommo] Lead organico ignorado: ' + (leadName || leadId) + ' — fonte: ' + (sourceValue || 'nenhuma') + ' (' + channel + ')');
+                pgService.logLead(client._db_id, {
+                    eventType: 'new_lead',
+                    phone: '',
+                    name: (leadName || 'Lead #' + leadId) + ' (Kommo)',
+                    status: 'Ignorado (Organico)',
+                    origin: channel,
+                    result: 'filtered',
+                    error: null,
+                });
+                return { type: 'lead.first_status', leadId: leadId, status: 'filtered_organic', source: sourceValue };
+            }
+
+            try {
+                var insertResult = await this.insertLeadToSheet(leadId, leadName, lead, client, channel, sourceValue);
+                return { type: 'lead.first_status', leadId: leadId, status: 'success', client: client.name, channel: channel, phone: insertResult.phone || null };
+            } catch (err) {
+                logger.error('[Kommo] Erro ao inserir lead (first_status): ' + err.message);
+                return { type: 'lead.first_status', leadId: leadId, status: 'error', error: err.message };
+            }
+        }
+
+        // Lead ja processado anteriormente ou eh venda/perda — log normal
+        var eventType = isSale ? 'lead.won' : isLost ? 'lead.lost' : 'lead.status';
+        this.logKommoEvent(
+            client._db_id,
+            eventType,
+            String(leadId),
+            accountId,
+            { lead: lead, account: account, detectedSource: sourceValue, detectedChannel: channel },
+            'success'
+        );
+
         if (isSale) {
             logger.info('[Kommo] VENDA DETECTADA! Lead ' + leadId + ' (' + leadName + ') -> Closed Won (R$ ' + price + ') -> ' + client.name);
+
+            // Se ainda nao foi inserido, inserir primeiro
+            if (!alreadyInserted && isPaid) {
+                logger.info('[Kommo] Lead ' + leadId + ' nunca inserido — inserindo antes de marcar venda');
+                try {
+                    await this.insertLeadToSheet(leadId, leadName, lead, client, channel, sourceValue);
+                    // Marcar como inserted para nao duplicar
+                    this.logKommoEvent(client._db_id, 'lead.first_status', String(leadId), accountId,
+                        { lead: lead, account: account, note: 'inserted_on_sale' }, 'success');
+                } catch (err) {
+                    logger.error('[Kommo] Erro ao inserir lead na venda: ' + err.message);
+                }
+            }
 
             try {
                 // Buscar telefone via API Kommo
@@ -534,7 +629,7 @@ class KommoHandler {
             return { type: 'lead.lost', leadId: leadId, client: client.name };
         }
 
-        // Status intermediario
+        // Status intermediario de lead ja processado
         return { type: 'lead.status', leadId: leadId, statusId: statusId, client: client.name };
     }
 
