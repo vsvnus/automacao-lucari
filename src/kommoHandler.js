@@ -6,8 +6,10 @@
  *   leads[add], leads[update], leads[status], leads[delete]
  *   contacts[add], contacts[update]
  *
- * Deteccao de venda: status_id === 142 (Closed Won, fixo em todas as contas)
- * Deteccao de perda: status_id === 143 (Closed Lost, fixo em todas as contas)
+ * Matching de cliente: por kommo_account_id (conta Kommo inteira, todos os pipelines)
+ * Filtro de origem: campo custom "Fonte de prospeccao" — so trafego pago vai pra planilha
+ * Deteccao de venda: status_id === 142 (Closed Won)
+ * Deteccao de perda: status_id === 143 (Closed Lost)
  */
 
 const crypto = require('crypto');
@@ -23,9 +25,27 @@ const KOMMO_STAGE = {
     CLOSED_LOST: 143,
 };
 
+// Valores do campo "Fonte de prospeccao" que sao trafego pago
+const PAID_SOURCES = ['google ads', 'google', 'meta', 'facebook', 'instagram', 'meta ads', 'facebook ads', 'instagram ads', 'trafego pago', 'cpc', 'ppc'];
+
+// Mapeamento de fonte para canal (para exibir no dashboard/planilha)
+function mapSourceToChannel(sourceValue) {
+    if (!sourceValue) return 'Desconhecido';
+    var val = sourceValue.toLowerCase().trim();
+    if (val.match(/google/)) return 'Google Ads';
+    if (val.match(/meta|facebook|instagram|fb|ig/)) return 'Meta Ads';
+    if (val.match(/trafego|cpc|ppc|paid/)) return 'Trafego Pago';
+    return sourceValue; // retorna original se nao mapeou
+}
+
+function isPaidSource(sourceValue) {
+    if (!sourceValue) return false;
+    var val = sourceValue.toLowerCase().trim();
+    return PAID_SOURCES.some(function(s) { return val.includes(s); });
+}
+
 /**
  * Garante que o valor seja sempre um array.
- * Kommo pode mandar objeto com chaves numericas em vez de array.
  */
 function ensureArray(val) {
     if (!val) return [];
@@ -35,14 +55,15 @@ function ensureArray(val) {
 }
 
 /**
- * Extrai campo customizado do array custom_fields pelo code ou name.
+ * Extrai campo customizado do array custom_fields pelo code, name ou id.
  */
 function extractCustomField(customFields, codeOrName) {
     if (!customFields) return null;
-    const fields = ensureArray(customFields);
-    for (const field of fields) {
-        if (field.code === codeOrName || field.name === codeOrName) {
-            const values = ensureArray(field.values);
+    var fields = ensureArray(customFields);
+    for (var i = 0; i < fields.length; i++) {
+        var field = fields[i];
+        if (field.code === codeOrName || field.name === codeOrName || String(field.id) === String(codeOrName)) {
+            var values = ensureArray(field.values);
             if (values.length > 0 && values[0]) {
                 return values[0].value || null;
             }
@@ -53,12 +74,25 @@ function extractCustomField(customFields, codeOrName) {
 }
 
 /**
+ * Extrai a fonte de prospeccao dos custom_fields do lead.
+ */
+function extractLeadSource(customFields) {
+    // Tentar por nome (portugues e ingles)
+    var source = extractCustomField(customFields, 'Fonte de prospecção');
+    if (!source) source = extractCustomField(customFields, 'Fonte de prospeccao');
+    if (!source) source = extractCustomField(customFields, 'Source');
+    if (!source) source = extractCustomField(customFields, 'Origem');
+    if (!source) source = extractCustomField(customFields, 'UTM Source');
+    return source;
+}
+
+/**
  * Verifica assinatura HMAC-SHA1 do Kommo.
  */
 function verifySignature(rawBody, signature, secret) {
-    if (!secret) return true; // sem secret configurado, aceita (dev mode)
+    if (!secret) return true;
     if (!signature) return false;
-    const expected = crypto
+    var expected = crypto
         .createHmac('sha1', secret)
         .update(rawBody)
         .digest('hex');
@@ -73,56 +107,58 @@ function verifySignature(rawBody, signature, secret) {
 }
 
 /**
- * Encontra o cliente pelo pipeline_id do Kommo.
+ * Encontra o cliente pelo account_id do Kommo.
  */
-function findClientByPipeline(pipelineId) {
-    if (!pipelineId) return null;
-    const pid = String(pipelineId);
-    const clients = clientManager.clients || [];
+function findClientByAccount(accountId) {
+    if (!accountId) return null;
+    var aid = String(accountId);
+    var clients = clientManager.clients || [];
     return clients.find(function(c) {
         return (c.webhook_source === 'kommo' || c.webhook_source === 'both') &&
-            c.kommo_pipeline_id &&
-            String(c.kommo_pipeline_id) === pid;
+            c.kommo_account_id &&
+            String(c.kommo_account_id) === aid;
     }) || null;
 }
 
 class KommoHandler {
     /**
      * Processa o webhook completo do Kommo.
-     * Chamado APOS responder 200 ao Kommo (processamento assincrono).
+     * Chamado APOS responder 200 (processamento assincrono).
      */
     async processWebhook(body, rawBody, signature) {
-        const secret = process.env.KOMMO_CLIENT_SECRET;
+        var secret = process.env.KOMMO_CLIENT_SECRET;
 
-        // Verificar assinatura
         if (secret && !verifySignature(rawBody || '', signature || '', secret)) {
             logger.warn('[Kommo] Assinatura invalida no webhook');
             return { success: false, error: 'Invalid signature' };
         }
 
-        const account = body.account || {};
-        const accountId = account.id || 'unknown';
-        const subdomain = account.subdomain || 'unknown';
+        var account = body.account || {};
+        var accountId = account.id || 'unknown';
+        var subdomain = account.subdomain || 'unknown';
 
         logger.info('[Kommo] Webhook recebido - account: ' + subdomain + ' (' + accountId + ')');
 
-        const results = [];
+        // Encontrar cliente pela conta
+        var client = findClientByAccount(accountId);
+
+        var results = [];
 
         // Processar eventos de lead
         if (body.leads) {
             if (body.leads.add) {
-                for (const lead of ensureArray(body.leads.add)) {
-                    results.push(await this.handleLeadAdded(lead, account));
+                for (var lead of ensureArray(body.leads.add)) {
+                    results.push(await this.handleLeadAdded(lead, account, client));
                 }
             }
             if (body.leads.update) {
-                for (const lead of ensureArray(body.leads.update)) {
-                    results.push(await this.handleLeadUpdated(lead, account));
+                for (var lead of ensureArray(body.leads.update)) {
+                    results.push(await this.handleLeadUpdated(lead, account, client));
                 }
             }
             if (body.leads.status) {
-                for (const lead of ensureArray(body.leads.status)) {
-                    results.push(await this.handleLeadStatus(lead, account));
+                for (var lead of ensureArray(body.leads.status)) {
+                    results.push(await this.handleLeadStatus(lead, account, client));
                 }
             }
         }
@@ -130,12 +166,12 @@ class KommoHandler {
         // Processar eventos de contato
         if (body.contacts) {
             if (body.contacts.add) {
-                for (const contact of ensureArray(body.contacts.add)) {
+                for (var contact of ensureArray(body.contacts.add)) {
                     results.push(await this.handleContactEvent(contact, account, 'add'));
                 }
             }
             if (body.contacts.update) {
-                for (const contact of ensureArray(body.contacts.update)) {
+                for (var contact of ensureArray(body.contacts.update)) {
                     results.push(await this.handleContactEvent(contact, account, 'update'));
                 }
             }
@@ -151,64 +187,99 @@ class KommoHandler {
 
     /**
      * Lead adicionado no Kommo.
+     * Filtra por trafego pago antes de inserir na planilha.
      */
-    async handleLeadAdded(lead, account) {
-        const client = findClientByPipeline(lead.pipeline_id);
-        const leadId = lead.id;
-        const leadName = lead.name || 'Sem nome';
-        const price = parseFloat(lead.price) || 0;
-        const pipelineId = lead.pipeline_id;
-        const statusId = lead.status_id;
+    async handleLeadAdded(lead, account, client) {
+        var leadId = lead.id;
+        var leadName = lead.name || 'Sem nome';
+        var price = parseFloat(lead.price) || 0;
+        var pipelineId = lead.pipeline_id;
+        var statusId = lead.status_id;
+        var accountId = String(account.id || '');
 
-        logger.info('[Kommo] Lead adicionado: id=' + leadId + ', name="' + leadName + '", pipeline=' + pipelineId + ', status=' + statusId + ', price=' + price);
+        // Detectar origem pelo custom field
+        var sourceValue = extractLeadSource(lead.custom_fields);
+        var channel = mapSourceToChannel(sourceValue);
+        var isPaid = isPaidSource(sourceValue);
+
+        logger.info('[Kommo] Lead adicionado: id=' + leadId + ', name="' + leadName + '", pipeline=' + pipelineId + ', fonte="' + (sourceValue || 'N/A') + '" (' + channel + ')');
 
         this.logKommoEvent(
             client ? client._db_id : null,
             'lead.add',
             String(leadId),
-            String(account.id || ''),
-            { lead: lead, account: account },
-            client ? 'success' : 'no_client'
+            accountId,
+            { lead: lead, account: account, detectedSource: sourceValue, detectedChannel: channel, isPaid: isPaid },
+            client ? (isPaid ? 'success' : 'filtered_organic') : 'no_client'
         );
 
         if (!client) {
-            logger.warn('[Kommo] Nenhum cliente mapeado para pipeline ' + pipelineId);
+            logger.warn('[Kommo] Nenhum cliente mapeado para account ' + accountId);
             return { type: 'lead.add', leadId: leadId, status: 'no_client' };
         }
 
-        // Inserir na planilha
+        // Filtrar organico — mesmo comportamento do Tintim
+        if (!isPaid) {
+            logger.info('[Kommo] Lead organico ignorado: ' + leadName + ' — fonte: ' + (sourceValue || 'nenhuma') + ' (' + channel + ')');
+            pgService.logLead(client._db_id, {
+                eventType: 'new_lead',
+                phone: '',
+                name: leadName + ' (Kommo)',
+                status: 'Ignorado (Organico)',
+                origin: channel,
+                result: 'filtered',
+                error: null,
+            });
+            return { type: 'lead.add', leadId: leadId, status: 'filtered_organic', source: sourceValue };
+        }
+
+        // Lead de trafego pago — inserir na planilha
         try {
             var sheetName = await sheetsService.resolveSheetName(client);
             var createdAt = lead.date_create
                 ? new Date(parseInt(lead.date_create, 10) * 1000)
                 : new Date();
 
+            // Buscar telefone do contato vinculado (se ja existir)
+            var phone = await this.findPhoneForKommoLead(leadId);
+
             var leadData = {
-                name: leadName + ' (Kommo)',
-                phone: '',
-                origin: 'Kommo CRM',
+                name: (leadName || (phone ? formatPhoneBR(phone) : 'Lead Kommo')) + ' (Kommo)',
+                phone: phone ? formatPhoneBR(phone) : '',
+                origin: channel,
                 date: formatDateBR(createdAt.toISOString()),
                 product: '',
                 status: 'Lead Gerado',
-                phoneRaw: '',
+                phoneRaw: phone || '',
                 leadId: uuidv4(),
             };
 
             var result = await sheetsService.insertLead(client, leadData);
             if (result.success) {
-                logger.info('[Kommo] Lead inserido na planilha: ' + leadName + ' -> ' + client.name);
+                logger.info('[Kommo] Lead inserido na planilha: ' + leadName + ' -> ' + client.name + ' (' + channel + ')');
                 pgService.logLead(client._db_id, {
                     eventType: 'new_lead',
-                    phone: '',
+                    phone: phone || '',
                     name: leadData.name,
                     status: 'Lead Gerado',
-                    origin: 'Kommo CRM',
+                    origin: channel,
                     sheetName: result.sheetName,
                     result: 'success',
                     error: null,
                 });
+            } else {
+                logger.error('[Kommo] Falha ao inserir lead na planilha: ' + (result.error || 'erro desconhecido'));
+                pgService.logLead(client._db_id, {
+                    eventType: 'new_lead',
+                    phone: phone || '',
+                    name: leadData.name,
+                    status: 'Erro',
+                    origin: channel,
+                    result: 'failed',
+                    error: 'Falha Planilha: ' + (result.error || 'erro desconhecido'),
+                });
             }
-            return { type: 'lead.add', leadId: leadId, status: 'success', client: client.name };
+            return { type: 'lead.add', leadId: leadId, status: 'success', client: client.name, channel: channel };
         } catch (err) {
             logger.error('[Kommo] Erro ao inserir lead: ' + err.message);
             return { type: 'lead.add', leadId: leadId, status: 'error', error: err.message };
@@ -218,10 +289,10 @@ class KommoHandler {
     /**
      * Lead atualizado no Kommo.
      */
-    async handleLeadUpdated(lead, account) {
-        var client = findClientByPipeline(lead.pipeline_id);
+    async handleLeadUpdated(lead, account, client) {
         var leadId = lead.id;
         var leadName = lead.name || 'Sem nome';
+        var accountId = String(account.id || '');
 
         logger.info('[Kommo] Lead atualizado: id=' + leadId + ', name="' + leadName + '"');
 
@@ -229,9 +300,9 @@ class KommoHandler {
             client ? client._db_id : null,
             'lead.update',
             String(leadId),
-            String(account.id || ''),
+            accountId,
             { lead: lead, account: account },
-            client ? 'success' : 'no_client'
+            client ? 'logged' : 'no_client'
         );
 
         return { type: 'lead.update', leadId: leadId, status: client ? 'logged' : 'no_client' };
@@ -239,17 +310,21 @@ class KommoHandler {
 
     /**
      * Lead mudou de status/estagio no Kommo.
-     * MAIS IMPORTANTE: detecta vendas (142) e perdas (143).
+     * Detecta vendas (142) e perdas (143).
      */
-    async handleLeadStatus(lead, account) {
+    async handleLeadStatus(lead, account, client) {
         var statusId = parseInt(lead.status_id, 10);
         var oldStatusId = parseInt(lead.old_status_id, 10);
         var pipelineId = lead.pipeline_id || lead.old_pipeline_id;
-        var client = findClientByPipeline(pipelineId);
         var leadId = lead.id;
+        var leadName = lead.name || '';
         var price = parseFloat(lead.price) || 0;
+        var accountId = String(account.id || '');
 
-        logger.info('[Kommo] Lead ' + leadId + ' status: ' + oldStatusId + ' -> ' + statusId + ' (pipeline: ' + pipelineId + ')');
+        var sourceValue = extractLeadSource(lead.custom_fields);
+        var channel = mapSourceToChannel(sourceValue);
+
+        logger.info('[Kommo] Lead ' + leadId + ' (' + (leadName || 'sem nome') + ') status: ' + oldStatusId + ' -> ' + statusId + ' (pipeline: ' + pipelineId + ', fonte: ' + (sourceValue || 'N/A') + ')');
 
         var isSale = statusId === KOMMO_STAGE.CLOSED_WON;
         var isLost = statusId === KOMMO_STAGE.CLOSED_LOST;
@@ -259,21 +334,20 @@ class KommoHandler {
             client ? client._db_id : null,
             eventType,
             String(leadId),
-            String(account.id || ''),
-            { lead: lead, account: account },
+            accountId,
+            { lead: lead, account: account, detectedSource: sourceValue, detectedChannel: channel },
             client ? 'success' : 'no_client'
         );
 
         if (!client) {
-            logger.warn('[Kommo] Nenhum cliente mapeado para pipeline ' + pipelineId);
+            logger.warn('[Kommo] Nenhum cliente mapeado para account ' + accountId);
             return { type: 'lead.status', leadId: leadId, statusId: statusId, status: 'no_client' };
         }
 
         if (isSale) {
-            logger.info('[Kommo] VENDA DETECTADA! Lead ' + leadId + ' -> Closed Won (R$ ' + price + ') -> ' + client.name);
+            logger.info('[Kommo] VENDA DETECTADA! Lead ' + leadId + ' (' + leadName + ') -> Closed Won (R$ ' + price + ') -> ' + client.name);
 
             try {
-                // Buscar telefone vinculado nos eventos anteriores
                 var phone = await this.findPhoneForKommoLead(leadId);
 
                 if (phone) {
@@ -285,7 +359,6 @@ class KommoHandler {
                     };
                     await sheetsService.updateLeadStatus(client, updateData);
 
-                    // Upsert keyword conversion
                     await pgService.upsertKeywordConversion(phone, {
                         saleAmount: price,
                         leadStatus: 'Comprou (Kommo)',
@@ -295,10 +368,10 @@ class KommoHandler {
                 pgService.logLead(client._db_id, {
                     eventType: 'status_update',
                     phone: phone || '',
-                    name: 'Kommo Lead #' + leadId,
+                    name: leadName ? leadName + ' (Kommo)' : 'Kommo Lead #' + leadId,
                     status: 'Comprou (Kommo)',
                     saleAmount: price,
-                    origin: 'Kommo CRM',
+                    origin: channel || 'Kommo CRM',
                     result: 'success',
                     error: null,
                 });
@@ -310,14 +383,14 @@ class KommoHandler {
         }
 
         if (isLost) {
-            logger.info('[Kommo] Lead ' + leadId + ' perdido (Closed Lost) -> ' + client.name);
+            logger.info('[Kommo] Lead ' + leadId + ' (' + leadName + ') perdido (Closed Lost) -> ' + client.name);
 
             pgService.logLead(client._db_id, {
                 eventType: 'status_update',
                 phone: '',
-                name: 'Kommo Lead #' + leadId,
+                name: leadName ? leadName + ' (Kommo)' : 'Kommo Lead #' + leadId,
                 status: 'Perdido (Kommo)',
-                origin: 'Kommo CRM',
+                origin: channel || 'Kommo CRM',
                 result: 'success',
                 error: null,
             });
@@ -325,7 +398,7 @@ class KommoHandler {
             return { type: 'lead.lost', leadId: leadId, client: client.name };
         }
 
-        // Status intermediario - apenas logar
+        // Status intermediario
         return { type: 'lead.status', leadId: leadId, statusId: statusId, client: client.name };
     }
 
@@ -342,10 +415,10 @@ class KommoHandler {
 
         logger.info('[Kommo] Contato ' + action + ': id=' + contactId + ', name="' + contactName + '", phone=' + (phone || 'N/A') + ', email=' + (email || 'N/A') + ', leads=' + JSON.stringify(linkedLeads));
 
-        // Armazenar relacao contato->lead para lookup futuro
         if (phone && linkedLeads.length > 0) {
-            for (var i = 0; i < ensureArray(linkedLeads).length; i++) {
-                var leadIdStr = String(ensureArray(linkedLeads)[i]);
+            var leadsArr = ensureArray(linkedLeads);
+            for (var i = 0; i < leadsArr.length; i++) {
+                var leadIdStr = String(leadsArr[i]);
                 this.logKommoEvent(
                     null,
                     'contact.' + action,

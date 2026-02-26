@@ -1268,7 +1268,8 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         sheet_name: 'auto',
         active: true,
         webhook_source: $('#client-webhook-source').value,
-        kommo_pipeline_id: $('#client-kommo-pipeline').value.trim() || null,
+        kommo_pipeline_id: null,
+        kommo_account_id: $('#client-kommo-account') ? $('#client-kommo-account').value.trim() || null : null,
     };
 
     try {
@@ -2045,7 +2046,7 @@ function openModalForEdit(client) {
     $('#client-instance').value = client.tintim_instance_id;
     $('#client-sheet').value = client.spreadsheet_id;
     $('#client-webhook-source').value = client.webhook_source || 'tintim';
-    $('#client-kommo-pipeline').value = client.kommo_pipeline_id || '';
+    if ($('#client-kommo-account')) $('#client-kommo-account').value = client.kommo_account_id || '';
     toggleKommoPipelineField();
 
     // Change UI to "Edit" mode
