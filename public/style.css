@@ -3739,3 +3739,64 @@ kbd {
     }
 }
 
+/* --- Data Table (Overview Client Summary) --- */
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.data-table thead th {
+    padding: 10px 20px;
+    text-align: left;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+}
+
+.data-table tbody tr {
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background var(--transition-fast);
+}
+
+.data-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+    background: var(--bg-surface);
+}
+
+.data-table tbody td {
+    padding: 12px 20px;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.data-table .client-avatar {
+    background: var(--accent-primary-subtle);
+    color: var(--accent-primary);
+}
+
+/* --- Card Title (shared) --- */
+.card-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* --- Responsive: Overview Grid --- */
+@media (max-width: 768px) {
+    .data-table {
+        font-size: 0.78rem;
+    }
+    .data-table thead th,
+    .data-table tbody td {
+        padding: 8px 12px;
+    }
+}
+

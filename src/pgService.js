@@ -1474,6 +1474,176 @@ class PgService {
         }
     }
 
+    async getOverviewStats() {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const todayStart = getTodayStartISO();
+            const yesterdayStart = new Date(new Date(todayStart).getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+            const [clientSummary, funnel, origins, healthStats, todayVsYesterday] = await Promise.all([
+                // Per-client summary
+                this.query(`
+                    SELECT c.name, c.slug,
+                        count(l.id) FILTER (WHERE l.processing_result = 'success' AND l.event_type = 'new_lead') AS total_leads,
+                        count(l.id) FILTER (WHERE l.processing_result = 'success' AND l.event_type = 'new_lead' AND l.created_at >= $1) AS today_leads,
+                        count(l.id) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0) AS sales,
+                        COALESCE(sum(l.sale_amount) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0), 0) AS revenue,
+                        count(l.id) FILTER (WHERE l.processing_result = 'filtered') AS filtered,
+                        count(l.id) FILTER (WHERE l.processing_result = 'failed') AS errors,
+                        max(l.created_at) FILTER (WHERE l.processing_result = 'success') AS last_lead_at
+                    FROM clients c
+                    LEFT JOIN leads_log l ON l.client_id = c.id AND l.created_at >= NOW() - INTERVAL '7 days'
+                    WHERE c.active = true
+                    GROUP BY c.id, c.name, c.slug
+                    ORDER BY total_leads DESC
+                `, [todayStart]),
+                // Conversion funnel
+                this.query(`
+                    SELECT
+                        count(*) FILTER (WHERE processing_result = 'success' AND event_type = 'new_lead') AS leads_gerados,
+                        count(*) FILTER (WHERE status = 'Lead Conectado') AS leads_conectados,
+                        count(*) FILTER (WHERE status ILIKE '%atendimento%') AS em_atendimento,
+                        count(*) FILTER (WHERE status ILIKE '%proposta%') AS proposta,
+                        count(*) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0) AS vendas,
+                        count(*) FILTER (WHERE status ILIKE '%desqualificado%') AS desqualificados,
+                        COALESCE(sum(sale_amount) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0), 0) AS receita_total
+                    FROM leads_log
+                    WHERE created_at >= NOW() - INTERVAL '30 days'
+                `),
+                // Origin breakdown
+                this.query(`
+                    SELECT origin,
+                        count(*) AS total,
+                        count(*) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0) AS sales,
+                        COALESCE(sum(sale_amount) FILTER (WHERE sale_amount IS NOT NULL AND sale_amount > 0), 0) AS revenue
+                    FROM leads_log
+                    WHERE processing_result = 'success' AND created_at >= NOW() - INTERVAL '30 days'
+                    GROUP BY origin
+                    ORDER BY total DESC
+                `),
+                // Health stats (errors in last 24h + 30d)
+                this.query(`
+                    SELECT
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') AS total_24h,
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours' AND processing_result IN ('failed', 'invalid')) AS errors_24h,
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days') AS total_30d,
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days' AND processing_result IN ('failed', 'invalid')) AS errors_30d,
+                        max(created_at) FILTER (WHERE processing_result IN ('failed', 'invalid')) AS last_error_at
+                    FROM webhook_events
+                `),
+                // Today vs Yesterday comparison
+                this.query(`
+                    SELECT
+                        count(*) FILTER (WHERE created_at >= $1
+                            AND processing_result = 'success' AND event_type = 'new_lead') AS today,
+                        count(*) FILTER (WHERE created_at >= $2
+                            AND created_at < $1
+                            AND processing_result = 'success' AND event_type = 'new_lead') AS yesterday
+                    FROM leads_log
+                `, [todayStart, yesterdayStart])
+            ]);
+
+            return {
+                clients: clientSummary.rows.map(r => ({
+                    name: r.name,
+                    slug: r.slug,
+                    totalLeads: parseInt(r.total_leads),
+                    todayLeads: parseInt(r.today_leads),
+                    sales: parseInt(r.sales),
+                    revenue: parseFloat(r.revenue),
+                    filtered: parseInt(r.filtered),
+                    errors: parseInt(r.errors),
+                    lastLeadAt: r.last_lead_at,
+                })),
+                funnel: {
+                    leadsGerados: parseInt(funnel.rows[0]?.leads_gerados || 0),
+                    leadsConectados: parseInt(funnel.rows[0]?.leads_conectados || 0),
+                    emAtendimento: parseInt(funnel.rows[0]?.em_atendimento || 0),
+                    proposta: parseInt(funnel.rows[0]?.proposta || 0),
+                    vendas: parseInt(funnel.rows[0]?.vendas || 0),
+                    desqualificados: parseInt(funnel.rows[0]?.desqualificados || 0),
+                    receitaTotal: parseFloat(funnel.rows[0]?.receita_total || 0),
+                },
+                origins: origins.rows.map(r => ({
+                    origin: r.origin,
+                    total: parseInt(r.total),
+                    sales: parseInt(r.sales),
+                    revenue: parseFloat(r.revenue),
+                })),
+                health: {
+                    total24h: parseInt(healthStats.rows[0]?.total_24h || 0),
+                    errors24h: parseInt(healthStats.rows[0]?.errors_24h || 0),
+                    total30d: parseInt(healthStats.rows[0]?.total_30d || 0),
+                    errors30d: parseInt(healthStats.rows[0]?.errors_30d || 0),
+                    lastErrorAt: healthStats.rows[0]?.last_error_at,
+                    successRate: healthStats.rows[0]?.total_30d > 0
+                        ? ((1 - (parseInt(healthStats.rows[0]?.errors_30d || 0) / parseInt(healthStats.rows[0]?.total_30d))) * 100).toFixed(1)
+                        : '100.0',
+                },
+                comparison: {
+                    today: parseInt(todayVsYesterday.rows[0]?.today || 0),
+                    yesterday: parseInt(todayVsYesterday.rows[0]?.yesterday || 0),
+                },
+            };
+        } catch (error) {
+            logger.error('Erro ao buscar overview stats', { error: error.message });
+            return null;
+        }
+    }
+
+    async getErrorsSummary() {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const [errorsByType, recentErrors] = await Promise.all([
+                this.query(`
+                    SELECT
+                        COALESCE(l.error_message, l.processing_result) AS error_type,
+                        count(*) AS count,
+                        max(l.created_at) AS last_occurrence,
+                        array_agg(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) AS affected_clients
+                    FROM leads_log l
+                    LEFT JOIN clients c ON l.client_id = c.id
+                    WHERE l.processing_result IN ('failed', 'error')
+                    GROUP BY COALESCE(l.error_message, l.processing_result)
+                    ORDER BY last_occurrence DESC
+                `),
+                this.query(`
+                    SELECT l.*, c.name AS client_name
+                    FROM leads_log l
+                    LEFT JOIN clients c ON l.client_id = c.id
+                    WHERE l.processing_result IN ('failed', 'error')
+                    ORDER BY l.created_at DESC
+                    LIMIT 20
+                `)
+            ]);
+
+            return {
+                errorsByType: errorsByType.rows.map(r => ({
+                    errorType: r.error_type,
+                    count: parseInt(r.count),
+                    lastOccurrence: r.last_occurrence,
+                    affectedClients: r.affected_clients || [],
+                })),
+                recentErrors: recentErrors.rows.map(l => ({
+                    id: l.id,
+                    timestamp: l.created_at,
+                    phone: l.phone,
+                    client: l.client_name || 'Desconhecido',
+                    name: l.lead_name || 'Sem nome',
+                    status: l.status,
+                    errorMessage: l.error_message,
+                    origin: l.origin,
+                    product: l.product,
+                })),
+            };
+        } catch (error) {
+            logger.error('Erro ao buscar resumo de erros', { error: error.message });
+            return null;
+        }
+    }
+
     // SCHEMA MIGRATION (auto-create tables on first run)
     // ============================================================
 

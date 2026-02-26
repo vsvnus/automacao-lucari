@@ -337,6 +337,50 @@
                     <div class="overview-card-action">Acessar <span>&rarr;</span></div>
                 </div>
             </div>
+
+            <!-- Resumo por Cliente -->
+            <div class="card" style="margin-top:24px;">
+                <div class="card-header">
+                    <h3 class="card-title">Resumo por Cliente</h3>
+                    <span class="text-secondary" id="client-summary-period">Últimos 7 dias</span>
+                </div>
+                <div class="card-body" style="padding:0;">
+                    <table class="data-table" id="client-summary-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th style="text-align:right;">Leads</th>
+                                <th style="text-align:right;">Hoje</th>
+                                <th style="text-align:right;">Vendas</th>
+                                <th style="text-align:right;">Receita</th>
+                            </tr>
+                        </thead>
+                        <tbody id="client-summary-body">
+                            <tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Funil + Origem -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Funil de Conversão</h3>
+                    </div>
+                    <div class="card-body" id="funnel-container">
+                        <div style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Origem dos Leads</h3>
+                    </div>
+                    <div class="card-body" id="origin-breakdown-container">
+                        <div style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- ===== SECTION: Automação de Leads ===== -->
@@ -344,8 +388,8 @@
             <div class="automacao-tabs">
                 <button class="automacao-tab active" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab" data-autotab="logs">Logs</button>
-                <button class="automacao-tab" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge" style="display:none;">0</span></button>
             </div>
 
             <div class="page-header">
@@ -395,9 +439,9 @@
             <!-- Period Selector -->
             <div class="period-selector" id="period-selector">
                 <div class="period-pills">
-                    <button class="period-pill active" data-period="today">Hoje</button>
+                    <button class="period-pill" data-period="today">Hoje</button>
                     <button class="period-pill" data-period="yesterday">Ontem</button>
-                    <button class="period-pill" data-period="7d">7 dias</button>
+                    <button class="period-pill active" data-period="7d">7 dias</button>
                     <button class="period-pill" data-period="30d">30 dias</button>
                     <button class="period-pill" data-period="custom">Personalizado</button>
                 </div>
@@ -497,8 +541,8 @@
             <div class="automacao-tabs">
                 <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab active" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab" data-autotab="logs">Logs</button>
-                <button class="automacao-tab" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge-c" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-c" style="display:none;">0</span></button>
             </div>
             <div class="page-header">
                 <div>
@@ -573,12 +617,12 @@
             <div class="automacao-tabs">
                 <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab active" data-autotab="logs">Logs</button>
-                <button class="automacao-tab" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge-l" style="display:none;">0</span></button>
+                <button class="automacao-tab active" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-l" style="display:none;">0</span></button>
             </div>
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Logs do Sistema</h2>
+                    <h2 class="page-title">Leads</h2>
                     <p class="page-subtitle">Histórico completo de leads processados</p>
                 </div>
             </div>
@@ -639,17 +683,17 @@
         </section>
 
         <!-- ===== SECTION: Settings ===== -->
-        <!-- ===== SECTION: Avisos ===== -->
+        <!-- ===== SECTION: Erros ===== -->
         <section class="page-section" id="section-alerts">
             <div class="automacao-tabs">
                 <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab" data-autotab="logs">Logs</button>
-                <button class="automacao-tab active" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge-a" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab active" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-a" style="display:none;">0</span></button>
             </div>
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Avisos & Erros</h2>
+                    <h2 class="page-title">Erros</h2>
                     <p class="page-subtitle">Rastreamento de processamento de leads</p>
                 </div>
                 <div class="header-actions">
@@ -663,45 +707,24 @@
                 </div>
             </div>
 
-            <!-- Stats Cards -->
-            <div class="stats-grid" id="alerts-stats">
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Erros Hoje</span>
+            <div id="alerts-summary" style="margin-bottom:20px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;" id="error-stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Taxa de Sucesso</div>
+                        <div class="stat-value" id="error-success-rate">&mdash;</div>
                     </div>
-                    <div class="stat-value" id="alert-errors-today">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Ultima Hora</span>
+                    <div class="stat-card">
+                        <div class="stat-label">Erros (30d)</div>
+                        <div class="stat-value" id="error-total-count">&mdash;</div>
                     </div>
-                    <div class="stat-value" id="alert-errors-hour">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Total Processados</span>
-                    </div>
-                    <div class="stat-value" id="alert-total-today">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Taxa de Sucesso</span>
-                    </div>
-                    <div class="stat-value" id="alert-success-rate">-</div>
-                </div>
-            </div>
-
-            <!-- Errors List -->
-            <div class="card" style="margin-top: 1.5rem;">
-                <div class="card-header">
-                    <h3>Erros Recentes</h3>
-                </div>
-                <div class="card-body">
-                    <div id="alerts-error-list" class="alerts-error-list">
-                        <p class="empty-state">Carregando...</p>
+                    <div class="stat-card">
+                        <div class="stat-label">Último Erro</div>
+                        <div class="stat-value" id="error-last-date">&mdash;</div>
                     </div>
                 </div>
             </div>
+            <div id="alerts-error-list"></div>
+            <div id="alerts-clients-grid" class="cards-grid"></div>
         </section>
 
         <!-- Trail Modal -->

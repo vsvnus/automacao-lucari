@@ -419,13 +419,13 @@ class WebhookHandler {
             logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ""} [linha ${result.row}]`);
             await trail.step("status_updated", "ok", `Status "${statusName}" atualizado com sucesso${result.recovered ? " (venda recuperada)" : ""}`, { status: statusName, row: result.row, sheetName: result.sheetName, recovered: result.recovered || false });
 
-            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : null, sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null });
+            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null });
         } else {
             const errorMsg = result.error || "Erro desconhecido na atualização";
             logger.warn("⚠️ Não foi possível atualizar status", { error: errorMsg, phone: payload.phone });
             await trail.step("status_updated", "error", `Falha ao atualizar status: ${errorMsg}`, { error: errorMsg, phone: payload.phone, status: statusName });
 
-            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: "Erro Update", saleAmount: saleAmount ? parseFloat(saleAmount) : null, result: "failed", error: `Falha Planilha: ${errorMsg}` });
+            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: "Erro Update", saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), result: "failed", error: `Falha Planilha: ${errorMsg}` });
         }
 
         return { success: result.success, client: client.name, type: "status_update", status: statusName, saleAmount, recovered: result.recovered };

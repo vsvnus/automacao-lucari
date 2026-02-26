@@ -426,6 +426,20 @@ app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
     res.json(result);
 });
 
+// Overview Stats (enhanced dashboard data)
+app.get('/api/dashboard/overview', requireAuth, async (_req, res) => {
+    const overview = await pgService.getOverviewStats();
+    if (!overview) return res.status(500).json({ error: 'Erro ao carregar overview' });
+    res.json(overview);
+});
+
+// Errors Summary (for Erros tab)
+app.get('/api/dashboard/errors-summary', requireAuth, async (_req, res) => {
+    const summary = await pgService.getErrorsSummary();
+    if (!summary) return res.status(500).json({ error: 'Erro ao carregar resumo de erros' });
+    res.json(summary);
+});
+
 app.get('/api/dashboard/client/:slug/logs', requireAuth, async (req, res) => {
     const logs = await pgService.getLeadsByClient(req.params.slug, 50);
     res.json(logs);
