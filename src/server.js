@@ -645,6 +645,12 @@ app.get('/api/keywords/detail', requireAuth, async (req, res) => {
     res.json(data);
 });
 
+app.get('/api/keywords/breakdown', requireAuth, async (req, res) => {
+    const { client, from, to } = req.query;
+    const data = await pgService.getKeywordsBreakdown(client || null, from || null, to || null);
+    res.json(data);
+});
+
 app.get('/api/keywords/campaigns', requireAuth, async (req, res) => {
     const { client, from, to } = req.query;
     const data = await pgService.getCampaignsOverview(client || null, from || null, to || null);

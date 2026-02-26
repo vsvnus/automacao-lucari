@@ -1236,12 +1236,12 @@ class PgService {
         try {
             const { rowCount } = await this.query(
                 `UPDATE keyword_conversions
-                 SET sale_amount = $1, converted = true, lead_status = COALESCE($2, lead_status)
+                 SET sale_amount = $1, converted = true, lead_status = COALESCE($2, lead_status), converted_at = NOW()
                  WHERE id = (SELECT id FROM keyword_conversions WHERE lead_phone = $3 ORDER BY created_at DESC LIMIT 1)`,
                 [data.saleAmount || 0, data.leadStatus || null, phone]
             );
-            if (rowCount === 0 && data.keywordData) {
-                await this.saveKeywordConversion(data.keywordData);
+            if (rowCount === 0) {
+                logger.info("Nenhum keyword_conversion encontrado para telefone: " + phone + " (lead pode nao ser Google Ads)");
             }
         } catch (error) {
             logger.error("Erro ao upsert keyword conversion", { error: error.message });
@@ -1396,6 +1396,39 @@ class PgService {
         } catch (error) {
             logger.error("Erro ao buscar campaigns overview", { error: error.message });
             return [];
+        }
+    }
+
+    async getKeywordsBreakdown(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return { devices: [], locations: [] };
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows: devices } = await this.query(`
+                SELECT COALESCE(device_type, 'Desconhecido') as device_type, COUNT(*) as count
+                FROM keyword_conversions
+                ${where}
+                GROUP BY device_type
+                ORDER BY count DESC
+            `, params);
+
+            const { rows: locations } = await this.query(`
+                SELECT COALESCE(location_state, 'Desconhecido') as location_state, COUNT(*) as count
+                FROM keyword_conversions
+                ${where}
+                GROUP BY location_state
+                ORDER BY count DESC
+            `, params);
+
+            return { devices, locations };
+        } catch (error) {
+            logger.error("Erro ao buscar keywords breakdown", { error: error.message });
+            return { devices: [], locations: [] };
         }
     }
 

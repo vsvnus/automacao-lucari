@@ -1696,6 +1696,30 @@
                         <span class="kw-stat-label">Taxa de Conversao</span>
                     </div>
                 </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-conversions">0</span>
+                        <span class="kw-stat-label">Total Conversoes</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-value">R$ 0,00</span>
+                        <span class="kw-stat-label">Valor Total</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Trend Chart -->
@@ -1704,29 +1728,54 @@
                     <h3>Tendencia de Leads por Dia</h3>
                 </div>
                 <div class="card-body">
-                    <div class="kw-trend-chart" id="kw-trend-chart">
+                    <div class="kw-trend-chart" id="kw-trend-chart" style="position:relative">
                         <canvas id="kw-trend-canvas" height="200"></canvas>
+                        <div id="kw-chart-tooltip" style="display:none;position:absolute;background:rgba(20,21,30,0.95);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 12px;font-size:12px;color:#e0e0e0;pointer-events:none;z-index:10;white-space:nowrap"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Breakdown: Device + Location -->
+            <div class="kw-breakdown-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+                <div class="card">
+                    <div class="card-header"><h3>Dispositivos</h3></div>
+                    <div class="card-body" id="kw-device-breakdown">
+                        <p class="empty-state" style="font-size:13px">Carregando...</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>Estados</h3></div>
+                    <div class="card-body" id="kw-location-breakdown">
+                        <p class="empty-state" style="font-size:13px">Carregando...</p>
                     </div>
                 </div>
             </div>
 
             <!-- Keywords Ranking Table -->
             <div class="card" style="margin-bottom: 24px;">
-                <div class="card-header">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
                     <h3>Ranking de Keywords</h3>
+                    <button class="btn-text" onclick="exportKeywordsCsv()" style="font-size:12px;display:flex;align-items:center;gap:4px">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Exportar CSV
+                    </button>
                 </div>
                 <div class="card-body" style="padding: 0;">
                     <div class="table-wrapper">
                         <table class="keywords-table" id="kw-ranking-table">
                             <thead>
                                 <tr>
-                                    <th>Keyword</th>
-                                    <th>Campanha</th>
-                                    <th>Leads</th>
-                                    <th>Conversoes</th>
-                                    <th>Taxa</th>
-                                    <th>Valor Total</th>
-                                    <th>Ultima Data</th>
+                                    <th class="kw-sortable">Keyword</th>
+                                    <th class="kw-sortable">Campanha</th>
+                                    <th class="kw-sortable">Leads</th>
+                                    <th class="kw-sortable">Conversoes</th>
+                                    <th class="kw-sortable">Taxa</th>
+                                    <th class="kw-sortable">Valor Total</th>
+                                    <th class="kw-sortable">Ultima Data</th>
                                 </tr>
                             </thead>
                             <tbody id="kw-ranking-body">
@@ -1738,6 +1787,31 @@
             </div>
 
 
+
+            <!-- Campaigns Table -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <h3>Campanhas</h3>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div class="table-wrapper">
+                        <table class="keywords-table">
+                            <thead>
+                                <tr>
+                                    <th>Campanha</th>
+                                    <th>Keywords</th>
+                                    <th>Leads</th>
+                                    <th>Conversoes</th>
+                                    <th>Valor Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kw-campaigns-body">
+                                <tr><td colspan="5" class="empty-state">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
             <!-- Backfill Button -->
             <div style="margin-top: 24px; text-align: right;">

@@ -3849,7 +3849,7 @@ $('#modal-relatorio-client')?.addEventListener('click', (e) => {
 // ============================================
 
 const kwState = {
-    period: '30d',
+    period: '7d',
     clientId: null,
     dateFrom: null,
     dateTo: null,
@@ -3897,6 +3897,8 @@ async function loadKeywordsSection() {
         loadKeywordsStats(),
         loadKeywordsOverview(),
         loadKeywordsTrend(),
+        loadKeywordsBreakdown(),
+        loadKeywordsCampaigns(),
     ]);
 }
 
@@ -3908,6 +3910,8 @@ async function loadKeywordsStats() {
         if (el('kw-stat-leads')) el('kw-stat-leads').textContent = data.totalLeads || 0;
         if (el('kw-stat-top')) el('kw-stat-top').textContent = data.topKeyword || '—';
         if (el('kw-stat-rate')) el('kw-stat-rate').textContent = (data.conversionRate || 0) + '%';
+        if (el('kw-stat-conversions')) el('kw-stat-conversions').textContent = data.totalConversions || 0;
+        if (el('kw-stat-value')) el('kw-stat-value').textContent = 'R$ ' + (data.totalValue || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2});
     } catch (e) { console.error('Keywords stats error', e); }
 }
 
@@ -3929,7 +3933,7 @@ async function loadKeywordsOverview() {
             const rate = parseFloat(row.rate || 0);
             const value = parseFloat(row.total_value || 0);
             const barWidth = maxLeads > 0 ? (leads / maxLeads * 100) : 0;
-            const lastDate = row.last_date ? new Date(row.last_date).toLocaleDateString('pt-BR') : '—';
+            const lastDate = row.last_date ? new Date(row.last_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
             const keyword = row.keyword || '(sem keyword)';
             const campaign = row.campaign || '(sem campanha)';
             return '<tr class="kw-row-clickable" data-keyword="' + escapeHtml(keyword) + '">' +
@@ -3949,6 +3953,13 @@ async function loadKeywordsOverview() {
                 const kw = row.dataset.keyword;
                 openKeywordDetail(kw);
             });
+        });
+
+        // Sorting click handlers on headers
+        const thElements = document.querySelectorAll('#kw-ranking-table thead th');
+        thElements.forEach((th, i) => {
+            th.style.cursor = 'pointer';
+            th.onclick = () => sortKeywordsTable(i);
         });
     } catch (e) { console.error('Keywords overview error', e); }
 }
@@ -4013,6 +4024,22 @@ function renderKwTrendChart(data) {
         ctx.fillText(val.toString(), padding.left - 8, y + 4);
     }
 
+    // Legend
+    const legendY = 8;
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(66, 133, 244, 0.7)';
+    ctx.fillRect(w - 220, legendY - 6, 10, 10);
+    ctx.fillStyle = '#8b8d97';
+    ctx.fillText('Leads', w - 206, legendY + 3);
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+    ctx.fillRect(w - 150, legendY - 6, 10, 10);
+    ctx.fillStyle = '#8b8d97';
+    ctx.fillText('Conversões', w - 136, legendY + 3);
+
+    // Store bar positions for tooltip
+    const barPositions = [];
+
     // Bars
     data.forEach((d, i) => {
         const leads = parseInt(d.leads, 10);
@@ -4042,10 +4069,36 @@ function renderKwTrendChart(data) {
             ctx.fillStyle = '#5c5e6a';
             ctx.font = '10px Inter, sans-serif';
             ctx.textAlign = 'center';
-            const dateStr = d.day ? new Date(d.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+            const dateStr = d.day ? new Date(d.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) : '';
             ctx.fillText(dateStr, x + barWidth / 2, h - 8);
         }
+
+        barPositions.push({ x, y, w: barWidth, h: barH, leads, conversions, day: d.day });
     });
+
+    // Tooltip on hover
+    const tooltip = document.getElementById('kw-chart-tooltip');
+    if (tooltip) {
+        canvas.onmousemove = function(e) {
+            const canvasRect = canvas.getBoundingClientRect();
+            const mx = e.clientX - canvasRect.left;
+            const my = e.clientY - canvasRect.top;
+            let found = false;
+            for (const bar of barPositions) {
+                if (mx >= bar.x && mx <= bar.x + bar.w && my >= bar.y && my <= bar.y + bar.h) {
+                    const dateStr = bar.day ? new Date(bar.day).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '';
+                    tooltip.innerHTML = '<strong>' + dateStr + '</strong><br>Leads: ' + bar.leads + '<br>Conversões: ' + bar.conversions;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.clientX - canvasRect.left + 12) + 'px';
+                    tooltip.style.top = (e.clientY - canvasRect.top - 10) + 'px';
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) tooltip.style.display = 'none';
+        };
+        canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
+    }
 }
 
 
@@ -4092,6 +4145,119 @@ async function openKeywordDetail(keyword) {
     } catch (e) {
         body.innerHTML = '<p class="empty-state">Erro ao carregar detalhes</p>';
     }
+}
+
+// Device + Location breakdown
+async function loadKeywordsBreakdown() {
+    try {
+        const data = await fetch('/api/keywords/breakdown?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        // Device breakdown
+        const deviceEl = document.getElementById('kw-device-breakdown');
+        if (deviceEl && data.devices) {
+            const total = data.devices.reduce((s, d) => s + parseInt(d.count, 10), 0) || 1;
+            deviceEl.innerHTML = data.devices.length === 0 ? '<p class="empty-state" style="font-size:13px">Sem dados</p>' : data.devices.map(d => {
+                const pct = Math.round(parseInt(d.count, 10) / total * 100);
+                const label = d.device_type || 'Desconhecido';
+                const icon = label.toLowerCase().includes('mobile') ? '\ud83d\udcf1' : label.toLowerCase().includes('desktop') ? '\ud83d\udcbb' : '\ud83c\udf10';
+                return '<div class="kw-breakdown-item">' +
+                    '<span class="kw-breakdown-label">' + icon + ' ' + escapeHtml(label) + '</span>' +
+                    '<div class="kw-breakdown-bar-bg"><div class="kw-breakdown-bar" style="width:' + pct + '%"></div></div>' +
+                    '<span class="kw-breakdown-pct">' + pct + '%</span>' +
+                    '</div>';
+            }).join('');
+        }
+        // Location breakdown
+        const locEl = document.getElementById('kw-location-breakdown');
+        if (locEl && data.locations) {
+            const total = data.locations.reduce((s, d) => s + parseInt(d.count, 10), 0) || 1;
+            locEl.innerHTML = data.locations.length === 0 ? '<p class="empty-state" style="font-size:13px">Sem dados</p>' : data.locations.slice(0, 8).map(d => {
+                const pct = Math.round(parseInt(d.count, 10) / total * 100);
+                const label = d.location_state || 'Desconhecido';
+                return '<div class="kw-breakdown-item">' +
+                    '<span class="kw-breakdown-label">' + escapeHtml(label) + '</span>' +
+                    '<div class="kw-breakdown-bar-bg"><div class="kw-breakdown-bar kw-bar-location" style="width:' + pct + '%"></div></div>' +
+                    '<span class="kw-breakdown-pct">' + pct + '%</span>' +
+                    '</div>';
+            }).join('');
+        }
+    } catch (e) { console.error('Keywords breakdown error', e); }
+}
+
+// Campaigns table
+async function loadKeywordsCampaigns() {
+    try {
+        const data = await fetch('/api/keywords/campaigns?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const tbody = document.getElementById('kw-campaigns-body');
+        if (!tbody) return;
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma campanha encontrada</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.map(row => {
+            const leads = parseInt(row.leads, 10);
+            const conversions = parseInt(row.conversions, 10);
+            const value = parseFloat(row.total_value || 0);
+            const campaign = row.campaign || '(sem campanha)';
+            return '<tr>' +
+                '<td>' + escapeHtml(campaign) + '</td>' +
+                '<td>' + (row.keywords || 0) + '</td>' +
+                '<td>' + leads + '</td>' +
+                '<td>' + conversions + '</td>' +
+                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                '</tr>';
+        }).join('');
+    } catch (e) { console.error('Keywords campaigns error', e); }
+}
+
+// CSV export
+function exportKeywordsCsv() {
+    const table = document.getElementById('kw-ranking-table');
+    if (!table) return;
+    const rows = table.querySelectorAll('tr');
+    let csv = '';
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        const rowData = Array.from(cells).map(c => '"' + c.textContent.replace(/"/g, '""') + '"');
+        csv += rowData.join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'keywords_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Column sorting for keywords table
+let kwSortCol = null;
+let kwSortAsc = true;
+
+function sortKeywordsTable(colIndex) {
+    const table = document.getElementById('kw-ranking-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    if (rows.length <= 1) return;
+
+    if (kwSortCol === colIndex) { kwSortAsc = !kwSortAsc; } else { kwSortCol = colIndex; kwSortAsc = false; }
+
+    rows.sort((a, b) => {
+        const aText = a.cells[colIndex]?.textContent?.trim() || '';
+        const bText = b.cells[colIndex]?.textContent?.trim() || '';
+        const aNum = parseFloat(aText.replace(/[^0-9.,\-]/g, '').replace(',', '.'));
+        const bNum = parseFloat(bText.replace(/[^0-9.,\-]/g, '').replace(',', '.'));
+        if (!isNaN(aNum) && !isNaN(bNum)) return kwSortAsc ? aNum - bNum : bNum - aNum;
+        return kwSortAsc ? aText.localeCompare(bText) : bText.localeCompare(aText);
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+
+    // Update sort indicators
+    table.querySelectorAll('th').forEach((th, i) => {
+        th.classList.remove('kw-sort-asc', 'kw-sort-desc');
+        if (i === colIndex) th.classList.add(kwSortAsc ? 'kw-sort-asc' : 'kw-sort-desc');
+    });
 }
 
 // Keywords event listeners
