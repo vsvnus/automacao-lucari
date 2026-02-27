@@ -97,6 +97,9 @@ class PgService {
                 spreadsheet_id: c.spreadsheet_id,
                 sheet_name: c.sheet_name || 'auto',
                 active: c.active,
+                webhook_source: c.webhook_source || 'tintim',
+                kommo_pipeline_id: c.kommo_pipeline_id || '',
+                kommo_account_id: c.kommo_account_id || '',
             }));
         } catch (error) {
             logger.error('Erro ao carregar clientes do PostgreSQL', { error: error.message });
@@ -121,6 +124,9 @@ class PgService {
                 spreadsheet_id: c.spreadsheet_id,
                 sheet_name: c.sheet_name || 'auto',
                 active: c.active,
+                webhook_source: c.webhook_source || 'tintim',
+                kommo_pipeline_id: c.kommo_pipeline_id || '',
+                kommo_account_id: c.kommo_account_id || '',
                 created_at: c.created_at,
                 updated_at: c.updated_at,
             }));
@@ -135,8 +141,8 @@ class PgService {
 
         try {
             const { rows } = await this.query(
-                `INSERT INTO clients (slug, name, tintim_instance_id, tintim_account_code, tintim_account_token, spreadsheet_id, sheet_name, active)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                `INSERT INTO clients (slug, name, tintim_instance_id, tintim_account_code, tintim_account_token, spreadsheet_id, sheet_name, active, webhook_source, kommo_pipeline_id, kommo_account_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                  RETURNING *`,
                 [
                     clientData.id,
@@ -147,6 +153,9 @@ class PgService {
                     clientData.spreadsheet_id,
                     clientData.sheet_name || 'auto',
                     clientData.active !== false,
+                    clientData.webhook_source || 'tintim',
+                    clientData.kommo_pipeline_id || null,
+                    clientData.kommo_account_id || null,
                 ]
             );
 
@@ -171,8 +180,11 @@ class PgService {
                     spreadsheet_id = $5,
                     sheet_name = $6,
                     active = $7,
+                    webhook_source = $8,
+                    kommo_pipeline_id = $9,
+                    kommo_account_id = $10,
                     updated_at = NOW()
-                 WHERE slug = $8
+                 WHERE slug = $11
                  RETURNING *`,
                 [
                     updates.name,
@@ -182,6 +194,9 @@ class PgService {
                     updates.spreadsheet_id,
                     updates.sheet_name || 'auto',
                     updates.active !== false,
+                    updates.webhook_source || 'tintim',
+                    updates.kommo_pipeline_id || null,
+                    updates.kommo_account_id || null,
                     slug,
                 ]
             );
@@ -235,8 +250,8 @@ class PgService {
             }
 
             await this.query(
-                `INSERT INTO leads_log (client_id, event_type, phone, lead_name, status, product, sale_amount, origin, sheet_name, sheet_row, processing_result, error_message)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                `INSERT INTO leads_log (client_id, event_type, phone, lead_name, status, product, sale_amount, origin, sheet_name, sheet_row, processing_result, error_message, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))`,
                 [
                     clientUuid,
                     leadInfo.eventType || 'new_lead',
@@ -250,6 +265,7 @@ class PgService {
                     leadInfo.sheetRow || null,
                     leadInfo.result || 'success',
                     leadInfo.error || null,
+                    leadInfo.leadDate || null,
                 ]
             );
         } catch (error) {
@@ -509,7 +525,7 @@ class PgService {
             let sql = `SELECT c.slug, COUNT(*) as count
                         FROM leads_log l
                         JOIN clients c ON l.client_id = c.id
-                        WHERE l.created_at >= $1 AND l.processing_result = 'success'`;
+                        WHERE l.created_at >= $1 AND l.processing_result = 'success' AND l.event_type = 'new_lead'`;
             const params = [from];
             let paramIdx = 2;
 
@@ -704,7 +720,7 @@ class PgService {
             );
 
             // 2. Sales
-            const sq = buildWhere(`event_type = 'status_update' AND processing_result = 'success' AND sale_amount IS NOT NULL`);
+            const sq = buildWhere(`event_type = 'status_update' AND processing_result = 'success' AND (sale_amount > 0 OR status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']))`);
             const { rows: sRows } = await this.query(
                 `SELECT COUNT(*) as count FROM leads_log ${sq.where}`, sq.params
             );
@@ -1284,6 +1300,531 @@ class PgService {
         }
     }
 
+
+// ============================================================
+    // KEYWORDS (Google Ads keyword tracking)
+    // ============================================================
+
+    async saveKeywordConversion(data) {
+        if (!this.isAvailable()) return null;
+        try {
+            const { rows } = await this.query(
+                `INSERT INTO keyword_conversions
+                 (client_id, keyword, campaign, utm_source, utm_medium, utm_content, gclid,
+                  landing_page, device_type, location_state, lead_phone, lead_name, lead_status, product,
+                  sale_amount, converted)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                 RETURNING id`,
+                [data.clientId, data.keyword, data.campaign, data.utmSource, data.utmMedium,
+                 data.utmContent, data.gclid, data.landingPage, data.deviceType, data.locationState,
+                 data.leadPhone, data.leadName, data.leadStatus, data.product,
+                 data.saleAmount || 0, data.converted || false]
+            );
+            return rows[0]?.id || null;
+        } catch (error) {
+            logger.error("Erro ao salvar keyword conversion", { error: error.message });
+            return null;
+        }
+    }
+
+    async upsertKeywordConversion(phone, data) {
+        if (!this.isAvailable()) return;
+        try {
+            const { rowCount } = await this.query(
+                `UPDATE keyword_conversions
+                 SET sale_amount = $1, converted = true, lead_status = COALESCE($2, lead_status), converted_at = NOW()
+                 WHERE id = (SELECT id FROM keyword_conversions WHERE lead_phone = $3 ORDER BY created_at DESC LIMIT 1)`,
+                [data.saleAmount || 0, data.leadStatus || null, phone]
+            );
+            if (rowCount === 0) {
+                logger.info("Nenhum keyword_conversion encontrado para telefone: " + phone + " (lead pode nao ser Google Ads)");
+            }
+        } catch (error) {
+            logger.error("Erro ao upsert keyword conversion", { error: error.message });
+        }
+    }
+
+    async getKeywordsOverview(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT keyword, campaign,
+                       COUNT(*) as leads,
+                       SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions,
+                       ROUND(SUM(CASE WHEN converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as rate,
+                       SUM(sale_amount) as total_value,
+                       MAX(created_at) as last_date
+                FROM keyword_conversions
+                ${where}
+                GROUP BY keyword, campaign
+                ORDER BY leads DESC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar keywords overview", { error: error.message });
+            return [];
+        }
+    }
+
+    async getKeywordsStats(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return { uniqueKeywords: 0, totalLeads: 0, topKeyword: null, conversionRate: 0 };
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT
+                    COUNT(DISTINCT keyword) as unique_keywords,
+                    COUNT(*) as total_leads,
+                    SUM(CASE WHEN converted THEN 1 ELSE 0 END) as total_conversions,
+                    ROUND(SUM(CASE WHEN converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as conversion_rate,
+                    SUM(sale_amount) as total_value
+                FROM keyword_conversions
+                ${where}
+            `, params);
+
+            // Top keyword
+            const { rows: topRows } = await this.query(`
+                SELECT keyword, COUNT(*) as cnt
+                FROM keyword_conversions
+                ${where} AND keyword IS NOT NULL AND keyword != ''
+                GROUP BY keyword ORDER BY cnt DESC LIMIT 1
+            `, params);
+
+            const stats = rows[0] || {};
+            return {
+                uniqueKeywords: parseInt(stats.unique_keywords || 0, 10),
+                totalLeads: parseInt(stats.total_leads || 0, 10),
+                totalConversions: parseInt(stats.total_conversions || 0, 10),
+                conversionRate: parseFloat(stats.conversion_rate || 0),
+                totalValue: parseFloat(stats.total_value || 0),
+                topKeyword: topRows[0]?.keyword || null,
+            };
+        } catch (error) {
+            logger.error("Erro ao buscar keywords stats", { error: error.message });
+            return { uniqueKeywords: 0, totalLeads: 0, topKeyword: null, conversionRate: 0 };
+        }
+    }
+
+    async getKeywordsTrend(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT DATE(created_at AT TIME ZONE 'America/Sao_Paulo') as day,
+                       COUNT(*) as leads,
+                       SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions
+                FROM keyword_conversions
+                ${where}
+                GROUP BY day
+                ORDER BY day ASC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar keywords trend", { error: error.message });
+            return [];
+        }
+    }
+
+    async getKeywordDetail(keyword, clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE keyword = $1";
+            const params = [keyword];
+            let idx = 2;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT kc.*, c.name as client_name
+                FROM keyword_conversions kc
+                LEFT JOIN clients c ON c.id = kc.client_id
+                ${where}
+                ORDER BY kc.created_at DESC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar keyword detail", { error: error.message });
+            return [];
+        }
+    }
+
+    async getCampaignsOverview(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT campaign,
+                       COUNT(*) as leads,
+                       COUNT(DISTINCT keyword) as keywords,
+                       SUM(CASE WHEN converted THEN 1 ELSE 0 END) as conversions,
+                       SUM(sale_amount) as total_value
+                FROM keyword_conversions
+                ${where}
+                GROUP BY campaign
+                ORDER BY leads DESC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar campaigns overview", { error: error.message });
+            return [];
+        }
+    }
+
+    async getKeywordsBreakdown(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return { devices: [], locations: [] };
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows: devices } = await this.query(`
+                SELECT COALESCE(device_type, 'Desconhecido') as device_type, COUNT(*) as count
+                FROM keyword_conversions
+                ${where}
+                GROUP BY device_type
+                ORDER BY count DESC
+            `, params);
+
+            const { rows: locations } = await this.query(`
+                SELECT COALESCE(location_state, 'Desconhecido') as location_state, COUNT(*) as count
+                FROM keyword_conversions
+                ${where}
+                GROUP BY location_state
+                ORDER BY count DESC
+            `, params);
+
+            return { devices, locations };
+        } catch (error) {
+            logger.error("Erro ao buscar keywords breakdown", { error: error.message });
+            return { devices: [], locations: [] };
+        }
+    }
+
+    async backfillKeywords() {
+        if (!this.isAvailable()) return 0;
+        try {
+            const { rowCount } = await this.query(`
+                INSERT INTO keyword_conversions (client_id, keyword, campaign, utm_source, utm_medium, utm_content,
+                    gclid, landing_page, device_type, location_state, lead_phone, lead_name, lead_status, product, created_at)
+                SELECT
+                    w.client_id,
+                    COALESCE(w.payload->>'utm_term', w.payload->'visit'->'params'->>'utm_term'),
+                    COALESCE(w.payload->>'utm_campaign', w.payload->'visit'->'params'->>'utm_campaign'),
+                    COALESCE(w.payload->>'utm_source', 'google'),
+                    COALESCE(w.payload->>'utm_medium', 'cpc'),
+                    w.payload->>'utm_content',
+                    w.payload->'visit'->'params'->>'gclid',
+                    w.payload->'visit'->>'name',
+                    w.payload->'visit'->'meta'->'http_user_agent'->'device'->>'type',
+                    w.payload->'location'->>'state',
+                    w.payload->>'phone',
+                    COALESCE(w.payload->>'chatName', w.payload->>'name', ''),
+                    'Lead Gerado',
+                    '',
+                    w.created_at
+                FROM webhook_events w
+                WHERE ((w.payload->>'utm_term' IS NOT NULL AND length(w.payload->>'utm_term') > 0)
+                   OR (w.payload->'visit'->'params'->>'utm_term' IS NOT NULL AND length(w.payload->'visit'->'params'->>'utm_term') > 0))
+                AND COALESCE(w.payload->>'utm_source', '') NOT IN ('fb', 'facebook', 'instagram', 'ig')
+                AND COALESCE(LOWER(w.payload->>'source'), '') NOT LIKE '%meta%'
+                AND COALESCE(LOWER(w.payload->>'source'), '') NOT LIKE '%facebook%'
+                AND NOT EXISTS (
+                    SELECT 1 FROM keyword_conversions kc
+                    WHERE kc.lead_phone = w.payload->>'phone'
+                      AND kc.created_at = w.created_at
+                )
+            `);
+            logger.info(`Backfill keywords: ${rowCount} registros migrados`);
+            return rowCount;
+        } catch (error) {
+            logger.error("Erro ao executar backfill de keywords", { error: error.message });
+            return 0;
+        }
+    }
+
+    async getOverviewStats({ from, to } = {}) {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const todayStart = getTodayStartISO();
+            const yesterdayStart = new Date(new Date(todayStart).getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+            // Period bounds: use caller-supplied dates or default to 7d
+            const fromTs = from || new Date(Date.now() - 7 * 86400000).toISOString();
+            const toTs = to || null;
+
+            const [clientSummary, funnel, origins, healthStats, todayVsYesterday, keywordsSummary] = await Promise.all([
+                // Per-client summary — respects selected period, includes main product
+                this.query(`
+                    SELECT c.name, c.slug,
+                        mode() WITHIN GROUP (ORDER BY l.product)
+                            FILTER (WHERE l.product IS NOT NULL AND l.product != '') AS main_product,
+                        count(l.id) FILTER (
+                            WHERE l.processing_result = 'success' AND l.event_type = 'new_lead'
+                        ) AS total_leads,
+                        count(l.id) FILTER (
+                            WHERE l.sale_amount > 0
+                               OR (l.processing_result = 'success' AND l.status ILIKE ANY(
+                                    ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']
+                               ))
+                        ) AS sales,
+                        COALESCE(sum(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue,
+                        max(l.created_at) FILTER (WHERE l.processing_result = 'success') AS last_lead_at
+                    FROM clients c
+                    LEFT JOIN leads_log l ON l.client_id = c.id
+                        AND l.created_at >= $1
+                        AND ($2::timestamptz IS NULL OR l.created_at < $2)
+                    WHERE c.active = true
+                    GROUP BY c.id, c.name, c.slug
+                    ORDER BY total_leads DESC
+                `, [fromTs, toTs]),
+                // Conversion funnel — respects period, includes product context
+                this.query(`
+                    SELECT
+                        count(*) FILTER (WHERE processing_result = 'success' AND event_type = 'new_lead') AS leads_gerados,
+                        count(*) FILTER (WHERE status = 'Lead Conectado') AS leads_conectados,
+                        count(*) FILTER (WHERE status ILIKE '%atendimento%') AS em_atendimento,
+                        count(*) FILTER (WHERE status ILIKE '%proposta%') AS proposta,
+                        count(*) FILTER (WHERE sale_amount > 0 OR status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%'])) AS vendas,
+                        count(*) FILTER (WHERE status ILIKE '%desqualificado%') AS desqualificados,
+                        json_agg(DISTINCT product) FILTER (WHERE product IS NOT NULL AND product != '') AS products_in_funnel,
+                        COALESCE(sum(sale_amount) FILTER (WHERE sale_amount > 0), 0) AS receita_total
+                    FROM leads_log
+                    WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+                      AND processing_result = 'success'
+                `, [fromTs, toTs]),
+                // Origin breakdown — sales attributed to original lead origin (not status-update channel)
+                this.query(`
+                    WITH period_events AS (
+                        SELECT phone, origin, sale_amount, event_type, processing_result, status
+                        FROM leads_log
+                        WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+                    ),
+                    first_origin_per_phone AS (
+                        SELECT DISTINCT ON (payload->>'phone')
+                               payload->>'phone' AS phone,
+                               CASE
+                                   WHEN (payload->>'source') ILIKE '%google%'
+                                     OR (payload->>'utm_source') ILIKE '%google%'
+                                     OR (payload->>'gclid') IS NOT NULL
+                                   THEN 'Google Ads'
+                                   WHEN (payload->>'source') ILIKE '%meta%'
+                                     OR (payload->>'source') ILIKE '%facebook%'
+                                     OR (payload->>'source') ILIKE '%instagram%'
+                                     OR (payload->>'utm_source') ILIKE '%facebook%'
+                                     OR (payload->>'utm_source') ILIKE '%meta%'
+                                     OR (payload->>'fbclid') IS NOT NULL
+                                   THEN 'Meta Ads'
+                                   ELSE NULL
+                               END AS lead_origin
+                        FROM webhook_events
+                        WHERE payload->>'phone' IS NOT NULL
+                        ORDER BY payload->>'phone', created_at ASC
+                    ),
+                    leads_by_origin AS (
+                        SELECT COALESCE(pe.origin, 'WhatsApp') AS origin,
+                               count(*) FILTER (WHERE pe.event_type = 'new_lead' AND pe.processing_result = 'success') AS total
+                        FROM period_events pe
+                        GROUP BY COALESCE(pe.origin, 'WhatsApp')
+                    ),
+                    sales_by_true_origin AS (
+                        SELECT COALESCE(fo.lead_origin, pe.origin, 'WhatsApp') AS origin,
+                               count(*) AS sales,
+                               COALESCE(sum(pe.sale_amount) FILTER (WHERE pe.sale_amount > 0), 0) AS revenue
+                        FROM period_events pe
+                        LEFT JOIN first_origin_per_phone fo ON fo.phone = pe.phone
+                        WHERE pe.sale_amount > 0
+                           OR pe.status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%'])
+                        GROUP BY COALESCE(fo.lead_origin, pe.origin, 'WhatsApp')
+                    )
+                    SELECT COALESCE(lo.origin, so.origin) AS origin,
+                           COALESCE(lo.total, 0) AS total,
+                           COALESCE(so.sales, 0) AS sales,
+                           COALESCE(so.revenue, 0) AS revenue
+                    FROM leads_by_origin lo
+                    FULL OUTER JOIN sales_by_true_origin so ON so.origin = lo.origin
+                    ORDER BY COALESCE(lo.total, 0) DESC
+                `, [fromTs, toTs]),
+                // Health stats (always fixed windows — not period-filtered)
+                this.query(`
+                    SELECT
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours') AS total_24h,
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours' AND processing_result IN ('failed', 'invalid')) AS errors_24h,
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days') AS total_30d,
+                        count(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days' AND processing_result IN ('failed', 'invalid')) AS errors_30d,
+                        max(created_at) FILTER (WHERE processing_result IN ('failed', 'invalid')) AS last_error_at
+                    FROM webhook_events
+                `),
+                // Today vs Yesterday comparison (always fixed to today)
+                this.query(`
+                    SELECT
+                        count(*) FILTER (WHERE created_at >= $1
+                            AND processing_result = 'success' AND event_type = 'new_lead') AS today,
+                        count(*) FILTER (WHERE created_at >= $2
+                            AND created_at < $1
+                            AND processing_result = 'success' AND event_type = 'new_lead') AS yesterday
+                    FROM leads_log
+                `, [todayStart, yesterdayStart]),
+                // Google Ads keywords summary — respects period
+                this.query(`
+                    WITH all_kw AS (
+                        SELECT keyword,
+                               count(*) AS kw_count,
+                               bool_or(converted) AS kw_converted,
+                               COALESCE(sum(sale_amount) FILTER (WHERE converted AND sale_amount > 0), 0) AS sale_amount
+                        FROM keyword_conversions
+                        WHERE created_at >= $1 AND ($2::timestamptz IS NULL OR created_at < $2)
+                        GROUP BY keyword
+                    )
+                    SELECT
+                        (SELECT count(*) FROM all_kw) AS unique_keywords,
+                        (SELECT COALESCE(sum(kw_count), 0) FROM all_kw) AS total_kw_leads,
+                        (SELECT count(*) FROM all_kw WHERE kw_converted) AS kw_conversions,
+                        (SELECT COALESCE(sum(sale_amount), 0) FROM all_kw WHERE kw_converted) AS kw_revenue,
+                        (
+                            SELECT json_agg(
+                                json_build_object('keyword', keyword, 'leads', kw_count, 'converted', kw_converted)
+                                ORDER BY kw_count DESC
+                            )
+                            FROM (SELECT * FROM all_kw ORDER BY kw_count DESC LIMIT 5) top5
+                        ) AS top_keywords
+                `, [fromTs, toTs])
+            ]);
+
+            return {
+                clients: clientSummary.rows.map(r => ({
+                    name: r.name,
+                    slug: r.slug,
+                    mainProduct: r.main_product || null,
+                    totalLeads: parseInt(r.total_leads),
+                    sales: parseInt(r.sales),
+                    revenue: parseFloat(r.revenue),
+                    lastLeadAt: r.last_lead_at,
+                })),
+                funnel: {
+                    leadsGerados: parseInt(funnel.rows[0]?.leads_gerados || 0),
+                    leadsConectados: parseInt(funnel.rows[0]?.leads_conectados || 0),
+                    emAtendimento: parseInt(funnel.rows[0]?.em_atendimento || 0),
+                    proposta: parseInt(funnel.rows[0]?.proposta || 0),
+                    vendas: parseInt(funnel.rows[0]?.vendas || 0),
+                    desqualificados: parseInt(funnel.rows[0]?.desqualificados || 0),
+                    productsInFunnel: (funnel.rows[0]?.products_in_funnel || []).filter(Boolean),
+                    receitaTotal: parseFloat(funnel.rows[0]?.receita_total || 0),
+                },
+                origins: origins.rows.map(r => ({
+                    origin: r.origin,
+                    total: parseInt(r.total),
+                    sales: parseInt(r.sales),
+                    revenue: parseFloat(r.revenue),
+                })),
+                health: {
+                    total24h: parseInt(healthStats.rows[0]?.total_24h || 0),
+                    errors24h: parseInt(healthStats.rows[0]?.errors_24h || 0),
+                    total30d: parseInt(healthStats.rows[0]?.total_30d || 0),
+                    errors30d: parseInt(healthStats.rows[0]?.errors_30d || 0),
+                    lastErrorAt: healthStats.rows[0]?.last_error_at,
+                    successRate: healthStats.rows[0]?.total_30d > 0
+                        ? ((1 - (parseInt(healthStats.rows[0]?.errors_30d || 0) / parseInt(healthStats.rows[0]?.total_30d))) * 100).toFixed(1)
+                        : '100.0',
+                },
+                comparison: {
+                    today: parseInt(todayVsYesterday.rows[0]?.today || 0),
+                    yesterday: parseInt(todayVsYesterday.rows[0]?.yesterday || 0),
+                },
+                keywords: {
+                    uniqueKeywords: parseInt(keywordsSummary.rows[0]?.unique_keywords || 0),
+                    totalLeads: parseInt(keywordsSummary.rows[0]?.total_kw_leads || 0),
+                    conversions: parseInt(keywordsSummary.rows[0]?.kw_conversions || 0),
+                    revenue: parseFloat(keywordsSummary.rows[0]?.kw_revenue || 0),
+                    topKeywords: keywordsSummary.rows[0]?.top_keywords || [],
+                },
+            };
+        } catch (error) {
+            logger.error('Erro ao buscar overview stats', { error: error.message });
+            return null;
+        }
+    }
+
+    async getErrorsSummary() {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const [errorsByType, recentErrors] = await Promise.all([
+                this.query(`
+                    SELECT
+                        COALESCE(l.error_message, l.processing_result) AS error_type,
+                        count(*) AS count,
+                        max(l.created_at) AS last_occurrence,
+                        array_agg(DISTINCT c.name) FILTER (WHERE c.name IS NOT NULL) AS affected_clients
+                    FROM leads_log l
+                    LEFT JOIN clients c ON l.client_id = c.id
+                    WHERE l.processing_result IN ('failed', 'error')
+                    GROUP BY COALESCE(l.error_message, l.processing_result)
+                    ORDER BY last_occurrence DESC
+                `),
+                this.query(`
+                    SELECT l.*, c.name AS client_name
+                    FROM leads_log l
+                    LEFT JOIN clients c ON l.client_id = c.id
+                    WHERE l.processing_result IN ('failed', 'error')
+                    ORDER BY l.created_at DESC
+                    LIMIT 20
+                `)
+            ]);
+
+            return {
+                errorsByType: errorsByType.rows.map(r => ({
+                    errorType: r.error_type,
+                    count: parseInt(r.count),
+                    lastOccurrence: r.last_occurrence,
+                    affectedClients: r.affected_clients || [],
+                })),
+                recentErrors: recentErrors.rows.map(l => ({
+                    id: l.id,
+                    timestamp: l.created_at,
+                    phone: l.phone,
+                    client: l.client_name || 'Desconhecido',
+                    name: l.lead_name || 'Sem nome',
+                    status: l.status,
+                    errorMessage: l.error_message,
+                    origin: l.origin,
+                    product: l.product,
+                })),
+            };
+        } catch (error) {
+            logger.error('Erro ao buscar resumo de erros', { error: error.message });
+            return null;
+        }
+    }
+
     // SCHEMA MIGRATION (auto-create tables on first run)
     // ============================================================
 
@@ -1293,14 +1834,63 @@ class PgService {
         try {
             const fs = require('fs');
             const path = require('path');
-            const schemaPath = path.join(__dirname, '..', 'infra', 'schema-leads.sql');
 
+            // Step 1: Run base schema (idempotent CREATE IF NOT EXISTS)
+            const schemaPath = path.join(__dirname, '..', 'infra', 'schema-leads.sql');
             if (fs.existsSync(schemaPath)) {
                 const schema = fs.readFileSync(schemaPath, 'utf-8');
                 await this.query(schema);
-                logger.info('Schema migrations executadas com sucesso');
+                logger.info('Base schema applied');
+            }
+
+            // Step 2: Run versioned migrations from migrations/ directory
+            const migrationsDir = path.join(__dirname, '..', 'migrations');
+            if (!fs.existsSync(migrationsDir)) {
+                logger.info('No migrations directory found, skipping versioned migrations');
+                return;
+            }
+
+            // Create migrations tracking table
+            await this.query(`
+                CREATE TABLE IF NOT EXISTS pgmigrations (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) UNIQUE NOT NULL,
+                    run_on TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+
+            // Get already-run migrations
+            const { rows: executed } = await this.query('SELECT name FROM pgmigrations ORDER BY id');
+            const executedSet = new Set(executed.map(r => r.name));
+
+            // Get migration files sorted
+            const files = fs.readdirSync(migrationsDir)
+                .filter(f => f.endsWith('.sql'))
+                .sort();
+
+            let applied = 0;
+            for (const file of files) {
+                if (executedSet.has(file)) continue;
+
+                const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+                await this.query('BEGIN');
+                try {
+                    await this.query(sql);
+                    await this.query('INSERT INTO pgmigrations (name) VALUES ($1)', [file]);
+                    await this.query('COMMIT');
+                    applied++;
+                    logger.info(`Migration applied: ${file}`);
+                } catch (err) {
+                    await this.query('ROLLBACK');
+                    logger.error(`Migration failed: ${file}`, { error: err.message });
+                    throw err;
+                }
+            }
+
+            if (applied > 0) {
+                logger.info(`${applied} migration(s) applied successfully`);
             } else {
-                logger.warn('Arquivo de schema não encontrado, pulando migrations');
+                logger.info('All migrations up to date');
             }
         } catch (error) {
             logger.error('Erro ao executar migrations', { error: error.message });

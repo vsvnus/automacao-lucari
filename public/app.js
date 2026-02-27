@@ -11,9 +11,12 @@ const state = {
     clients: [],
     activityLog: [],
     webhookCount: 0,
-    period: '30d',
+    period: '7d',
     dateFrom: null,
     dateTo: null,
+    dashPeriod: '30d',
+    dashFrom: null,
+    dashTo: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -33,12 +36,13 @@ const refs = {
 
 // Sections that belong to Automação Leads app
 const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts'];
+const TINTIM_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'keywords'];
 
 function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
+    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'keywords', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -48,11 +52,19 @@ function navigateTo(section, replace = false) {
     const target = $(`#section-${section}`);
     if (target) target.classList.add('active');
 
-    // Update sidebar active state - Automação sections all highlight 'automacao'
+    // Update sidebar active state
     const sidebarSection = AUTOMACAO_SECTIONS.includes(section) ? 'automacao' : section;
     $$('.nav-item').forEach(item => {
         item.classList.toggle('active', item.dataset.section === sidebarSection);
     });
+
+    // Auto-open Tintim submenu when navigating to its sections
+    const tintimParent = document.querySelector('.nav-app-tintim');
+    const tintimSubmenu = document.getElementById('submenu-tintim');
+    if (tintimParent && tintimSubmenu && TINTIM_SECTIONS.includes(section)) {
+        tintimParent.classList.add('open');
+        tintimSubmenu.classList.add('open');
+    }
 
     // Update automacao tab bar active state across all sections that have it
     if (AUTOMACAO_SECTIONS.includes(section)) {
@@ -72,6 +84,7 @@ function navigateTo(section, replace = false) {
         clients: 'Automação de Leads',
         logs: 'Automação de Leads',
         alerts: 'Automação de Leads',
+        keywords: 'Palavras-Chave',
         sdr: 'SDR de IA',
         calculadora: 'Calculadora',
         relatorio: 'Relatórios'
@@ -105,6 +118,7 @@ function navigateTo(section, replace = false) {
             searchLeads('');
         }
     }
+    if (section === 'keywords') loadKeywordsSection();
     if (section === 'sdr') loadSDRSection();
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
@@ -487,11 +501,10 @@ async function updateDashboard() {
 async function loadDashboardOverview() {
     try {
         // Fetch all data in parallel
-        const [health, dashboardStats, sdrRes, calcRes, relRes] = await Promise.all([
+        const [health, dashboardStats, sdrRes, relRes] = await Promise.all([
             state._lastHealth || fetchHealth(),
             fetchDashboardStats(),
             fetch('/api/sdr/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
-            fetch('/api/calc/tenants').then(r => r.ok ? r.json() : []).catch(() => []),
             fetch('/api/relatorio/clients').then(r => r.ok ? r.json() : []).catch(() => []),
         ]);
 
@@ -509,28 +522,39 @@ async function loadDashboardOverview() {
         // SDR card
         const sdrTenants = Array.isArray(sdrRes) ? sdrRes : (sdrRes.tenants || []);
         setVal('ov-sdr-tenants', sdrTenants.length);
-        // Calculate total conversations and leads from tenants
+        // Fetch stats per tenant to get real conversation/lead counts
         let totalConvos = 0, totalSdrLeads = 0;
-        sdrTenants.forEach(t => {
-            totalConvos += (t.conversations_count || t.total_conversations || 0);
-            totalSdrLeads += (t.leads_count || t.total_leads || 0);
-        });
+        try {
+            const statsResults = await Promise.all(
+                sdrTenants.map(t =>
+                    fetch(`/api/sdr/tenants/${t.id}/stats`).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+                )
+            );
+            statsResults.forEach(s => {
+                totalConvos += (s.conversations || 0);
+                totalSdrLeads += (s.leads || 0);
+            });
+        } catch { /* ignore */ }
         setVal('ov-sdr-conversations', totalConvos);
         setVal('ov-sdr-leads', totalSdrLeads);
 
-        // Calculadora card
-        const calcTenants = Array.isArray(calcRes) ? calcRes : (calcRes.tenants || []);
-        setVal('ov-calc-tenants', calcTenants.length);
+        // Calculadora card — static app, just check if online
+        try {
+            const calcHealth = await fetch('/api/calc/health').then(r => r.ok).catch(() => false);
+            setVal('ov-calc-status', calcHealth ? 'Online' : 'Offline');
+        } catch {
+            setVal('ov-calc-status', 'Offline');
+        }
 
-        // Relatório card
-        const relClients = Array.isArray(relRes) ? relRes : (relRes.clients || []);
+        // Relatório card — API returns { data: [...] }
+        const relClients = Array.isArray(relRes) ? relRes : (relRes.data || relRes.clients || []);
         setVal('ov-rel-clients', relClients.length);
         // Try to get execution stats
         try {
             const execRes = await fetch('/api/relatorio/executions?limit=100');
             if (execRes.ok) {
                 const execData = await execRes.json();
-                const execs = Array.isArray(execData) ? execData : (execData.executions || []);
+                const execs = Array.isArray(execData) ? execData : (execData.data || execData.executions || []);
                 setVal('ov-rel-execs', execs.length);
                 const errors = execs.filter(e => e.status === 'error' || e.error).length;
                 setVal('ov-rel-errors', errors);
@@ -542,6 +566,265 @@ async function loadDashboardOverview() {
     } catch (e) {
         console.error('Failed to load dashboard overview:', e);
     }
+
+    // Load enhanced overview data (client summary, funnel, origins)
+    loadOverviewEnhanced();
+}
+
+
+function getDashboardDateRange() {
+    const SP_OFFSET = -3;
+    function spMidnightToUTC(date) {
+        const d = new Date(date); d.setHours(0,0,0,0);
+        return new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate(),-SP_OFFSET,0,0));
+    }
+    function spNow() {
+        const now = new Date();
+        return new Date(now.getTime() + now.getTimezoneOffset()*60000 + SP_OFFSET*3600000);
+    }
+    const today = spNow();
+    let from, to;
+    switch (state.dashPeriod) {
+        case 'today':   from = spMidnightToUTC(today); to = null; break;
+        case '7d':      { const d=new Date(today); d.setDate(d.getDate()-6); from=spMidnightToUTC(d); to=null; break; }
+        case '30d':     { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; break; }
+        case 'custom':
+            if (state.dashFrom) { const p=state.dashFrom.split('-'); from=spMidnightToUTC(new Date(+p[0],p[1]-1,+p[2])); }
+            if (state.dashTo)   { const p=state.dashTo.split('-'); const e=new Date(+p[0],p[1]-1,+p[2]); e.setDate(e.getDate()+1); to=spMidnightToUTC(e); }
+            break;
+        default:        { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; }
+    }
+    return { from: from?.toISOString(), to: to?.toISOString() };
+}
+
+function buildDashboardQS() {
+    const { from, to } = getDashboardDateRange();
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return qs ? '?' + qs : '';
+}
+
+function setupDashboardPeriodSelector() {
+    const pills = document.querySelectorAll('.dashboard-period-pill');
+    const customRange = document.getElementById('dashboard-period-custom-range');
+    const btnApply = document.getElementById('btn-dashboard-period-apply');
+
+    pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+            pills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.dashPeriod = pill.dataset.period;
+            if (state.dashPeriod === 'custom') {
+                if (customRange) customRange.style.display = 'flex';
+            } else {
+                if (customRange) customRange.style.display = 'none';
+                loadOverviewEnhanced();
+            }
+        });
+    });
+
+    if (btnApply) {
+        btnApply.addEventListener('click', () => {
+            state.dashFrom = document.getElementById('dashboard-period-from')?.value || null;
+            state.dashTo   = document.getElementById('dashboard-period-to')?.value || null;
+            if (customRange) customRange.style.display = 'none';
+            pills.forEach(p => p.classList.toggle('active', p.dataset.period === 'custom'));
+            loadOverviewEnhanced();
+        });
+    }
+}
+
+async function loadOverviewEnhanced() {
+    try {
+        const qs = buildDashboardQS();
+        const [overviewRes, sdrPipelineRes] = await Promise.all([
+            fetch(`/api/dashboard/overview${qs}`),
+            fetch('/api/sdr/global/pipeline').catch(() => null),
+        ]);
+        if (!overviewRes.ok) return;
+        const data = await overviewRes.json();
+
+        // Update period label in client table header
+        const periodLabel = document.getElementById('client-summary-period');
+        if (periodLabel) periodLabel.textContent = getPeriodLabel();
+
+        // Render client summary table
+        renderClientSummary(data.clients, data.comparison);
+
+        // Render SDR funnel
+        const sdrPipeline = (sdrPipelineRes && sdrPipelineRes.ok) ? await sdrPipelineRes.json() : null;
+        renderFunnel(sdrPipeline);
+
+        // Render origin breakdown
+        renderOriginBreakdown(data.origins);
+
+        // Render Google Ads keywords mini-card
+        renderKeywordsOverview(data.keywords);
+    } catch (e) {
+        console.error('Failed to load enhanced overview:', e);
+    }
+}
+
+function renderClientSummary(clients, comparison) {
+    const tbody = document.getElementById('client-summary-body');
+    if (!tbody) return;
+
+    if (!clients || clients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:24px;">Nenhum cliente ativo</td></tr>';
+        return;
+    }
+
+    // Update today vs yesterday chip
+    const comparisonEl = document.getElementById('client-summary-comparison');
+    if (comparisonEl && comparison) {
+        const diff = comparison.today - comparison.yesterday;
+        const arrow = diff > 0 ? '\u2191' : diff < 0 ? '\u2193' : '';
+        const color = diff > 0 ? 'var(--accent-green)' : diff < 0 ? 'var(--accent-red)' : 'var(--text-tertiary)';
+        comparisonEl.innerHTML = `Hoje: <strong>${comparison.today}</strong> leads <span style="color:${color}">${arrow} ${diff !== 0 ? Math.abs(diff) : ''} vs ontem</span>`;
+    }
+
+    tbody.innerHTML = clients.map(c => {
+        const revenue = c.revenue > 0 ? `R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
+        return `<tr>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="client-avatar" style="width:28px;height:28px;font-size:0.65rem;">${escapeHtml(getInitials(c.name))}</div>
+                    <span>${escapeHtml(c.name)}</span>
+                </div>
+            </td>
+            <td style="text-align:right;">${c.totalLeads}</td>
+            <td style="text-align:right;">${c.sales}</td>
+            <td style="text-align:right;">${revenue}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderFunnel(sdrData) {
+    const container = document.getElementById('funnel-container');
+    if (!container) return;
+
+    if (!sdrData || !sdrData.pipeline) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:24px;">SDR de IA indispon\u00edvel</div>';
+        return;
+    }
+
+    const p = sdrData.pipeline;
+    const stages = [
+        { label: 'Conversas iniciadas', value: sdrData.conversations, color: 'var(--accent-primary)' },
+        { label: 'Leads capturados',    value: p.new + p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-cyan)' },
+        { label: 'Interessados',        value: p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-orange)' },
+        { label: 'Qualificados',        value: p.qualified + p.proposal + p.won, color: 'var(--accent-primary-hover)' },
+        { label: 'Proposta enviada',    value: p.proposal + p.won, color: 'var(--accent-yellow, #f0a500)' },
+        { label: 'Convertidos',         value: p.won, color: 'var(--accent-green)' },
+    ];
+
+    const max = Math.max(stages[0].value, 1);
+
+    container.innerHTML = stages.map((s, i) => {
+        const pct = Math.max((s.value / max) * 100, 2);
+        const dropoff = i > 0 && stages[i - 1].value > 0
+            ? ` <span style="color:var(--text-tertiary);font-size:0.7rem;">(-${Math.round((1 - s.value / stages[i - 1].value) * 100)}%)</span>`
+            : '';
+        return `<div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:0.8rem;color:var(--text-secondary)">${s.label}</span>
+                <span style="font-size:0.8rem;font-weight:600;">${s.value}${dropoff}</span>
+            </div>
+            <div style="height:8px;background:var(--bg-surface);border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${s.color};border-radius:4px;transition:width 0.5s var(--ease-out);"></div>
+            </div>
+        </div>`;
+    }).join('') + (p.lost > 0
+        ? `<div style="margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:8px;font-size:0.75rem;color:var(--text-tertiary);display:flex;justify-content:space-between;">
+            <span>Perdidos</span><span>${p.lost}</span>
+        </div>`
+        : '');
+}
+
+function renderOriginBreakdown(origins) {
+    const container = document.getElementById('origin-breakdown-container');
+    if (!container || !origins) return;
+
+    const total = origins.reduce((sum, o) => sum + o.total, 0);
+    if (total === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:24px;">Sem dados</div>';
+        return;
+    }
+
+    const colorMap = {
+        'Meta Ads': { bg: 'var(--accent-primary-subtle)', color: 'var(--accent-primary)', bar: 'var(--accent-primary)' },
+        'Google Ads': { bg: 'var(--accent-google-subtle)', color: 'var(--accent-google)', bar: 'var(--accent-google)' },
+        'WhatsApp': { bg: 'var(--accent-green-subtle)', color: 'var(--accent-green)', bar: 'var(--accent-green)' },
+    };
+
+    container.innerHTML = origins.map(o => {
+        const pct = Math.round((o.total / total) * 100);
+        const colors = colorMap[o.origin] || { bg: 'var(--bg-surface)', color: 'var(--text-secondary)', bar: 'var(--text-tertiary)' };
+        return `<div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colors.bar};"></span>
+                    <span style="font-size:0.85rem;font-weight:500;">${escapeHtml(o.origin)}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="font-size:0.85rem;font-weight:600;">${o.total}</span>
+                    <span style="font-size:0.7rem;color:var(--text-tertiary);">${pct}%</span>
+                </div>
+            </div>
+            <div style="height:6px;background:var(--bg-surface);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${colors.bar};border-radius:3px;transition:width 0.5s var(--ease-out);"></div>
+            </div>
+            ${o.sales > 0 ? `<div style="font-size:0.7rem;color:var(--accent-green);margin-top:4px;">${o.sales} venda${o.sales !== 1 ? 's' : ''} \u00b7 R$ ${o.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function renderKeywordsOverview(kw) {
+    const container = document.getElementById('keywords-overview-stats');
+    if (!container) return;
+
+    if (!kw || kw.totalLeads === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:16px;font-size:0.85rem;">Sem leads Google Ads no per\u00edodo</div>';
+        return;
+    }
+
+    const convRate = kw.totalLeads > 0 ? ((kw.conversions / kw.totalLeads) * 100).toFixed(0) : 0;
+    const revenue = kw.revenue > 0 ? `R$ ${kw.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
+
+    const statsHtml = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;color:var(--accent-google);">${kw.uniqueKeywords}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Keywords</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;">${kw.totalLeads}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Leads Google</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;color:var(--accent-green);">${kw.conversions} <span style="font-size:0.75rem;">(${convRate}%)</span></div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Convers\u00f5es</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">${revenue}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Receita</div>
+        </div>
+    </div>`;
+
+    const topKwHtml = kw.topKeywords && kw.topKeywords.length
+        ? `<div style="border-top:1px solid var(--border-subtle);padding-top:12px;">
+            ${kw.topKeywords.map(k => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">
+                <span style="font-size:0.8rem;color:var(--text-secondary);">${escapeHtml(k.keyword || '\u2014')}</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:0.8rem;font-weight:600;">${k.leads}</span>
+                    ${k.converted ? '<span style="font-size:0.65rem;color:var(--accent-green);">&#10003; convertido</span>' : ''}
+                </div>
+            </div>`).join('')}
+        </div>`
+        : '';
+
+    container.innerHTML = statsHtml + topKwHtml;
 }
 
 // ============================================
@@ -794,7 +1077,8 @@ async function loadAppsOverviewStats() {
         const res = await fetch('/api/relatorio/clients');
         if (res.ok) {
             const data = await res.json();
-            const count = Array.isArray(data) ? data.length : (data.clients ? data.clients.length : 0);
+            const list = Array.isArray(data) ? data : (data.data || data.clients || []);
+            const count = list.length;
             const el = document.getElementById('app-stat-relatorio');
             if (el) el.textContent = `${count} cliente${count !== 1 ? 's' : ''}`;
         }
@@ -850,7 +1134,7 @@ async function loadDashboardClients() {
     }
 
     container.innerHTML = '';
-    clients.slice(0, 5).forEach(client => {
+    clients.forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
         const count = leadCounts[client.slug] || leadCounts[client.id] || 0;
@@ -944,7 +1228,9 @@ function renderLogItem(log, detailed = false) {
     const isFailed = log.result === 'failed' || log.result === 'error';
     const isNewLead = log.event_type === 'new_lead';
     const isUpdate = log.event_type === 'status_update' || log.event_type === 'lead.update';
-    const isSale = isUpdate && log.sale_amount && parseFloat(log.sale_amount) > 0;
+    const SALE_STATUS_KWS = ["comprou","comprado","venda","vendido","fechou","fechado","ganho","ganhou","convertido","contrato","assinado","pago","pagou","sale","won","closed"];
+    const isSaleByStatus = log.status && SALE_STATUS_KWS.some(kw => log.status.toLowerCase().includes(kw));
+    const isSale = isUpdate && ((log.sale_amount !== null && log.sale_amount !== undefined && parseFloat(log.sale_amount) > 0) || isSaleByStatus);
     const isRecovered = log.status && (log.status.includes('Recuperad') || log.status.includes('não encontrado'));
 
     const timestamp = new Date(log.timestamp);
@@ -1065,6 +1351,9 @@ async function loadClients() {
     clients.forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
+        const webhookSource = client.webhook_source || 'tintim';
+        const sourceBadge = webhookSource === 'both' ? 'Tintim + Kommo'
+            : webhookSource === 'kommo' ? 'Kommo' : 'Tintim';
         const instanceShort = client.tintim_instance_id
             ? client.tintim_instance_id.substring(0, 12) + '...'
             : 'Não configurado';
@@ -1173,6 +1462,9 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         spreadsheet_id: $('#client-sheet').value.trim(),
         sheet_name: 'auto',
         active: true,
+        webhook_source: $('#client-webhook-source').value,
+        kommo_pipeline_id: null,
+        kommo_account_id: $('#client-kommo-account') ? $('#client-kommo-account').value.trim() || null : null,
     };
 
     try {
@@ -1194,6 +1486,23 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         showToast(err.message || 'Erro ao salvar cliente', 'error');
     }
 });
+
+// Toggle Kommo Pipeline field visibility based on webhook source
+function toggleKommoPipelineField() {
+    const source = document.getElementById('client-webhook-source');
+    const group = document.getElementById('kommo-pipeline-group');
+    const instanceGroup = document.getElementById('client-instance');
+    if (!source || !group) return;
+    const val = source.value;
+    group.style.display = (val === 'kommo' || val === 'both') ? '' : 'none';
+    // Tintim instance is optional when source is kommo-only
+    if (instanceGroup) {
+        instanceGroup.required = (val !== 'kommo');
+    }
+}
+
+// Listen for source change
+document.getElementById('client-webhook-source')?.addEventListener('change', toggleKommoPipelineField);
 
 async function updateClient(clientData) {
     const res = await fetch(`/admin/clients/${clientData.id}`, {
@@ -1226,6 +1535,13 @@ async function loadSettings() {
         const fallback = `${window.location.origin}/webhook/tintim`;
         if (webhookInput) webhookInput.value = fallback;
     }
+
+    // Kommo webhook URL (derivada da URL base)
+    const kommoUrl = `${window.location.origin}/webhook/kommo`;
+    const kommoUrlEl = $("#webhook-url-kommo");
+    if (kommoUrlEl) kommoUrlEl.textContent = kommoUrl;
+    const kommoSettingsInput = $("#settings-webhook-kommo");
+    if (kommoSettingsInput) kommoSettingsInput.value = kommoUrl;
 
     // Porta
     const port = window.location.port || '80';
@@ -1325,6 +1641,32 @@ $('#btn-copy-webhook')?.addEventListener('click', () => {
             btn.querySelector('span').textContent = 'Copiar';
         }, 2000);
     });
+});
+
+// Copy Kommo Webhook URL (Dashboard)
+$('#btn-copy-webhook-kommo')?.addEventListener('click', () => {
+    const url = $('#webhook-url-kommo').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = $('#btn-copy-webhook-kommo');
+        btn.classList.add('copied');
+        btn.querySelector('span').textContent = 'Copiado!';
+        showToast('URL Kommo copiada!', 'success');
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.querySelector('span').textContent = 'Copiar';
+        }, 2000);
+    });
+});
+
+// Copy Kommo Webhook URL (Settings)
+$('#btn-copy-webhook-kommo-settings')?.addEventListener('click', () => {
+    const input = $('#settings-webhook-kommo');
+    const url = input?.value?.trim();
+    if (url) {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('URL Kommo copiada!', 'success');
+        });
+    }
 });
 
 // ============================================
@@ -1502,10 +1844,11 @@ document.addEventListener('keydown', (e) => {
     switch (e.key) {
         case '1': navigateTo('dashboard'); break;
         case '2': navigateTo('automacao'); break;
-        case '3': navigateTo('sdr'); break;
-        case '4': navigateTo('calculadora'); break;
-        case '5': navigateTo('relatorio'); break;
-        case '6': navigateTo('settings'); break;
+        case '3': navigateTo('keywords'); break;
+        case '4': navigateTo('sdr'); break;
+        case '5': navigateTo('calculadora'); break;
+        case '6': navigateTo('relatorio'); break;
+        case '7': navigateTo('settings'); break;
         case 'n':
         case 'N':
             navigateTo('clients');
@@ -1560,6 +1903,17 @@ async function init() {
     // 1. Initial Navigation (Routing)
     const initialSection = getSectionFromUrl();
     // Use replace=true to correctly set the initial history state without pushing a new entry
+    // Tintim submenu toggle
+    const tintimToggle = document.querySelector('[data-toggle="tintim"]');
+    if (tintimToggle) {
+        tintimToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            tintimToggle.classList.toggle('open');
+            const submenu = document.getElementById('submenu-tintim');
+            if (submenu) submenu.classList.toggle('open');
+        });
+    }
+
     navigateTo(initialSection, true);
 
     // 2. Load Data
@@ -1575,6 +1929,7 @@ async function init() {
     // 3. Setup Listeners
     setupInvestigationListeners();
     setupPeriodSelector();
+    setupDashboardPeriodSelector();
     updatePeriodLabels();
 }
 
@@ -1712,9 +2067,10 @@ function applyFilterToResults() {
     if (currentLogFilter === 'errors') {
         filtered = filtered.filter(item => item.result === 'failed' || item.result === 'error');
     } else if (currentLogFilter === 'sales') {
+        const SALE_FILTER_KWS = ['comprou','comprado','venda','vendido','fechou','fechado','ganho','ganhou','convertido','contrato','assinado','pago','pagou','sale','won','closed'];
         filtered = filtered.filter(item =>
-            (item.sale_amount && parseFloat(item.sale_amount) > 0) ||
-            (item.status && item.status.toLowerCase().includes('vend'))
+            (item.sale_amount !== null && item.sale_amount !== undefined && parseFloat(item.sale_amount) > 0) ||
+            (item.status && SALE_FILTER_KWS.some(kw => item.status.toLowerCase().includes(kw)))
         );
     } else if (currentLogFilter === 'new_leads') {
         filtered = filtered.filter(item => item.event_type === 'new_lead');
@@ -1961,6 +2317,9 @@ function openModalForEdit(client) {
     $('#client-name').value = client.name;
     $('#client-instance').value = client.tintim_instance_id;
     $('#client-sheet').value = client.spreadsheet_id;
+    $('#client-webhook-source').value = client.webhook_source || 'tintim';
+    if ($('#client-kommo-account')) $('#client-kommo-account').value = client.kommo_account_id || '';
+    toggleKommoPipelineField();
 
     // Change UI to "Edit" mode
     const title = refs.modal.querySelector('h3');
@@ -2006,6 +2365,18 @@ closeModal = function () {
 
 const SDR_API_BASE = '/api/sdr';
 
+function getSdrPublicUrl() {
+    const host = location.hostname;
+    if (host === 'staging.vin8n.online') return 'https://staging-sdr.vin8n.online';
+    if (host === 'dashboard.vin8n.online') return 'https://sdr.vin8n.online';
+    return 'http://localhost:3001';
+}
+
+function getSdrConnectUrl(slug) {
+    if (!slug) return null;
+    return `${getSdrPublicUrl()}/connect/${slug}`;
+}
+
 const sdrState = {
     tenants: [],
     selectedTenantId: null,
@@ -2020,27 +2391,69 @@ const sdrState = {
 };
 
 // --- SDR: Load Tenant List ---
-async function loadSDRSection() {
+function formatNumber(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return String(n);
+}
+
+function getSdrDateRange() {
+    const from = $('#sdr-date-from')?.value;
+    const to = $('#sdr-date-to')?.value;
+    if (from && to) return { from, to };
+    const now = new Date();
+    const toDate = now.toISOString().split('T')[0];
+    const fromDate = new Date(now.setDate(now.getDate() - 30)).toISOString().split('T')[0];
+    return { from: fromDate, to: toDate };
+}
+
+function initSdrDatePicker() {
+    const { from, to } = getSdrDateRange();
+    const fromEl = $('#sdr-date-from');
+    const toEl = $('#sdr-date-to');
+    if (fromEl && !fromEl.value) fromEl.value = from;
+    if (toEl && !toEl.value) toEl.value = to;
+
+    fromEl?.addEventListener('change', () => loadSdrDashboard());
+    toEl?.addEventListener('change', () => loadSdrDashboard());
+
+    $$('.sdr-period-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            $$('.sdr-period-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const days = parseInt(btn.dataset.period);
+            const now = new Date();
+            const toDate = now.toISOString().split('T')[0];
+            const fromDate = new Date(new Date().setDate(new Date().getDate() - days)).toISOString().split('T')[0];
+            if ($('#sdr-date-from')) $('#sdr-date-from').value = fromDate;
+            if ($('#sdr-date-to')) $('#sdr-date-to').value = toDate;
+            loadSdrDashboard();
+        });
+    });
+}
+
+async function loadSdrDashboard() {
     const container = $('#sdr-tenants-list');
     if (!container) return;
 
-    // Ensure we show the list view
-    const listView = $('#sdr-list-view');
-    const detailView = $('#sdr-detail-view');
-    if (listView) listView.style.display = '';
-    if (detailView) detailView.style.display = 'none';
-
-    // Load global OpenAI key
-    loadSdrOpenAIKey();
+    const { from, to } = getSdrDateRange();
 
     try {
-        const res = await fetch(`${SDR_API_BASE}/tenants`);
-        if (!res.ok) {
-            container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty"><p>SDR de IA não conectado</p><small>Verifique se o serviço está rodando</small></div></div>`;
-            return;
-        }
-        const tenants = await res.json();
-        sdrState.tenants = tenants || [];
+        const res = await fetch(`${SDR_API_BASE}/dashboard?from=${from}&to=${to}`);
+        if (!res.ok) throw new Error('SDR não conectado');
+        const data = await res.json();
+
+        sdrState.tenants = data.tenants || [];
+
+        // Update KPIs
+        const t = data.totals;
+        const setKpi = (id, val) => { const el = $(`#${id}`); if (el) el.textContent = val; };
+        setKpi('sdr-kpi-clients', t.activeClients);
+        setKpi('sdr-kpi-conversations', formatNumber(t.conversations));
+        setKpi('sdr-kpi-messages', formatNumber(t.messages));
+        setKpi('sdr-kpi-leads', formatNumber(t.leads));
+        setKpi('sdr-kpi-tokens', formatNumber(t.tokens));
+        setKpi('sdr-kpi-cost', '$' + t.estimated_cost.toFixed(2));
 
         if (sdrState.tenants.length === 0) {
             container.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="activity-empty">
@@ -2053,7 +2466,10 @@ async function loadSDRSection() {
         sdrState.tenants.forEach(tenant => {
             const card = document.createElement('div');
             card.className = 'client-card';
+            card.style.cursor = 'pointer';
+            card.onclick = () => openSdrDetail(tenant.id);
             const initial = getInitials(tenant.name);
+            const cost = tenant.estimated_cost != null ? '$' + tenant.estimated_cost.toFixed(2) : '—';
             card.innerHTML = `
                 <div class="client-card-header">
                     <div class="client-name-group">
@@ -2068,29 +2484,33 @@ async function loadSDRSection() {
                         ${tenant.active !== false ? 'Ativo' : 'Inativo'}
                     </span>
                 </div>
-                <div class="client-meta">
+                <div class="client-meta" style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;">
                     <div class="client-meta-row">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                        Modelo: <code>${escapeHtml(tenant.llm_model || 'gpt-4o-mini')}</code>
+                        ${formatNumber(tenant.conversations)} conversas
                     </div>
                     <div class="client-meta-row">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>
-                        Horário: <code>${escapeHtml(tenant.business_hours_start || '08:00')} — ${escapeHtml(tenant.business_hours_end || '18:00')}</code>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                        ${formatNumber(tenant.leads)} leads
                     </div>
                     <div class="client-meta-row">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5.09 3h3"></path></svg>
-                        WhatsApp: <code>${escapeHtml(tenant.whatsapp_number || 'Não configurado')}</code>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        ${formatNumber(tenant.tokens)} tokens
+                    </div>
+                    <div class="client-meta-row" style="color:var(--accent-green);font-weight:600;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        ${cost}
                     </div>
                 </div>
                 <div class="client-card-footer">
+                    <button class="btn-text" onclick="event.stopPropagation();handleDeleteSdrTenant('${tenant.id}', '${escapeHtml(tenant.name).replace(/'/g, "\\'")}')" style="color:var(--accent-red, #ef4444);">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        Excluir
+                    </button>
                     <div style="flex:1"></div>
-                    <button class="btn-text" onclick="handleEditSdrTenant('${tenant.id}')">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        Editar
-                    </button>
-                    <button class="btn-text" onclick="openSdrDetail('${tenant.id}')" style="color:var(--accent-cyan);">
-                        Detalhes →
-                    </button>
+                    <span style="font-size:0.75rem;color:var(--text-tertiary);">
+                        <code>${escapeHtml(tenant.llm_model || 'gpt-4o-mini')}</code>
+                    </span>
                 </div>`;
             container.appendChild(card);
         });
@@ -2099,33 +2519,22 @@ async function loadSDRSection() {
     }
 }
 
+async function loadSDRSection() {
+    // Ensure we show the list view
+    const listView = $('#sdr-list-view');
+    const detailView = $('#sdr-detail-view');
+    if (listView) listView.style.display = '';
+    if (detailView) detailView.style.display = 'none';
+
+    // Load global OpenAI key (for settings modal)
+    loadSdrOpenAIKey();
+
+    // Init date picker and load dashboard
+    initSdrDatePicker();
+    await loadSdrDashboard();
+}
+
 // --- Evolution API Functions ---
-let evolutionPollingInterval = null;
-
-async function fetchEvolutionInstances() {
-    try {
-        const res = await fetch(`${SDR_API_BASE}/evolution/instances`);
-        if (!res.ok) return [];
-        const data = await res.json();
-        return Array.isArray(data) ? data : [];
-    } catch {
-        return [];
-    }
-}
-
-async function createEvolutionInstance(name) {
-    const res = await fetch(`${SDR_API_BASE}/evolution/instances`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instanceName: name }),
-    });
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Erro ao criar instância');
-    }
-    return await res.json();
-}
-
 async function getInstanceStatus(name) {
     try {
         const res = await fetch(`${SDR_API_BASE}/evolution/instances/${encodeURIComponent(name)}/status`);
@@ -2146,211 +2555,11 @@ async function getInstanceQRCode(name) {
     }
 }
 
-async function deleteEvolutionInstance(name) {
-    const res = await fetch(`${SDR_API_BASE}/evolution/instances/${encodeURIComponent(name)}`, {
-        method: 'DELETE',
-    });
-    if (!res.ok && res.status !== 204) {
-        const err = await res.json();
-        throw new Error(err.error || 'Erro ao deletar instância');
-    }
-}
-
-async function loadEvolutionInstancesSelect(selectedValue) {
-    const select = $('#sdr-tenant-evolution');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">Carregando...</option>';
-    const instances = await fetchEvolutionInstances();
-
-    if (instances.length === 0) {
-        select.innerHTML = '<option value="">— Nenhuma instância (Evolution offline?) —</option>';
-        // Allow manual typing: if there's a saved value, add it as option
-        if (selectedValue) {
-            const opt = document.createElement('option');
-            opt.value = selectedValue;
-            opt.textContent = `${selectedValue} (salvo)`;
-            select.appendChild(opt);
-            select.value = selectedValue;
-        }
-        return;
-    }
-
-    select.innerHTML = '<option value="">— Selecione uma instância —</option>';
-    instances.forEach(inst => {
-        const name = inst.instance?.instanceName || inst.instanceName || inst.name || '';
-        if (!name) return;
-        const state = inst.instance?.status || inst.state || '';
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = `${name}${state ? ` (${state})` : ''}`;
-        select.appendChild(opt);
-    });
-
-    if (selectedValue) {
-        // If saved value is not in the list, add it
-        if (!select.querySelector(`option[value="${CSS.escape(selectedValue)}"]`)) {
-            const opt = document.createElement('option');
-            opt.value = selectedValue;
-            opt.textContent = `${selectedValue} (salvo)`;
-            select.appendChild(opt);
-        }
-        select.value = selectedValue;
-    }
-}
-
-function stopEvolutionPolling() {
-    if (evolutionPollingInterval) {
-        clearInterval(evolutionPollingInterval);
-        evolutionPollingInterval = null;
-    }
-}
-
-function startEvolutionPolling(instanceName) {
-    stopEvolutionPolling();
-
-    const badge = $('#evolution-connection-badge');
-    const qrImg = $('#evolution-qr-img');
-    const qrArea = $('#evolution-qr-area');
-
-    evolutionPollingInterval = setInterval(async () => {
-        const status = await getInstanceStatus(instanceName);
-        if (!status) return;
-
-        const state = status.instance?.state || status.state || '';
-        if (state === 'open' || state === 'connected') {
-            stopEvolutionPolling();
-            if (badge) {
-                badge.textContent = 'Conectado';
-                badge.style.background = 'var(--accent-green-subtle)';
-                badge.style.color = 'var(--accent-green)';
-            }
-            if (qrImg) qrImg.style.display = 'none';
-            const loading = $('#evolution-qr-loading');
-            if (loading) loading.innerHTML = '<span style="color:var(--accent-green);font-weight:600;">WhatsApp Conectado!</span>';
-
-            // Auto-select in dropdown
-            const select = $('#sdr-tenant-evolution');
-            if (select) select.value = instanceName;
-
-            showToast('WhatsApp conectado com sucesso!', 'success');
-        }
-    }, 5000);
-}
-
-async function showEvolutionQRCode(instanceName) {
-    const qrArea = $('#evolution-qr-area');
-    const qrImg = $('#evolution-qr-img');
-    const qrLoading = $('#evolution-qr-loading');
-    const badge = $('#evolution-connection-badge');
-
-    if (qrArea) qrArea.style.display = '';
-    if (qrImg) qrImg.style.display = 'none';
-    if (qrLoading) {
-        qrLoading.style.display = 'flex';
-        qrLoading.textContent = 'Gerando QR Code...';
-    }
-    if (badge) {
-        badge.textContent = 'Aguardando leitura...';
-        badge.style.background = 'var(--accent-orange-subtle)';
-        badge.style.color = 'var(--accent-orange)';
-    }
-
-    const result = await getInstanceQRCode(instanceName);
-
-    if (result) {
-        const base64 = result.base64 || result.qrcode?.base64 || '';
-        if (base64) {
-            const src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
-            if (qrImg) {
-                qrImg.src = src;
-                qrImg.style.display = '';
-            }
-            if (qrLoading) qrLoading.style.display = 'none';
-        } else {
-            if (qrLoading) qrLoading.textContent = 'QR Code não disponível. A instância pode já estar conectada.';
-        }
-    } else {
-        if (qrLoading) qrLoading.textContent = 'Erro ao gerar QR Code';
-    }
-
-    startEvolutionPolling(instanceName);
-}
-
-// Event: Create new instance
-$('#btn-create-evolution-instance')?.addEventListener('click', async () => {
-    const nameInput = $('#evolution-new-name');
-    const name = nameInput?.value?.trim();
-    if (!name) {
-        showToast('Digite um nome para a instância', 'error');
-        return;
-    }
-
-    try {
-        showToast('Criando instância...', 'info');
-        await createEvolutionInstance(name);
-        showToast(`Instância "${name}" criada!`, 'success');
-
-        // Reload select and auto-select
-        await loadEvolutionInstancesSelect(name);
-
-        // Show QR code
-        await showEvolutionQRCode(name);
-    } catch (err) {
-        showToast(err.message, 'error');
-    }
-});
-
-// Event: Refresh instances
-$('#btn-refresh-instances')?.addEventListener('click', () => {
-    const current = $('#sdr-tenant-evolution')?.value;
-    loadEvolutionInstancesSelect(current);
-});
-
-// --- SDR: Modal CRUD ---
-function openSdrModal(tenant = null) {
+// --- SDR: Modal (creation only) ---
+function openSdrModal() {
     const modal = $('#modal-sdr-tenant');
-    const title = $('#sdr-modal-title');
-    const submitBtn = $('#sdr-modal-submit-btn span');
-
-    // Reset QR area
-    const qrArea = $('#evolution-qr-area');
-    if (qrArea) qrArea.style.display = 'none';
-    stopEvolutionPolling();
-
-    if (tenant) {
-        title.textContent = 'Editar Cliente SDR';
-        submitBtn.textContent = 'Salvar Alterações';
-        $('#sdr-tenant-id').value = tenant.id;
-        $('#sdr-tenant-name').value = tenant.name || '';
-        $('#sdr-tenant-slug').value = tenant.slug || '';
-        $('#sdr-tenant-slug').disabled = true;
-        $('#sdr-tenant-niche').value = tenant.niche || '';
-        $('#sdr-tenant-tone').value = tenant.tone || 'profissional';
-        $('#sdr-tenant-whatsapp').value = tenant.whatsapp_number || '';
-        $('#sdr-tenant-model').value = tenant.llm_model || 'gpt-4o-mini';
-        $('#sdr-tenant-tokens').value = tenant.max_tokens_per_response || tenant.max_tokens || 500;
-        $('#sdr-tenant-hours-start').value = tenant.business_hours_start || '08:00';
-        $('#sdr-tenant-hours-end').value = tenant.business_hours_end || '18:00';
-        $('#sdr-tenant-days').value = tenant.business_days || '1,2,3,4,5';
-        $('#sdr-tenant-prompt').value = tenant.system_prompt || '';
-        $('#sdr-tenant-ooh-msg').value = tenant.out_of_hours_message || '';
-        // Load instances select and set current value
-        loadEvolutionInstancesSelect(tenant.evolution_instance_id || '');
-    } else {
-        title.textContent = 'Novo Cliente SDR';
-        submitBtn.textContent = 'Salvar Cliente';
-        $('#form-sdr-tenant').reset();
-        $('#sdr-tenant-id').value = '';
-        $('#sdr-tenant-slug').disabled = false;
-        $('#sdr-tenant-tokens').value = 500;
-        $('#sdr-tenant-hours-start').value = '08:00';
-        $('#sdr-tenant-hours-end').value = '18:00';
-        $('#sdr-tenant-days').value = '1,2,3,4,5';
-        // Load instances select
-        loadEvolutionInstancesSelect('');
-    }
-
+    $('#form-sdr-tenant').reset();
+    $('#sdr-tenant-id').value = '';
     modal.classList.add('visible');
     document.body.style.overflow = 'hidden';
 }
@@ -2359,11 +2568,29 @@ function closeSdrModal() {
     const modal = $('#modal-sdr-tenant');
     modal.classList.remove('visible');
     document.body.style.overflow = '';
-    $('#sdr-tenant-slug').disabled = false;
-    stopEvolutionPolling();
 }
 
 $('#btn-add-sdr-tenant')?.addEventListener('click', () => openSdrModal());
+
+// --- SDR: Settings Modal (OpenAI API Key) ---
+function openSdrSettingsModal() {
+    const modal = $('#modal-sdr-settings');
+    if (modal) {
+        modal.classList.add('visible');
+        document.body.style.overflow = 'hidden';
+    }
+}
+window.closeSdrSettingsModal = function () {
+    const modal = $('#modal-sdr-settings');
+    if (modal) {
+        modal.classList.remove('visible');
+        document.body.style.overflow = '';
+    }
+};
+$('#btn-sdr-settings')?.addEventListener('click', () => openSdrSettingsModal());
+$('#modal-sdr-settings')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSdrSettingsModal();
+});
 
 $('#modal-sdr-tenant')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeSdrModal();
@@ -2375,54 +2602,42 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
+// Form: Create new tenant (modal)
 $('#form-sdr-tenant')?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const id = $('#sdr-tenant-id').value;
     const data = {
         name: $('#sdr-tenant-name').value.trim(),
         slug: $('#sdr-tenant-slug').value.trim(),
-        niche: $('#sdr-tenant-niche').value.trim(),
-        tone: $('#sdr-tenant-tone').value,
         whatsapp_number: $('#sdr-tenant-whatsapp').value.trim(),
-        evolution_instance_id: $('#sdr-tenant-evolution').value.trim(),
-        llm_model: $('#sdr-tenant-model').value,
-        max_tokens_per_response: parseInt($('#sdr-tenant-tokens').value) || 500,
-        business_hours_start: $('#sdr-tenant-hours-start').value,
-        business_hours_end: $('#sdr-tenant-hours-end').value,
-        business_days: $('#sdr-tenant-days').value.trim(),
-        system_prompt: $('#sdr-tenant-prompt').value.trim(),
-        out_of_hours_message: $('#sdr-tenant-ooh-msg').value.trim(),
     };
 
+    if (!data.name || !data.slug) {
+        showToast('Nome e slug são obrigatórios', 'error');
+        return;
+    }
+
     try {
-        let res;
-        if (id) {
-            res = await fetch(`${SDR_API_BASE}/tenants/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            });
-        } else {
-            res = await fetch(`${SDR_API_BASE}/tenants`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data),
-            });
-        }
+        const res = await fetch(`${SDR_API_BASE}/tenants`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
 
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.error || 'Erro ao salvar');
+            throw new Error(err.error || 'Erro ao criar');
         }
 
-        showToast(id ? 'Cliente atualizado!' : 'Cliente criado!', 'success');
+        const savedTenant = await res.json();
+        showToast('Cliente criado! Configure o prompt e conecte o WhatsApp.', 'success');
         closeSdrModal();
-        loadSDRSection();
+        await loadSDRSection();
 
-        // If we're viewing this tenant's details, reload them
-        if (sdrState.selectedTenantId === id) {
-            openSdrDetail(id);
+        // Auto-open detail view on WhatsApp tab
+        if (savedTenant?.id) {
+            openSdrDetail(savedTenant.id);
+            setTimeout(() => switchSdrTab('whatsapp'), 300);
         }
     } catch (err) {
         showToast(err.message, 'error');
@@ -2430,34 +2645,123 @@ $('#form-sdr-tenant')?.addEventListener('submit', async (e) => {
 });
 
 window.handleEditSdrTenant = function (tenantId) {
-    const tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
-    if (!tenant) {
-        showToast('Cliente não encontrado', 'error');
+    openSdrDetail(tenantId);
+};
+
+window.handleDeleteSdrTenant = async function (tenantId, tenantName) {
+    if (!confirm(`Excluir o cliente "${tenantName}"?\n\nIsso vai remover:\n- Todas as conversas e mensagens\n- Todos os leads\n- Toda a base de conhecimento\n- A instância WhatsApp\n\nEssa ação não pode ser desfeita.`)) {
         return;
     }
-    openSdrModal(tenant);
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}`, {
+            method: 'DELETE',
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Erro ao excluir');
+        }
+
+        showToast(`Cliente "${tenantName}" excluído`, 'success');
+
+        // If viewing this tenant's detail, go back to list
+        if (sdrState.selectedTenantId === tenantId || String(sdrState.selectedTenantId) === String(tenantId)) {
+            closeSdrDetail();
+        }
+
+        loadSDRSection();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 // --- SDR: Detail Panel ---
+// --- SDR: Toggle Bot Active/Paused ---
+function updateToggleActiveBtn(tenant) {
+    const btn = $('#btn-sdr-toggle-active');
+    const label = $('#sdr-toggle-label');
+    const icon = $('#sdr-toggle-icon');
+    if (!btn || !tenant) return;
+
+    const isActive = tenant.active !== false;
+    if (isActive) {
+        label.textContent = 'Pausar Bot';
+        btn.className = 'btn-secondary';
+        icon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
+    } else {
+        label.textContent = 'Ativar Bot';
+        btn.className = 'btn-primary';
+        icon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+    }
+}
+
+$('#btn-sdr-toggle-active')?.addEventListener('click', async () => {
+    const tenant = sdrState.selectedTenant;
+    if (!tenant) return;
+
+    const isActive = tenant.active !== false;
+    const action = isActive ? 'pausar' : 'ativar';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenant.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: !isActive }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || `Erro ao ${action}`);
+        }
+
+        const updated = await res.json();
+        sdrState.selectedTenant = updated;
+        const idx = sdrState.tenants.findIndex(t => String(t.id) === String(tenant.id));
+        if (idx >= 0) sdrState.tenants[idx] = updated;
+
+        updateToggleActiveBtn(updated);
+        showToast(isActive ? 'Bot pausado — não vai responder mensagens' : 'Bot ativado!', 'success');
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+});
+
 window.openSdrDetail = async function (tenantId) {
-    const tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
+    let tenant = sdrState.tenants.find(t => t.id === tenantId || String(t.id) === String(tenantId));
     if (!tenant) {
         showToast('Cliente não encontrado', 'error');
         return;
     }
 
     sdrState.selectedTenantId = tenantId;
-    sdrState.selectedTenant = tenant;
 
-    // Toggle views
+    // Toggle views immediately (show loading state)
     const listView = $('#sdr-list-view');
     const detailView = $('#sdr-detail-view');
     if (listView) listView.style.display = 'none';
     if (detailView) detailView.style.display = '';
 
-    // Set header
+    // Set header with cached data
     $('#sdr-detail-title').textContent = tenant.name;
     $('#sdr-detail-subtitle').textContent = `${tenant.slug} · ${tenant.niche || 'Geral'}`;
+
+    // Fetch full tenant data (dashboard API returns limited columns)
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants`);
+        if (res.ok) {
+            const allTenants = await res.json();
+            const full = allTenants.find(t => String(t.id) === String(tenantId));
+            if (full) tenant = full;
+        }
+    } catch { /* use cached data */ }
+
+    sdrState.selectedTenant = tenant;
+    const idx = sdrState.tenants.findIndex(t => String(t.id) === String(tenantId));
+    if (idx >= 0) sdrState.tenants[idx] = tenant;
+
+    // Update toggle button state
+    updateToggleActiveBtn(tenant);
 
     // Load stats
     loadSdrStats(tenantId);
@@ -2471,11 +2775,6 @@ $('#btn-sdr-back')?.addEventListener('click', () => {
     closeSdrDetail();
 });
 
-$('#btn-sdr-edit-detail')?.addEventListener('click', () => {
-    if (sdrState.selectedTenant) {
-        openSdrModal(sdrState.selectedTenant);
-    }
-});
 
 function closeSdrDetail() {
     sdrState.selectedTenantId = null;
@@ -2621,6 +2920,16 @@ async function loadSdrWhatsAppStatus(tenant) {
         }
         if (reconnectBtn) reconnectBtn.style.display = '';
     }
+
+    // Populate connect link section
+    const linkSection = $('#wa-detail-connect-link-section');
+    const linkUrl = $('#wa-detail-connect-url');
+    if (linkSection && tenant.slug) {
+        linkSection.style.display = '';
+        if (linkUrl) linkUrl.value = getSdrConnectUrl(tenant.slug);
+    } else if (linkSection) {
+        linkSection.style.display = 'none';
+    }
 }
 
 $('#btn-whatsapp-refresh-status')?.addEventListener('click', () => {
@@ -2680,33 +2989,147 @@ $('#btn-whatsapp-reconnect')?.addEventListener('click', async () => {
     }
 });
 
-// --- SDR: Config Tab ---
+// --- WhatsApp Detail: Connect Link buttons ---
+$('#btn-wa-copy-connect-link')?.addEventListener('click', () => {
+    const url = $('#wa-detail-connect-url')?.value;
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+        showToast('Link copiado!', 'success');
+    }).catch(() => {
+        showToast('Erro ao copiar', 'error');
+    });
+});
+
+$('#btn-wa-send-connect-link')?.addEventListener('click', () => {
+    const url = $('#wa-detail-connect-url')?.value;
+    if (!url) return;
+    const msg = encodeURIComponent(`Olá! Conecte seu WhatsApp ao Bot SDR acessando este link:\n${url}`);
+    window.open(`https://wa.me/?text=${msg}`, '_blank');
+});
+
+// --- SDR: Config Tab (editable form) ---
 function renderSdrConfig(tenant) {
-    const container = $('#sdr-config-list');
-    if (!container || !tenant) return;
+    if (!tenant) return;
+    const f = id => $(`#${id}`);
 
-    const fields = [
-        ['Nome', tenant.name],
-        ['Slug', tenant.slug],
-        ['Nicho', tenant.niche || '—'],
-        ['Tom', tenant.tone || 'profissional'],
-        ['WhatsApp', tenant.whatsapp_number || '—'],
-        ['Evolution Instance', tenant.evolution_instance_id || '—'],
-        ['Modelo LLM', tenant.llm_model || 'gpt-4o-mini'],
-        ['Max Tokens', tenant.max_tokens_per_response || tenant.max_tokens || 500],
-        ['Horário', `${tenant.business_hours_start || '08:00'} — ${tenant.business_hours_end || '18:00'}`],
-        ['Dias Úteis', tenant.business_days || '1,2,3,4,5'],
-        ['System Prompt', tenant.system_prompt || '—'],
-        ['Msg Fora do Horário', tenant.out_of_hours_message || '—'],
-    ];
+    // Identificação
+    if (f('cfg-name')) f('cfg-name').value = tenant.name || '';
+    if (f('cfg-slug')) f('cfg-slug').value = tenant.slug || '';
+    if (f('cfg-niche')) f('cfg-niche').value = tenant.niche || '';
+    if (f('cfg-tone')) f('cfg-tone').value = tenant.tone || 'profissional';
+    if (f('cfg-whatsapp')) f('cfg-whatsapp').value = tenant.whatsapp_number || '';
 
-    container.innerHTML = fields.map(([label, value]) => `
-        <div class="setting-row">
-            <span class="setting-label">${escapeHtml(label)}</span>
-            <span class="setting-value" style="max-width:60%;text-align:right;word-break:break-word;white-space:pre-wrap;">${escapeHtml(String(value))}</span>
-        </div>
-    `).join('');
+    // IA
+    if (f('cfg-model')) f('cfg-model').value = tenant.llm_model || 'gpt-4o-mini';
+    if (f('cfg-tokens')) f('cfg-tokens').value = tenant.max_tokens_per_response || 500;
+    if (f('cfg-context-window')) f('cfg-context-window').value = tenant.context_window || 5;
+    if (f('cfg-temperature')) f('cfg-temperature').value = tenant.temperature != null ? tenant.temperature : 0.7;
+    if (f('cfg-prompt')) f('cfg-prompt').value = tenant.system_prompt || '';
+
+    // Horário
+    if (f('cfg-hours-start')) f('cfg-hours-start').value = tenant.business_hours_start || '08:00';
+    if (f('cfg-hours-end')) f('cfg-hours-end').value = tenant.business_hours_end || '18:00';
+    if (f('cfg-days')) {
+        const days = Array.isArray(tenant.business_days) ? tenant.business_days.join(',') : (tenant.business_days || '1,2,3,4,5');
+        f('cfg-days').value = days;
+    }
+    if (f('cfg-ooh-msg')) f('cfg-ooh-msg').value = tenant.out_of_hours_message || '';
+    if (f('cfg-welcome-msg')) f('cfg-welcome-msg').value = tenant.welcome_message || '';
+
+    // Notificações
+    if (f('cfg-notification-phone')) f('cfg-notification-phone').value = tenant.notification_phone || '';
+
+    // Follow-up
+    if (f('cfg-followup-intervals')) {
+        const intervals = Array.isArray(tenant.follow_up_intervals) ? tenant.follow_up_intervals.join(', ') : (tenant.follow_up_intervals || '24, 48, 168');
+        f('cfg-followup-intervals').value = intervals;
+    }
+    if (f('cfg-followup-max')) f('cfg-followup-max').value = tenant.max_follow_ups != null ? tenant.max_follow_ups : 3;
+
+    // Integrações Google
+    if (f('cfg-google-sheet')) f('cfg-google-sheet').value = tenant.google_sheet_id || '';
+    if (f('cfg-google-calendar')) f('cfg-google-calendar').value = tenant.google_calendar_id || '';
+
+    // WhatsApp / Evolution
+    if (f('cfg-reject-call')) f('cfg-reject-call').value = tenant.reject_call != null ? String(tenant.reject_call) : 'true';
+    if (f('cfg-always-online')) f('cfg-always-online').value = tenant.always_online != null ? String(tenant.always_online) : 'true';
+    if (f('cfg-msg-call')) f('cfg-msg-call').value = tenant.msg_call || '';
+    if (f('cfg-read-messages')) f('cfg-read-messages').value = tenant.read_messages != null ? String(tenant.read_messages) : 'false';
 }
+
+// Save config form
+$('#form-sdr-config')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    const btn = $('#btn-save-sdr-config');
+    const origText = btn?.querySelector('span')?.textContent;
+    if (btn) btn.querySelector('span').textContent = 'Salvando...';
+    if (btn) btn.disabled = true;
+
+    try {
+        const followUpRaw = $('#cfg-followup-intervals')?.value.trim();
+        let followUpIntervals = undefined;
+        if (followUpRaw) {
+            followUpIntervals = followUpRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+        }
+
+        const data = {
+            name: $('#cfg-name')?.value.trim() || undefined,
+            niche: $('#cfg-niche')?.value.trim() || undefined,
+            tone: $('#cfg-tone')?.value || undefined,
+            whatsapp_number: $('#cfg-whatsapp')?.value.trim() || undefined,
+            llm_model: $('#cfg-model')?.value || undefined,
+            max_tokens_per_response: parseInt($('#cfg-tokens')?.value) || undefined,
+            context_window: parseInt($('#cfg-context-window')?.value) || undefined,
+            temperature: $('#cfg-temperature')?.value !== '' ? parseFloat($('#cfg-temperature')?.value) : undefined,
+            system_prompt: $('#cfg-prompt')?.value.trim() || undefined,
+            business_hours_start: $('#cfg-hours-start')?.value || undefined,
+            business_hours_end: $('#cfg-hours-end')?.value || undefined,
+            business_days: $('#cfg-days')?.value.trim() || undefined,
+            out_of_hours_message: $('#cfg-ooh-msg')?.value.trim() || undefined,
+            welcome_message: $('#cfg-welcome-msg')?.value.trim() || undefined,
+            notification_phone: $('#cfg-notification-phone')?.value.trim() || undefined,
+            follow_up_intervals: followUpIntervals,
+            max_follow_ups: parseInt($('#cfg-followup-max')?.value) >= 0 ? parseInt($('#cfg-followup-max')?.value) : undefined,
+            google_sheet_id: $('#cfg-google-sheet')?.value.trim() || undefined,
+            google_calendar_id: $('#cfg-google-calendar')?.value.trim() || undefined,
+            reject_call: $('#cfg-reject-call')?.value === 'true',
+            always_online: $('#cfg-always-online')?.value === 'true',
+            msg_call: $('#cfg-msg-call')?.value.trim() || undefined,
+            read_messages: $('#cfg-read-messages')?.value === 'true',
+        };
+
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Erro ao salvar');
+        }
+
+        const updated = await res.json();
+        showToast('Configurações salvas!', 'success');
+
+        // Update local state
+        sdrState.selectedTenant = updated;
+        const idx = sdrState.tenants.findIndex(t => String(t.id) === String(tenantId));
+        if (idx >= 0) sdrState.tenants[idx] = updated;
+
+        // Update header
+        $('#sdr-detail-title').textContent = updated.name;
+        $('#sdr-detail-subtitle').textContent = `${updated.slug} · ${updated.niche || 'Geral'}`;
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) btn.querySelector('span').textContent = origText;
+        if (btn) btn.disabled = false;
+    }
+});
 
 // --- SDR: Knowledge Base Tab ---
 async function loadSdrKnowledge(tenantId) {
@@ -3136,6 +3559,17 @@ async function loadCalcSection() {
 // ============================================
 
 async function loadAlertsSection() {
+    // Try new errors-summary endpoint first, fallback to legacy
+    try {
+        const res = await fetch("/api/dashboard/errors-summary");
+        if (res.ok) {
+            const data = await res.json();
+            renderErrorsSummaryNew(data);
+            return;
+        }
+    } catch { /* fallback below */ }
+
+    // Fallback: try legacy alerts endpoint
     try {
         const res = await fetch("/api/alerts/errors?limit=50");
         if (!res.ok) throw new Error("Falha ao carregar alertas");
@@ -3145,8 +3579,109 @@ async function loadAlertsSection() {
     } catch (err) {
         console.error("Erro ao carregar alertas:", err);
         const list = document.getElementById("alerts-error-list");
-        if (list) list.innerHTML = '<p class="empty-state">Erro ao carregar alertas</p>';
+        if (list) list.innerHTML = '<p class="empty-state">Nenhum erro encontrado. Sistema funcionando normalmente.</p>';
     }
+}
+
+function renderErrorsSummaryNew(data) {
+    // Update stat cards
+    const rateEl = document.getElementById("error-success-rate");
+    const countEl = document.getElementById("error-total-count");
+    const lastEl = document.getElementById("error-last-date");
+
+    if (rateEl) {
+        const total = data.errorsByType.reduce((s, e) => s + e.count, 0);
+        rateEl.textContent = total === 0 ? '100%' : total + ' erro' + (total !== 1 ? 's' : '');
+        rateEl.style.color = total === 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+    }
+    if (countEl) countEl.textContent = data.errorsByType.reduce((s, e) => s + e.count, 0);
+    if (lastEl && data.recentErrors.length > 0) {
+        lastEl.textContent = formatTimeAgo(data.recentErrors[0].timestamp);
+    } else if (lastEl) {
+        lastEl.textContent = 'Nenhum';
+        lastEl.style.color = 'var(--accent-green)';
+    }
+
+    // Render error groups
+    const list = document.getElementById("alerts-error-list");
+    if (!list) return;
+
+    if (data.recentErrors.length === 0) {
+        list.innerHTML = `<div class="card" style="margin-bottom:20px;">
+            <div class="activity-empty" style="padding:32px;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="1.5" opacity="0.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <p style="color:var(--accent-green);font-weight:600;">Sistema sem erros</p>
+                <small>Todos os leads foram processados com sucesso.</small>
+            </div>
+        </div>`;
+        return;
+    }
+
+    // Group errors by type with actionable suggestions
+    const suggestions = {
+        'permission': 'Verifique se a conta de servico do Dashboard tem acesso de Editor na planilha do Google Sheets do cliente.',
+        'sheets': 'Erro na conexao com Google Sheets. Verifique credenciais e permissoes da planilha.',
+        'recuperado': 'Lead foi recuperado manualmente apos falha no processamento original. Nenhuma acao necessaria.',
+        'default': 'Erro de processamento. Verifique o payload do webhook e tente reprocessar.'
+    };
+
+    function getSuggestion(errorMsg) {
+        if (!errorMsg) return suggestions.default;
+        const lower = errorMsg.toLowerCase();
+        if (lower.includes('permission') || lower.includes('permissao')) return suggestions.permission;
+        if (lower.includes('sheet') || lower.includes('planilha')) return suggestions.sheets;
+        if (lower.includes('recuperado') || lower.includes('recovered')) return suggestions.recuperado;
+        return suggestions.default;
+    }
+
+    // Render error types summary
+    let html = '';
+    if (data.errorsByType.length > 0) {
+        html += '<div class="card" style="margin-bottom:20px;"><div class="card-header"><h3 class="card-title">Tipos de Erro</h3></div><div class="card-body" style="padding:0;">';
+        html += data.errorsByType.map(e => {
+            const suggestion = getSuggestion(e.errorType);
+            const clients = e.affectedClients.join(', ');
+            return `<div style="padding:16px 20px;border-bottom:1px solid var(--border-subtle);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:500;font-size:0.85rem;margin-bottom:4px;">${escapeHtml(e.errorType || 'Erro desconhecido')}</div>
+                        <div style="font-size:0.75rem;color:var(--text-tertiary);">${clients ? 'Clientes: ' + escapeHtml(clients) : ''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="badge-status badge-error">${e.count}x</span>
+                        <span style="font-size:0.7rem;color:var(--text-tertiary);">${formatTimeAgo(e.lastOccurrence)}</span>
+                    </div>
+                </div>
+                <div style="padding:8px 12px;background:var(--accent-primary-subtle);border-radius:8px;font-size:0.75rem;color:var(--accent-primary);">
+                    <strong>Resolucao:</strong> ${escapeHtml(suggestion)}
+                </div>
+            </div>`;
+        }).join('');
+        html += '</div></div>';
+    }
+
+    // Render recent errors list
+    html += '<div class="card"><div class="card-header"><h3 class="card-title">Erros Recentes</h3></div><div class="card-body" style="padding:0;">';
+    html += data.recentErrors.map(err => {
+        const time = new Date(err.timestamp).toLocaleString('pt-BR');
+        return `<div class="activity-item" style="border-bottom:1px solid var(--border-subtle);">
+            <div class="activity-icon-wrapper stat-icon-error">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+            <div class="activity-content">
+                <div class="activity-title">
+                    <span>${escapeHtml(err.name || formatPhoneDisplay(err.phone))}</span>
+                    <span class="badge-status badge-error">Erro</span>
+                    ${err.origin ? `<span class="badge-status badge-origin-default">${escapeHtml(err.origin)}</span>` : ''}
+                </div>
+                <div class="activity-subtitle">${escapeHtml(err.client)} \u00b7 ${time}</div>
+                ${err.errorMessage ? `<div style="margin-top:6px;padding:6px 10px;background:var(--accent-red-subtle);border-radius:6px;font-size:0.75rem;color:var(--accent-red);">${escapeHtml(err.errorMessage)}</div>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+    html += '</div></div>';
+
+    list.innerHTML = html;
 }
 
 function renderAlertsStats(stats) {
@@ -3566,9 +4101,8 @@ async function openRelatorioModal(client = null) {
 
     $('#modal-relatorio-title').textContent = isEdit ? 'Editar Cliente' : 'Novo Cliente';
     $('#relatorio-client-edit-id').value = client?.id || '';
-    $('#rel-semanal-tab').value = client?.semanal_tab_name || 'Atualizar Projeção Semanal';
-    $('#rel-mensal-tab').value = client?.mensal_tab_name || 'Métricas Gerenciadores';
-    $('#rel-lead-metric').value = client?.lead_metric || 'fb_ads:actions_lead';
+
+    $('#rel-lead-metric-ig').checked = client?.lead_metric === 'ig:new_followers_count';
     $('#rel-notes').value = client?.notes || '';
     $('#rel-spreadsheet-url').value = client?.spreadsheet_id || '';
     $('#rel-spreadsheet-id').value = client?.spreadsheet_id || '';
@@ -3922,9 +4456,8 @@ $('#form-relatorio-client')?.addEventListener('submit', async (e) => {
         meta_ads_integration_id: $('#rel-meta-select')?.value || null,
         google_ads_integration_id: $('#rel-google-select')?.value || null,
         spreadsheet_id: sheetId,
-        semanal_tab_name: $('#rel-semanal-tab').value.trim() || 'Atualizar Projeção Semanal',
-        mensal_tab_name: $('#rel-mensal-tab').value.trim() || 'Métricas Gerenciadores',
-        lead_metric: $('#rel-lead-metric').value || 'fb_ads:actions_lead',
+
+        lead_metric: $('#rel-lead-metric-ig').checked ? 'ig:new_followers_count' : null,
         metrics_config: metricsConfig,
         notes: $('#rel-notes').value.trim() || null,
         active: true,
@@ -3996,3 +4529,493 @@ $('#btn-relatorio-refresh-execs')?.addEventListener('click', loadRelatorioExecut
 $('#modal-relatorio-client')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeRelatorioModal();
 });
+
+// ============================================
+// Keywords Section (Palavras-Chave Google Ads)
+// ============================================
+
+const kwState = {
+    period: '7d',
+    clientId: null,
+    dateFrom: null,
+    dateTo: null,
+};
+
+function getKwDateRange() {
+    const now = new Date();
+    let from, to;
+    if (kwState.period === 'custom' && kwState.dateFrom && kwState.dateTo) {
+        from = kwState.dateFrom;
+        to = kwState.dateTo;
+    } else {
+        const days = kwState.period === '7d' ? 7 : kwState.period === '90d' ? 90 : 30;
+        from = new Date(now.getTime() - days * 86400000).toISOString();
+        to = now.toISOString();
+    }
+    return { from, to };
+}
+
+function buildKwParams() {
+    const { from, to } = getKwDateRange();
+    const params = new URLSearchParams();
+    if (kwState.clientId) params.set('client', kwState.clientId);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return params.toString();
+}
+
+async function loadKeywordsSection() {
+    // Populate client select
+    const select = document.getElementById('kw-client-select');
+    if (select && select.options.length <= 1) {
+        try {
+            const clients = await fetch('/admin/clients', { credentials: 'same-origin' }).then(r => r.json());
+            clients.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c._db_id || c.id;
+                opt.textContent = c.name;
+                select.appendChild(opt);
+            });
+        } catch (e) { console.error('Failed to load clients for keywords', e); }
+    }
+
+    await Promise.all([
+        loadKeywordsStats(),
+        loadKeywordsOverview(),
+        loadKeywordsTrend(),
+        loadKeywordsBreakdown(),
+        loadKeywordsCampaigns(),
+    ]);
+}
+
+async function loadKeywordsStats() {
+    try {
+        const data = await fetch('/api/keywords/stats?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const el = (id) => document.getElementById(id);
+        if (el('kw-stat-unique')) el('kw-stat-unique').textContent = data.uniqueKeywords || 0;
+        if (el('kw-stat-leads')) el('kw-stat-leads').textContent = data.totalLeads || 0;
+        if (el('kw-stat-top')) el('kw-stat-top').textContent = data.topKeyword || '—';
+        if (el('kw-stat-rate')) el('kw-stat-rate').textContent = (data.conversionRate || 0) + '%';
+        if (el('kw-stat-conversions')) el('kw-stat-conversions').textContent = data.totalConversions || 0;
+        if (el('kw-stat-value')) el('kw-stat-value').textContent = 'R$ ' + (data.totalValue || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    } catch (e) { console.error('Keywords stats error', e); }
+}
+
+async function loadKeywordsOverview() {
+    try {
+        const data = await fetch('/api/keywords/overview?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const tbody = document.getElementById('kw-ranking-body');
+        if (!tbody) return;
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhuma keyword encontrada no periodo</td></tr>';
+            return;
+        }
+
+        const maxLeads = Math.max(...data.map(d => parseInt(d.leads, 10)));
+        tbody.innerHTML = data.map(row => {
+            const leads = parseInt(row.leads, 10);
+            const conversions = parseInt(row.conversions, 10);
+            const rate = parseFloat(row.rate || 0);
+            const value = parseFloat(row.total_value || 0);
+            const barWidth = maxLeads > 0 ? (leads / maxLeads * 100) : 0;
+            const lastDate = row.last_date ? new Date(row.last_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
+            const keyword = row.keyword || '(sem keyword)';
+            const campaign = row.campaign || '(sem campanha)';
+            return '<tr class="kw-row-clickable" data-keyword="' + escapeHtml(keyword) + '">' +
+                '<td><div class="kw-cell-bar"><div class="kw-bar" style="width:' + barWidth + '%"></div><span class="kw-keyword-text">' + escapeHtml(keyword) + '</span></div></td>' +
+                '<td>' + escapeHtml(campaign) + '</td>' +
+                '<td>' + leads + '</td>' +
+                '<td>' + conversions + '</td>' +
+                '<td>' + rate + '%</td>' +
+                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                '<td>' + lastDate + '</td>' +
+                '</tr>';
+        }).join('');
+
+        // Click handler for keyword detail
+        tbody.querySelectorAll('.kw-row-clickable').forEach(row => {
+            row.addEventListener('click', () => {
+                const kw = row.dataset.keyword;
+                openKeywordDetail(kw);
+            });
+        });
+
+        // Sorting click handlers on headers
+        const thElements = document.querySelectorAll('#kw-ranking-table thead th');
+        thElements.forEach((th, i) => {
+            th.style.cursor = 'pointer';
+            th.onclick = () => sortKeywordsTable(i);
+        });
+    } catch (e) { console.error('Keywords overview error', e); }
+}
+
+async function loadKeywordsTrend() {
+    try {
+        const data = await fetch('/api/keywords/trend?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        renderKwTrendChart(data);
+    } catch (e) { console.error('Keywords trend error', e); }
+}
+
+function renderKwTrendChart(data) {
+    const canvas = document.getElementById('kw-trend-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 200 * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = '200px';
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = 200;
+    const padding = { top: 20, right: 20, bottom: 40, left: 40 };
+    const chartW = w - padding.left - padding.right;
+    const chartH = h - padding.top - padding.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (!data || data.length === 0) {
+        ctx.fillStyle = '#5c5e6a';
+        ctx.font = '13px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Sem dados no periodo', w / 2, h / 2);
+        return;
+    }
+
+    const maxVal = Math.max(...data.map(d => parseInt(d.leads, 10)), 1);
+    const barGap = 4;
+    const barWidth = Math.max(4, (chartW / data.length) - barGap);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(w - padding.right, y);
+        ctx.stroke();
+    }
+
+    // Y axis labels
+    ctx.fillStyle = '#5c5e6a';
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartH / 4) * i;
+        const val = Math.round(maxVal * (1 - i / 4));
+        ctx.fillText(val.toString(), padding.left - 8, y + 4);
+    }
+
+    // Legend
+    const legendY = 8;
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(66, 133, 244, 0.7)';
+    ctx.fillRect(w - 220, legendY - 6, 10, 10);
+    ctx.fillStyle = '#8b8d97';
+    ctx.fillText('Leads', w - 206, legendY + 3);
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+    ctx.fillRect(w - 150, legendY - 6, 10, 10);
+    ctx.fillStyle = '#8b8d97';
+    ctx.fillText('Conversões', w - 136, legendY + 3);
+
+    // Store bar positions for tooltip
+    const barPositions = [];
+
+    // Bars
+    data.forEach((d, i) => {
+        const leads = parseInt(d.leads, 10);
+        const conversions = parseInt(d.conversions || 0, 10);
+        const barH = (leads / maxVal) * chartH;
+        const x = padding.left + i * (barWidth + barGap);
+        const y = padding.top + chartH - barH;
+
+        // Lead bar
+        ctx.fillStyle = 'rgba(66, 133, 244, 0.7)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barH, [3, 3, 0, 0]);
+        ctx.fill();
+
+        // Conversion overlay
+        if (conversions > 0) {
+            const convH = (conversions / maxVal) * chartH;
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+            ctx.beginPath();
+            ctx.roundRect(x, padding.top + chartH - convH, barWidth, convH, [3, 3, 0, 0]);
+            ctx.fill();
+        }
+
+        // X axis label (show every N labels)
+        const showEvery = Math.max(1, Math.floor(data.length / 10));
+        if (i % showEvery === 0) {
+            ctx.fillStyle = '#5c5e6a';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            const dateStr = d.day ? new Date(d.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) : '';
+            ctx.fillText(dateStr, x + barWidth / 2, h - 8);
+        }
+
+        barPositions.push({ x, y, w: barWidth, h: barH, leads, conversions, day: d.day });
+    });
+
+    // Tooltip on hover
+    const tooltip = document.getElementById('kw-chart-tooltip');
+    if (tooltip) {
+        canvas.onmousemove = function(e) {
+            const canvasRect = canvas.getBoundingClientRect();
+            const mx = e.clientX - canvasRect.left;
+            const my = e.clientY - canvasRect.top;
+            let found = false;
+            for (const bar of barPositions) {
+                if (mx >= bar.x && mx <= bar.x + bar.w && my >= bar.y && my <= bar.y + bar.h) {
+                    const dateStr = bar.day ? new Date(bar.day).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '';
+                    tooltip.innerHTML = '<strong>' + dateStr + '</strong><br>Leads: ' + bar.leads + '<br>Conversões: ' + bar.conversions;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.clientX - canvasRect.left + 12) + 'px';
+                    tooltip.style.top = (e.clientY - canvasRect.top - 10) + 'px';
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) tooltip.style.display = 'none';
+        };
+        canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
+    }
+}
+
+
+async function openKeywordDetail(keyword) {
+    const modal = document.getElementById('modal-keyword-detail');
+    const title = document.getElementById('kw-detail-title');
+    const body = document.getElementById('kw-detail-body');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    if (title) title.textContent = 'Keyword: ' + keyword;
+    if (body) body.innerHTML = '<p style="color:var(--text-secondary)">Carregando...</p>';
+
+    try {
+        const params = new URLSearchParams();
+        params.set('keyword', keyword);
+        const { from, to } = getKwDateRange();
+        if (kwState.clientId) params.set('client', kwState.clientId);
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+
+        const data = await fetch('/api/keywords/detail?' + params.toString(), { credentials: 'same-origin' }).then(r => r.json());
+
+        if (!data || data.length === 0) {
+            body.innerHTML = '<p class="empty-state">Nenhum lead encontrado para esta keyword</p>';
+            return;
+        }
+
+        body.innerHTML = '<table class="keywords-table" style="width:100%"><thead><tr>' +
+            '<th>Nome</th><th>Telefone</th><th>Status</th><th>Campanha</th><th>Convertido</th><th>Data</th>' +
+            '</tr></thead><tbody>' +
+            data.map(row => {
+                const date = row.created_at ? new Date(row.created_at).toLocaleDateString('pt-BR') : '—';
+                return '<tr>' +
+                    '<td>' + escapeHtml(row.lead_name || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.lead_phone || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.lead_status || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.campaign || '—') + '</td>' +
+                    '<td>' + (row.converted ? '<span style="color:var(--accent-green)">Sim</span>' : 'Nao') + '</td>' +
+                    '<td>' + date + '</td>' +
+                    '</tr>';
+            }).join('') +
+            '</tbody></table>';
+    } catch (e) {
+        body.innerHTML = '<p class="empty-state">Erro ao carregar detalhes</p>';
+    }
+}
+
+// Device + Location breakdown
+async function loadKeywordsBreakdown() {
+    try {
+        const data = await fetch('/api/keywords/breakdown?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        // Device breakdown
+        const deviceEl = document.getElementById('kw-device-breakdown');
+        if (deviceEl && data.devices) {
+            const total = data.devices.reduce((s, d) => s + parseInt(d.count, 10), 0) || 1;
+            deviceEl.innerHTML = data.devices.length === 0 ? '<p class="empty-state" style="font-size:13px">Sem dados</p>' : data.devices.map(d => {
+                const pct = Math.round(parseInt(d.count, 10) / total * 100);
+                const label = d.device_type || 'Desconhecido';
+                const icon = label.toLowerCase().includes('mobile') ? '\ud83d\udcf1' : label.toLowerCase().includes('desktop') ? '\ud83d\udcbb' : '\ud83c\udf10';
+                return '<div class="kw-breakdown-item">' +
+                    '<span class="kw-breakdown-label">' + icon + ' ' + escapeHtml(label) + '</span>' +
+                    '<div class="kw-breakdown-bar-bg"><div class="kw-breakdown-bar" style="width:' + pct + '%"></div></div>' +
+                    '<span class="kw-breakdown-pct">' + pct + '%</span>' +
+                    '</div>';
+            }).join('');
+        }
+        // Location breakdown
+        const locEl = document.getElementById('kw-location-breakdown');
+        if (locEl && data.locations) {
+            const total = data.locations.reduce((s, d) => s + parseInt(d.count, 10), 0) || 1;
+            locEl.innerHTML = data.locations.length === 0 ? '<p class="empty-state" style="font-size:13px">Sem dados</p>' : data.locations.slice(0, 8).map(d => {
+                const pct = Math.round(parseInt(d.count, 10) / total * 100);
+                const label = d.location_state || 'Desconhecido';
+                return '<div class="kw-breakdown-item">' +
+                    '<span class="kw-breakdown-label">' + escapeHtml(label) + '</span>' +
+                    '<div class="kw-breakdown-bar-bg"><div class="kw-breakdown-bar kw-bar-location" style="width:' + pct + '%"></div></div>' +
+                    '<span class="kw-breakdown-pct">' + pct + '%</span>' +
+                    '</div>';
+            }).join('');
+        }
+    } catch (e) { console.error('Keywords breakdown error', e); }
+}
+
+// Campaigns table
+async function loadKeywordsCampaigns() {
+    try {
+        const data = await fetch('/api/keywords/campaigns?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const tbody = document.getElementById('kw-campaigns-body');
+        if (!tbody) return;
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma campanha encontrada</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.map(row => {
+            const leads = parseInt(row.leads, 10);
+            const conversions = parseInt(row.conversions, 10);
+            const value = parseFloat(row.total_value || 0);
+            const campaign = row.campaign || '(sem campanha)';
+            return '<tr>' +
+                '<td>' + escapeHtml(campaign) + '</td>' +
+                '<td>' + (row.keywords || 0) + '</td>' +
+                '<td>' + leads + '</td>' +
+                '<td>' + conversions + '</td>' +
+                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                '</tr>';
+        }).join('');
+    } catch (e) { console.error('Keywords campaigns error', e); }
+}
+
+// CSV export
+function exportKeywordsCsv() {
+    const table = document.getElementById('kw-ranking-table');
+    if (!table) return;
+    const rows = table.querySelectorAll('tr');
+    let csv = '';
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        const rowData = Array.from(cells).map(c => '"' + c.textContent.replace(/"/g, '""') + '"');
+        csv += rowData.join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'keywords_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Column sorting for keywords table
+let kwSortCol = null;
+let kwSortAsc = true;
+
+function sortKeywordsTable(colIndex) {
+    const table = document.getElementById('kw-ranking-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    if (rows.length <= 1) return;
+
+    if (kwSortCol === colIndex) { kwSortAsc = !kwSortAsc; } else { kwSortCol = colIndex; kwSortAsc = false; }
+
+    rows.sort((a, b) => {
+        const aText = a.cells[colIndex]?.textContent?.trim() || '';
+        const bText = b.cells[colIndex]?.textContent?.trim() || '';
+        const aNum = parseFloat(aText.replace(/[^0-9.,\-]/g, '').replace(',', '.'));
+        const bNum = parseFloat(bText.replace(/[^0-9.,\-]/g, '').replace(',', '.'));
+        if (!isNaN(aNum) && !isNaN(bNum)) return kwSortAsc ? aNum - bNum : bNum - aNum;
+        return kwSortAsc ? aText.localeCompare(bText) : bText.localeCompare(aText);
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+
+    // Update sort indicators
+    table.querySelectorAll('th').forEach((th, i) => {
+        th.classList.remove('kw-sort-asc', 'kw-sort-desc');
+        if (i === colIndex) th.classList.add(kwSortAsc ? 'kw-sort-asc' : 'kw-sort-desc');
+    });
+}
+
+// Keywords event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Period pills
+    document.querySelectorAll('.kw-period').forEach(pill => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.kw-period').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            const period = pill.dataset.kwperiod;
+            kwState.period = period;
+            const customRange = document.getElementById('kw-custom-range');
+            if (customRange) customRange.style.display = period === 'custom' ? 'flex' : 'none';
+            if (period !== 'custom') loadKeywordsSection();
+        });
+    });
+
+    // Client select
+    const kwClientSelect = document.getElementById('kw-client-select');
+    if (kwClientSelect) {
+        kwClientSelect.addEventListener('change', () => {
+            kwState.clientId = kwClientSelect.value || null;
+            loadKeywordsSection();
+        });
+    }
+
+    // Custom date apply
+    const btnKwApply = document.getElementById('btn-kw-apply');
+    if (btnKwApply) {
+        btnKwApply.addEventListener('click', () => {
+            const from = document.getElementById('kw-from');
+            const to = document.getElementById('kw-to');
+            if (from && to && from.value && to.value) {
+                kwState.dateFrom = new Date(from.value).toISOString();
+                kwState.dateTo = new Date(to.value + 'T23:59:59').toISOString();
+                loadKeywordsSection();
+            }
+        });
+    }
+
+    // Reload button
+    const btnReloadKw = document.getElementById('btn-reload-keywords');
+    if (btnReloadKw) {
+        btnReloadKw.addEventListener('click', () => loadKeywordsSection());
+    }
+
+    // Backfill button
+    const btnBackfill = document.getElementById('btn-kw-backfill');
+    if (btnBackfill) {
+        btnBackfill.addEventListener('click', async () => {
+            if (!confirm('Migrar dados historicos de keywords do JSONB? Isso pode levar alguns segundos.')) return;
+            btnBackfill.disabled = true;
+            btnBackfill.textContent = 'Migrando...';
+            try {
+                const res = await fetch('/api/keywords/backfill', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+                alert('Migrados: ' + (res.migrated || 0) + ' registros');
+                loadKeywordsSection();
+            } catch (e) {
+                alert('Erro ao migrar: ' + e.message);
+            } finally {
+                btnBackfill.disabled = false;
+                btnBackfill.textContent = 'Migrar dados historicos';
+            }
+        });
+    }
+
+    // Close modal on overlay click
+    const kwModal = document.getElementById('modal-keyword-detail');
+    if (kwModal) {
+        kwModal.addEventListener('click', (e) => {
+            if (e.target === kwModal) kwModal.style.display = 'none';
+        });
+    }
+});
+

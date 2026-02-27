@@ -238,7 +238,7 @@ class WebhookHandler {
             logger.info(`🚫 Lead orgânico ignorado: ${payload.chatName || phone} — origem: ${origin.channel}`);
             await trail.step("organic_filtered", "skipped", `Lead orgânico filtrado (${origin.channel})`, { phone, channel: origin.channel, client: client.name });
 
-            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName || phone, status: "Ignorado (Orgânico)", origin: origin.channel, result: "filtered", error: null });
+            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName || phone, status: "Ignorado (Orgânico)", origin: origin.channel, result: "filtered", error: null, leadDate: payload.moment || null });
             pgService.logWebhookEvent(payload, client.id, "filtered_organic");
 
             return { success: true, message: "Lead orgânico ignorado (sem campanha)", type: "filtered" };
@@ -251,10 +251,34 @@ class WebhookHandler {
         } catch (err) {
             logger.warn("Falha na detecção de produto", { error: err.message });
             await trail.step("product_detected", "error", `Falha na detecção de produto: ${err.message}`, { error: err.message });
-            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName, status: "Erro", result: "failed", error: `Falha técnica: Detecção de produto (${err.message})` });
+            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName, status: "Erro", result: "failed", error: `Falha técnica: Detecção de produto (${err.message})`, leadDate: payload.moment || null });
             return { success: false, error: err.message, type: "new_lead" };
         }
         await trail.step("product_detected", "ok", product ? `Produto: ${product}` : "Produto não identificado", { product });
+
+        // keyword_extracted - save Google Ads keyword data
+        if (origin.channel === "Google Ads") {
+            const keywordData = {
+                clientId: client.id,
+                keyword: payload.utm_term || (payload.visit && payload.visit.params && payload.visit.params.utm_term) || null,
+                campaign: payload.utm_campaign || (payload.visit && payload.visit.params && payload.visit.params.utm_campaign) || null,
+                utmSource: payload.utm_source || "google",
+                utmMedium: payload.utm_medium || "cpc",
+                utmContent: payload.utm_content || null,
+                gclid: (payload.visit && payload.visit.params && payload.visit.params.gclid) || null,
+                landingPage: (payload.visit && payload.visit.name) || null,
+                deviceType: (payload.visit && payload.visit.meta && payload.visit.meta.http_user_agent && payload.visit.meta.http_user_agent.device && payload.visit.meta.http_user_agent.device.type) || null,
+                locationState: (payload.location && payload.location.state) || null,
+                leadPhone: phone,
+                leadName: payload.chatName || "",
+                leadStatus: extractStatusName(payload) || "Lead Gerado",
+                product: product,
+            };
+            await pgService.saveKeywordConversion(keywordData);
+            await trail.step("keyword_extracted", "ok",
+                `Keyword: "${keywordData.keyword || "N/A"}" | Campaign: ${keywordData.campaign || "N/A"}`,
+                { keyword: keywordData.keyword, campaign: keywordData.campaign });
+        }
 
         // sheet_resolved
         let sheetName;
@@ -263,7 +287,7 @@ class WebhookHandler {
             await trail.step("sheet_resolved", "ok", `Aba determinada: ${sheetName}`, { sheetName, spreadsheetId: client.spreadsheet_id });
         } catch (err) {
             await trail.step("sheet_resolved", "error", `Falha ao resolver aba: ${err.message}`, { error: err.message });
-            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName, status: "Erro", result: "failed", error: `Falha ao resolver aba: ${err.message}` });
+            pgService.logLead(client.id, { eventType: "new_lead", phone, name: payload.chatName, status: "Erro", result: "failed", error: `Falha ao resolver aba: ${err.message}`, leadDate: payload.moment || null });
             return { success: false, error: err.message, type: "new_lead" };
         }
 
@@ -273,10 +297,9 @@ class WebhookHandler {
             name: (payload.chatName || formatPhoneBR(phone)) + " (Auto)",
             phone: formatPhoneBR(phone),
             origin: origin.channel,
-            originComment: origin.comment,
             date: formatDateBR(payload.moment),
             product: product,
-            status: extractStatusName(payload) || "Lead Gerado",
+            status: "Lead Gerado",
             phoneRaw: phone,
             message: payload.text?.message || "",
             messageId: payload.messageId || "",
@@ -294,13 +317,13 @@ class WebhookHandler {
             await trail.step("lead_inserted", "ok", `Lead inserido na linha da aba ${result.sheetName}`, { leadName: leadData.name, phone: leadData.phone, sheetName: result.sheetName });
             logLead(leadData, "SUCCESS", { client: client.name, sheet: result.sheetName });
             logger.info(`✅ Lead inserido: ${leadData.name} → ${client.name} (${result.sheetName})${product ? ` [${product}]` : ""}`);
-            pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Lead Gerado", product, origin: origin.channel, sheetName: result.sheetName, result: "success", error: null });
+            pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Lead Gerado", product, origin: origin.channel, sheetName: result.sheetName, result: "success", error: null, leadDate: payload.moment || null });
         } else {
             const errorMsg = result.error || "Erro desconhecido na inserção";
             await trail.step("lead_inserted", "error", `Falha ao inserir lead: ${errorMsg}`, { error: errorMsg, client: client.name });
             logLead(leadData, "FAILED", { client: client.name, error: errorMsg });
             logger.error("❌ Falha ao inserir lead", { error: errorMsg });
-            pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Erro", product, origin: origin.channel, result: "failed", error: `Falha Planilha: ${errorMsg}` });
+            pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Erro", product, origin: origin.channel, result: "failed", error: `Falha Planilha: ${errorMsg}`, leadDate: payload.moment || null });
         }
 
         return { success: result.success, leadId, client: client.name, type: "new_lead" };
@@ -326,13 +349,17 @@ class WebhookHandler {
 
         if (isSaleStatus(statusName) || saleAmount) {
             updateData.closeDate = formatDateBR(new Date().toISOString());
-            updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
             if (saleAmount) {
                 updateData.saleAmount = parseFloat(saleAmount);
-                updateData.comment += ` | Valor: R$ ${parseFloat(saleAmount).toFixed(2).replace(".", ",")}`;
             }
-        } else {
-            updateData.comment = `Status atualizado para "${statusName}" via Tintim`;
+            // Upsert keyword conversion for ANY sale (lead may have come from Google Ads originally)
+            const salePhone = payload.phone || payload.phone_e164?.replace("+", "") || "";
+            if (salePhone) {
+                await pgService.upsertKeywordConversion(salePhone, {
+                    saleAmount: saleAmount ? parseFloat(saleAmount) : 0,
+                    leadStatus: statusName,
+                });
+            }
         }
 
         // status_updated
@@ -392,13 +419,13 @@ class WebhookHandler {
             logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ""} [linha ${result.row}]`);
             await trail.step("status_updated", "ok", `Status "${statusName}" atualizado com sucesso${result.recovered ? " (venda recuperada)" : ""}`, { status: statusName, row: result.row, sheetName: result.sheetName, recovered: result.recovered || false });
 
-            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : null, sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null });
+            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null, leadDate: payload.moment || null });
         } else {
             const errorMsg = result.error || "Erro desconhecido na atualização";
             logger.warn("⚠️ Não foi possível atualizar status", { error: errorMsg, phone: payload.phone });
             await trail.step("status_updated", "error", `Falha ao atualizar status: ${errorMsg}`, { error: errorMsg, phone: payload.phone, status: statusName });
 
-            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: "Erro Update", saleAmount: saleAmount ? parseFloat(saleAmount) : null, result: "failed", error: `Falha Planilha: ${errorMsg}` });
+            pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: "Erro Update", saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), result: "failed", error: `Falha Planilha: ${errorMsg}`, leadDate: payload.moment || null });
         }
 
         return { success: result.success, client: client.name, type: "status_update", status: statusName, saleAmount, recovered: result.recovered };
