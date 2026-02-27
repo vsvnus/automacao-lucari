@@ -360,9 +360,13 @@ function updatePeriodLabels() {
     const labelLeads = document.getElementById('label-leads');
     const labelSales = document.getElementById('label-sales');
     const labelErrors = document.getElementById('label-errors');
+    const labelRevenue = document.getElementById('label-revenue');
+    const labelConversion = document.getElementById('label-conversion');
     if (labelLeads) labelLeads.textContent = `Leads ${label}`;
     if (labelSales) labelSales.textContent = `Vendas ${label}`;
     if (labelErrors) labelErrors.textContent = `Erros ${label}`;
+    if (labelRevenue) labelRevenue.textContent = `Receita ${label}`;
+    if (labelConversion) labelConversion.textContent = `Conversão ${label}`;
 
     // Update "leads hoje" label on client preview cards
     const countLabels = document.querySelectorAll('.leads-count-label');
@@ -543,26 +547,217 @@ async function loadDashboardOverview() {
 // ============================================
 // Automação Overview (reuses existing functions)
 // ============================================
-async function loadAutomacaoOverview() {
-    const health = await fetchHealth();
-    const dashboardStats = await fetchDashboardStats();
+function formatBRL(value) {
+    return 'R$ ' + Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
 
-    if (health) {
-        const el = $('#stat-clients');
-        if (el) el.textContent = health.clients || 0;
-    }
+function getOriginClass(origin) {
+    const o = (origin || '').toLowerCase();
+    if (o.includes('meta')) return 'origin-meta';
+    if (o.includes('google')) return 'origin-google';
+    if (o.includes('whatsapp') || o === '') return 'origin-whatsapp';
+    return 'origin-other';
+}
+
+function getOriginLabel(origin) {
+    const o = (origin || '').toLowerCase();
+    if (o.includes('meta')) return 'Meta Ads';
+    if (o.includes('google')) return 'Google Ads';
+    if (o.includes('whatsapp') || o === '') return 'WhatsApp';
+    return origin || 'Outro';
+}
+
+async function loadAutomacaoOverview() {
+    const [dashboardStats, origins, clientOrigins] = await Promise.all([
+        fetchDashboardStats(),
+        fetchOrigins(),
+        fetchClientOrigins(),
+    ]);
 
     if (dashboardStats) {
         const leadsEl = $('#stat-leads');
         const salesEl = $('#stat-sales');
-        const errorsEl = $('#stat-errors');
+        const revenueEl = $('#stat-revenue');
+        const conversionEl = $('#stat-conversion');
         if (leadsEl) leadsEl.textContent = dashboardStats.newLeads || 0;
         if (salesEl) salesEl.textContent = dashboardStats.sales || 0;
-        if (errorsEl) errorsEl.textContent = dashboardStats.errors || 0;
+        if (revenueEl) revenueEl.textContent = formatBRL(dashboardStats.revenue);
+        const rate = dashboardStats.newLeads > 0
+            ? ((dashboardStats.sales / dashboardStats.newLeads) * 100).toFixed(1)
+            : '0';
+        if (conversionEl) conversionEl.textContent = rate + '%';
     }
 
-    await loadDashboardClients();
+    renderAutomacaoOrigins(origins);
+    renderClientPerformanceTable(clientOrigins, origins);
     await loadDashboardActivity();
+}
+
+async function fetchOrigins() {
+    try {
+        const res = await fetch(`/api/dashboard/origins${buildDateQS()}`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch { return []; }
+}
+
+async function fetchClientOrigins() {
+    try {
+        const res = await fetch(`/api/dashboard/client-origins${buildDateQS()}`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch { return []; }
+}
+
+function renderAutomacaoOrigins(origins) {
+    const container = document.getElementById('automacao-origins-container');
+    const totalLeadsEl = document.getElementById('automacao-total-leads');
+    const totalSalesEl = document.getElementById('automacao-total-sales');
+    const totalRevenueEl = document.getElementById('automacao-total-revenue');
+    if (!container) return;
+
+    if (!origins || origins.length === 0) {
+        container.innerHTML = '<div class="activity-empty"><p>Nenhum dado de origem no período</p></div>';
+        if (totalLeadsEl) totalLeadsEl.textContent = '0';
+        if (totalSalesEl) totalSalesEl.textContent = '0';
+        if (totalRevenueEl) totalRevenueEl.textContent = 'R$ 0';
+        return;
+    }
+
+    const totalLeads = origins.reduce((s, o) => s + o.leads, 0);
+    const totalSales = origins.reduce((s, o) => s + o.sales, 0);
+    const totalRevenue = origins.reduce((s, o) => s + o.revenue, 0);
+    const maxLeads = Math.max(...origins.map(o => o.leads), 1);
+
+    if (totalLeadsEl) totalLeadsEl.textContent = totalLeads;
+    if (totalSalesEl) totalSalesEl.textContent = totalSales;
+    if (totalRevenueEl) totalRevenueEl.textContent = formatBRL(totalRevenue);
+
+    let html = '<div class="automacao-origin-bars">';
+    origins.forEach(o => {
+        const pct = totalLeads > 0 ? ((o.leads / totalLeads) * 100).toFixed(1) : '0';
+        const barPct = ((o.leads / maxLeads) * 100).toFixed(1);
+        const conv = o.leads > 0 ? ((o.sales / o.leads) * 100).toFixed(1) : '0';
+        const cls = getOriginClass(o.origin);
+        const label = getOriginLabel(o.origin);
+        html += `
+            <div class="automacao-origin-row">
+                <div class="automacao-origin-header">
+                    <span class="automacao-origin-name">
+                        <span class="automacao-origin-dot ${cls}"></span>
+                        ${escapeHtml(label)}
+                    </span>
+                    <span style="font-size:0.8rem;color:var(--text-secondary)">${pct}%</span>
+                </div>
+                <div class="automacao-origin-stats">
+                    <span><strong>${o.leads}</strong> leads</span>
+                    <span><strong>${o.sales}</strong> vendas</span>
+                    <span><strong>${formatBRL(o.revenue)}</strong></span>
+                    <span><strong>${conv}%</strong> conversão</span>
+                </div>
+                <div class="automacao-origin-bar-track">
+                    <div class="automacao-origin-bar-fill ${cls}" style="width:${barPct}%"></div>
+                </div>
+            </div>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderClientPerformanceTable(clientOrigins, overallOrigins) {
+    const tbody = document.getElementById('automacao-clients-tbody');
+    if (!tbody) return;
+
+    if (!clientOrigins || clientOrigins.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="automacao-table-empty">Nenhum cliente com leads no período</td></tr>';
+        return;
+    }
+
+    // Group by client
+    const clientMap = {};
+    clientOrigins.forEach(row => {
+        if (!clientMap[row.slug]) {
+            clientMap[row.slug] = { name: row.name, slug: row.slug, origins: [], totalLeads: 0, totalSales: 0, totalRevenue: 0 };
+        }
+        clientMap[row.slug].origins.push(row);
+        clientMap[row.slug].totalLeads += row.leads;
+        clientMap[row.slug].totalSales += row.sales;
+        clientMap[row.slug].totalRevenue += row.revenue;
+    });
+
+    const clients = Object.values(clientMap).sort((a, b) => b.totalLeads - a.totalLeads);
+
+    let html = '';
+    clients.forEach(client => {
+        const conv = client.totalLeads > 0
+            ? ((client.totalSales / client.totalLeads) * 100).toFixed(1)
+            : '0';
+        const initial = getInitials(client.name);
+
+        // Mini bars
+        let miniBars = '';
+        if (client.totalLeads > 0) {
+            client.origins.forEach(o => {
+                const pct = ((o.leads / client.totalLeads) * 100).toFixed(1);
+                miniBars += `<div class="automacao-mini-bar ${getOriginClass(o.origin)}" style="width:${pct}%" title="${getOriginLabel(o.origin)}: ${o.leads}"></div>`;
+            });
+        }
+
+        // Main row
+        html += `<tr class="automacao-client-row" data-slug="${escapeHtml(client.slug)}">
+            <td>
+                <div class="automacao-client-name">
+                    <div class="automacao-client-avatar">${escapeHtml(initial)}</div>
+                    ${escapeHtml(client.name)}
+                </div>
+            </td>
+            <td><strong>${client.totalLeads}</strong></td>
+            <td><div class="automacao-mini-bars">${miniBars}</div></td>
+            <td>${client.totalSales}</td>
+            <td class="automacao-revenue">${formatBRL(client.totalRevenue)}</td>
+            <td class="automacao-conversion">${conv}%</td>
+        </tr>`;
+
+        // Expandable row
+        let expandCards = '';
+        client.origins.forEach(o => {
+            const cls = getOriginClass(o.origin);
+            const oConv = o.leads > 0 ? ((o.sales / o.leads) * 100).toFixed(1) : '0';
+            const oPct = client.totalLeads > 0 ? ((o.leads / client.totalLeads) * 100).toFixed(1) : '0';
+            expandCards += `
+                <div class="automacao-expand-card ${cls}">
+                    <div class="automacao-expand-card-header">
+                        <span class="automacao-origin-dot ${cls}"></span>
+                        ${escapeHtml(getOriginLabel(o.origin))}
+                    </div>
+                    <div class="automacao-expand-card-stats">
+                        <span><strong>${o.leads}</strong> leads (${oPct}%)</span>
+                        <span><strong>${o.sales}</strong> vendas</span>
+                        <span><strong>${formatBRL(o.revenue)}</strong> receita</span>
+                        <span><strong>${oConv}%</strong> conversão</span>
+                    </div>
+                </div>`;
+        });
+
+        html += `<tr class="automacao-expand-row" data-expand-slug="${escapeHtml(client.slug)}">
+            <td colspan="6">
+                <div class="automacao-expand-content">
+                    <div class="automacao-expand-grid">${expandCards}</div>
+                </div>
+            </td>
+        </tr>`;
+    });
+
+    tbody.innerHTML = html;
+
+    // Attach click handlers
+    tbody.querySelectorAll('.automacao-client-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const slug = row.dataset.slug;
+            const expandRow = tbody.querySelector(`[data-expand-slug="${slug}"]`);
+            if (expandRow) expandRow.classList.toggle('expanded');
+        });
+    });
 }
 
 async function loadAppsOverviewStats() {
@@ -1687,12 +1882,56 @@ async function loadClientDetails(clientId) {
             container.appendChild(renderLogItem(log, true));
         });
 
+        // Load origin breakdown for this client
+        loadClientDetailOrigins(clientId);
+
     } catch (error) {
         console.error('Erro ao carregar detalhes:', error);
         container.innerHTML = `
             <div class="activity-empty">
                 <p style="color:var(--accent-red)">Erro ao carregar dados.</p>
             </div>`;
+    }
+}
+
+async function loadClientDetailOrigins(clientSlug) {
+    const card = document.getElementById('client-origins-card');
+    const container = document.getElementById('client-origins-container');
+    if (!card || !container) return;
+
+    try {
+        const allOrigins = await fetchClientOrigins();
+        const clientData = allOrigins.filter(r => r.slug === clientSlug);
+
+        if (clientData.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+
+        card.style.display = '';
+        const totalLeads = clientData.reduce((s, o) => s + o.leads, 0);
+
+        let html = '<div class="client-origins-grid">';
+        clientData.forEach(o => {
+            const cls = getOriginClass(o.origin);
+            const pct = totalLeads > 0 ? ((o.leads / totalLeads) * 100).toFixed(1) : '0';
+            const conv = o.leads > 0 ? ((o.sales / o.leads) * 100).toFixed(1) : '0';
+            html += `
+                <div class="client-origin-card ${cls}">
+                    <div class="origin-label">
+                        <span class="automacao-origin-dot ${cls}"></span>
+                        ${escapeHtml(getOriginLabel(o.origin))}
+                    </div>
+                    <div class="origin-value">${o.leads}</div>
+                    <div class="origin-pct">${pct}% dos leads</div>
+                    <div class="origin-detail">${o.sales} vendas · ${formatBRL(o.revenue)} · ${conv}% conv.</div>
+                </div>`;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+    } catch (e) {
+        console.error('Erro ao carregar origens do cliente:', e);
+        card.style.display = 'none';
     }
 }
 

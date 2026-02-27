@@ -393,7 +393,7 @@
                 </div>
             </div>
 
-            <!-- Stats Grid -->
+            <!-- KPI Stats Grid -->
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-status">
@@ -422,54 +422,82 @@
                     </div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-icon stat-icon-error">
+                    <div class="stat-icon" style="color: var(--accent-green); background: var(--accent-green-subtle);">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect>
+                            <line x1="1" y1="10" x2="23" y2="10"></line>
                         </svg>
                     </div>
                     <div class="stat-data">
-                        <span class="stat-value" id="stat-errors">0</span>
-                        <span class="stat-label" id="label-errors">Erros Hoje</span>
+                        <span class="stat-value" id="stat-revenue">R$ 0</span>
+                        <span class="stat-label" id="label-revenue">Receita Hoje</span>
                     </div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-clients">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="9" cy="7" r="4"></circle>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                            <polyline points="16 7 22 7 22 13"></polyline>
                         </svg>
                     </div>
                     <div class="stat-data">
-                        <span class="stat-value" id="stat-clients">—</span>
-                        <span class="stat-label">Clientes Ativos</span>
+                        <span class="stat-value" id="stat-conversion">0%</span>
+                        <span class="stat-label" id="label-conversion">Conversão Hoje</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Dashboard Columns -->
-            <div class="dashboard-grid">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Atividade Recente</h3>
-                        <button class="btn-text" onclick="navigateTo('logs')">Ver detalhado &rarr;</button>
-                    </div>
-                    <div class="card-body">
-                        <div class="activity-feed" id="dashboard-activity">
-                            <div class="activity-empty"><p>Carregando...</p></div>
-                        </div>
+            <!-- Origin Breakdown Card -->
+            <div class="card automacao-origins-card">
+                <div class="card-header">
+                    <h3>Origem dos Leads</h3>
+                    <div class="automacao-origins-summary" id="automacao-origins-summary">
+                        <span class="automacao-origins-stat"><strong id="automacao-total-leads">0</strong> leads</span>
+                        <span class="automacao-origins-sep">&middot;</span>
+                        <span class="automacao-origins-stat"><strong id="automacao-total-sales">0</strong> vendas</span>
+                        <span class="automacao-origins-sep">&middot;</span>
+                        <span class="automacao-origins-stat"><strong id="automacao-total-revenue">R$ 0</strong> receita</span>
                     </div>
                 </div>
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Clientes</h3>
-                        <button class="btn-text" onclick="navigateTo('clients')">Gerenciar &rarr;</button>
-                    </div>
-                    <div class="card-body" id="dashboard-clients-preview">
-                        <p class="empty-state">Carregando...</p>
+                <div class="card-body" id="automacao-origins-container">
+                    <div class="activity-empty"><p>Carregando origens...</p></div>
+                </div>
+            </div>
+
+            <!-- Client Performance Table -->
+            <div class="card automacao-clients-card">
+                <div class="card-header">
+                    <h3>Desempenho por Cliente</h3>
+                    <button class="btn-text" onclick="navigateTo('clients')">Gerenciar &rarr;</button>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <table class="automacao-clients-table" id="automacao-clients-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th>Leads</th>
+                                <th>Origens</th>
+                                <th>Vendas</th>
+                                <th>Receita</th>
+                                <th>Conversão</th>
+                            </tr>
+                        </thead>
+                        <tbody id="automacao-clients-tbody">
+                            <tr><td colspan="6" class="automacao-table-empty">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Compact Activity Feed -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Atividade Recente</h3>
+                    <button class="btn-text" onclick="navigateTo('logs')">Ver todos &rarr;</button>
+                </div>
+                <div class="card-body">
+                    <div class="activity-feed" id="dashboard-activity">
+                        <div class="activity-empty"><p>Carregando...</p></div>
                     </div>
                 </div>
             </div>
@@ -534,6 +562,16 @@
                         </svg>
                         <span>Atualizar</span>
                     </button>
+                </div>
+            </div>
+
+            <!-- Origin Breakdown per Client -->
+            <div class="card" id="client-origins-card" style="margin-bottom: 24px; display: none;">
+                <div class="card-header">
+                    <h3>Leads por Origem</h3>
+                </div>
+                <div class="card-body" id="client-origins-container">
+                    <div class="activity-empty"><p>Carregando...</p></div>
                 </div>
             </div>
 

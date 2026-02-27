@@ -3338,3 +3338,328 @@ kbd {
         flex-shrink: 0;
     }
 }
+
+/* ============================================
+   Automação — Origin Breakdown & Client Table
+   ============================================ */
+
+/* --- Origins Card --- */
+.automacao-origins-card {
+    margin-bottom: 24px;
+}
+
+.automacao-origins-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.automacao-origins-summary strong {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.automacao-origins-sep {
+    color: var(--text-tertiary);
+}
+
+.automacao-origin-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.automacao-origin-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.automacao-origin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.automacao-origin-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.automacao-origin-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.automacao-origin-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.automacao-origin-stats span strong {
+    color: var(--text-primary);
+}
+
+.automacao-origin-bar-track {
+    height: 8px;
+    background: var(--bg-surface);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.automacao-origin-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+
+.automacao-origin-bar-fill.origin-meta { background: #6366f1; }
+.automacao-origin-bar-fill.origin-google { background: #4285f4; }
+.automacao-origin-bar-fill.origin-whatsapp { background: #22c55e; }
+.automacao-origin-bar-fill.origin-other { background: var(--text-tertiary); }
+
+.automacao-origin-dot.origin-meta { background: #6366f1; }
+.automacao-origin-dot.origin-google { background: #4285f4; }
+.automacao-origin-dot.origin-whatsapp { background: #22c55e; }
+.automacao-origin-dot.origin-other { background: var(--text-tertiary); }
+
+/* --- Client Performance Table --- */
+.automacao-clients-card {
+    margin-bottom: 24px;
+}
+
+.automacao-clients-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.automacao-clients-table thead th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border-subtle);
+    white-space: nowrap;
+}
+
+.automacao-clients-table tbody tr {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.automacao-clients-table tbody tr:hover {
+    background: var(--bg-surface);
+}
+
+.automacao-clients-table tbody td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.automacao-clients-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.automacao-table-empty {
+    text-align: center;
+    padding: 32px 16px !important;
+    color: var(--text-secondary);
+}
+
+.automacao-client-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+}
+
+.automacao-client-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-primary-subtle);
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* Mini origin bars in table */
+.automacao-mini-bars {
+    display: flex;
+    gap: 3px;
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 80px;
+    background: var(--bg-surface);
+}
+
+.automacao-mini-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+}
+
+.automacao-mini-bar.origin-meta { background: #6366f1; }
+.automacao-mini-bar.origin-google { background: #4285f4; }
+.automacao-mini-bar.origin-whatsapp { background: #22c55e; }
+.automacao-mini-bar.origin-other { background: var(--text-tertiary); }
+
+.automacao-conversion {
+    font-weight: 600;
+}
+
+.automacao-revenue {
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Expandable Client Row --- */
+.automacao-expand-row td {
+    padding: 0 !important;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.automacao-expand-row:hover {
+    background: transparent !important;
+}
+
+.automacao-expand-content {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.35s ease, padding 0.35s ease;
+    padding: 0 16px;
+}
+
+.automacao-expand-row.expanded .automacao-expand-content {
+    max-height: 500px;
+    padding: 16px;
+}
+
+.automacao-expand-grid {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.automacao-expand-card {
+    flex: 1;
+    min-width: 160px;
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+}
+
+.automacao-expand-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.automacao-expand-card-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.automacao-expand-card-stats strong {
+    color: var(--text-primary);
+}
+
+.automacao-expand-card.origin-meta { border-color: rgba(99, 102, 241, 0.3); background: rgba(99, 102, 241, 0.05); }
+.automacao-expand-card.origin-google { border-color: rgba(66, 133, 244, 0.3); background: rgba(66, 133, 244, 0.05); }
+.automacao-expand-card.origin-whatsapp { border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.05); }
+.automacao-expand-card.origin-other { border-color: var(--border-default); background: var(--bg-surface); }
+
+/* --- Client Details Origin Cards --- */
+.client-origins-grid {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.client-origin-card {
+    flex: 1;
+    min-width: 140px;
+    padding: 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    text-align: center;
+}
+
+.client-origin-card .origin-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+}
+
+.client-origin-card .origin-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+
+.client-origin-card .origin-pct {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.client-origin-card .origin-detail {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.client-origin-card.origin-meta { border-color: rgba(99, 102, 241, 0.3); background: rgba(99, 102, 241, 0.05); }
+.client-origin-card.origin-google { border-color: rgba(66, 133, 244, 0.3); background: rgba(66, 133, 244, 0.05); }
+.client-origin-card.origin-whatsapp { border-color: rgba(34, 197, 94, 0.3); background: rgba(34, 197, 94, 0.05); }
+.client-origin-card.origin-other { border-color: var(--border-default); background: var(--bg-surface); }
+
+/* --- Responsive --- */
+@media (max-width: 768px) {
+    .automacao-origins-summary {
+        display: none;
+    }
+
+    .automacao-clients-table thead th:nth-child(5),
+    .automacao-clients-table tbody td:nth-child(5) {
+        display: none;
+    }
+
+    .automacao-expand-grid {
+        flex-direction: column;
+    }
+
+    .client-origins-grid {
+        flex-direction: column;
+    }
+}

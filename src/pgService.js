@@ -721,6 +721,12 @@ class PgService {
                 `SELECT COUNT(*) as count FROM leads_log ${pq.where}`, pq.params
             );
 
+            // 5. Revenue
+            const rq = buildWhere(`sale_amount IS NOT NULL AND sale_amount > 0`);
+            const { rows: rRows } = await this.query(
+                `SELECT COALESCE(SUM(sale_amount), 0) as total FROM leads_log ${rq.where}`, rq.params
+            );
+
             const newLeads = parseInt(nlRows[0].count, 10);
             const sales = parseInt(sRows[0].count, 10);
 
@@ -730,10 +736,84 @@ class PgService {
                 errors: parseInt(eRows[0].count, 10),
                 processed: parseInt(pRows[0].count, 10),
                 received: newLeads + sales,
+                revenue: parseFloat(rRows[0].total) || 0,
             };
         } catch (error) {
             logger.error('Erro ao buscar stats do dashboard', { error: error.message });
             return null;
+        }
+    }
+
+    async getOriginBreakdown(startDate, endDate) {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const from = startDate || getTodayStartISO();
+            let sql = `SELECT
+                    COALESCE(l.origin, 'WhatsApp') AS origin,
+                    COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') AS leads,
+                    COUNT(*) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0) AS sales,
+                    COALESCE(SUM(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
+                FROM leads_log l
+                WHERE l.created_at >= $1`;
+            const params = [from];
+            let idx = 2;
+            if (endDate) {
+                sql += ` AND l.created_at <= $${idx}`;
+                params.push(endDate);
+                idx++;
+            }
+            sql += ` GROUP BY COALESCE(l.origin, 'WhatsApp') ORDER BY leads DESC`;
+
+            const { rows } = await this.query(sql, params);
+            return rows.map(r => ({
+                origin: r.origin,
+                leads: parseInt(r.leads, 10),
+                sales: parseInt(r.sales, 10),
+                revenue: parseFloat(r.revenue) || 0,
+            }));
+        } catch (error) {
+            logger.error('Erro ao buscar breakdown de origens', { error: error.message });
+            return [];
+        }
+    }
+
+    async getClientOrigins(startDate, endDate) {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const from = startDate || getTodayStartISO();
+            let sql = `SELECT c.slug, c.name,
+                    COALESCE(l.origin, 'WhatsApp') AS origin,
+                    COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') AS leads,
+                    COUNT(*) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0) AS sales,
+                    COALESCE(SUM(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
+                FROM clients c
+                LEFT JOIN leads_log l ON l.client_id = c.id AND l.created_at >= $1`;
+            const params = [from];
+            let idx = 2;
+            if (endDate) {
+                sql += ` AND l.created_at <= $${idx}`;
+                params.push(endDate);
+                idx++;
+            }
+            sql += ` WHERE c.active = true
+                GROUP BY c.id, c.slug, c.name, COALESCE(l.origin, 'WhatsApp')
+                HAVING COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') > 0
+                ORDER BY c.name, leads DESC`;
+
+            const { rows } = await this.query(sql, params);
+            return rows.map(r => ({
+                slug: r.slug,
+                name: r.name,
+                origin: r.origin,
+                leads: parseInt(r.leads, 10),
+                sales: parseInt(r.sales, 10),
+                revenue: parseFloat(r.revenue) || 0,
+            }));
+        } catch (error) {
+            logger.error('Erro ao buscar origens por cliente', { error: error.message });
+            return [];
         }
     }
 

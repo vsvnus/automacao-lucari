@@ -363,6 +363,18 @@ app.get('/api/dashboard/investigate', requireAuth, async (req, res) => {
     res.json(results);
 });
 
+app.get('/api/dashboard/origins', requireAuth, async (req, res) => {
+    const { from, to } = req.query;
+    const origins = await pgService.getOriginBreakdown(from, to);
+    res.json(origins);
+});
+
+app.get('/api/dashboard/client-origins', requireAuth, async (req, res) => {
+    const { from, to } = req.query;
+    const clientOrigins = await pgService.getClientOrigins(from, to);
+    res.json(clientOrigins);
+});
+
 app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
     const { from, to } = req.query;
     // Retorna lista de clientes com contagem de leads no período
