@@ -647,6 +647,21 @@
                 </div>
             </div>
 
+            <div class="period-selector" id="clients-period-selector">
+                <div class="period-pills">
+                    <button class="clients-period-pill active" data-period="30d">30 dias</button>
+                    <button class="clients-period-pill" data-period="7d">7 dias</button>
+                    <button class="clients-period-pill" data-period="today">Hoje</button>
+                    <button class="clients-period-pill" data-period="custom">Personalizado</button>
+                </div>
+                <div class="period-custom-range" id="clients-period-custom-range" style="display:none;">
+                    <input type="date" class="period-date-input" id="clients-period-from" />
+                    <span class="period-range-sep">até</span>
+                    <input type="date" class="period-date-input" id="clients-period-to" />
+                    <button class="btn-primary btn-sm" id="btn-clients-period-apply">Aplicar</button>
+                </div>
+            </div>
+
             <div class="clients-grid" id="client-list">
                 <p class="empty-state">Carregando clientes...</p>
             </div>

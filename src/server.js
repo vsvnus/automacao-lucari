@@ -615,6 +615,12 @@ app.get('/api/dashboard/clients-preview', requireAuth, async (req, res) => {
     res.json(result);
 });
 
+app.get('/api/dashboard/client-origins', requireAuth, async (req, res) => {
+    const { from, to } = req.query;
+    const data = await pgService.getLeadsByClientAndOrigin(from, to);
+    res.json(data);
+});
+
 // Overview Stats (enhanced dashboard data)
 app.get('/api/dashboard/overview', requireAuth, async (req, res) => {
     const { from, to } = req.query;

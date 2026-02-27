@@ -640,7 +640,8 @@ body {
     flex-wrap: wrap;
 }
 
-.period-pill {
+.period-pill,
+.clients-period-pill {
     padding: 7px 16px;
     background: var(--bg-elevated);
     border: 1px solid var(--border-default);
@@ -654,13 +655,15 @@ body {
     white-space: nowrap;
 }
 
-.period-pill:hover {
+.period-pill:hover,
+.clients-period-pill:hover {
     color: var(--text-primary);
     border-color: var(--border-active);
     background: var(--bg-surface);
 }
 
-.period-pill.active {
+.period-pill.active,
+.clients-period-pill.active {
     background: var(--accent-primary-subtle);
     border-color: var(--accent-primary);
     color: var(--accent-primary-hover);
@@ -701,7 +704,8 @@ body {
         gap: 4px;
     }
 
-    .period-pill {
+    .period-pill,
+    .clients-period-pill {
         padding: 6px 12px;
         font-size: 0.75rem;
     }
@@ -1665,6 +1669,186 @@ body {
 
 .btn-client-delete:hover {
     background: rgba(239, 68, 68, 0.2);
+}
+
+/* --- Client Card KPIs --- */
+.client-card-kpis {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    padding: 10px 0;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.client-kpi {
+    flex: 1;
+    text-align: center;
+    min-width: 0;
+}
+
+.client-kpi-value {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.client-kpi-label {
+    font-size: 0.68rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-top: 2px;
+}
+
+/* --- Client Card Origins --- */
+.client-card-origins {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.client-origin-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.client-origin-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    min-width: 72px;
+    flex-shrink: 0;
+}
+
+.client-origin-bar-track {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.client-origin-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease;
+    min-width: 2px;
+}
+
+.client-origin-bar.origin-meta {
+    background: #818cf8;
+}
+
+.client-origin-bar.origin-google {
+    background: #60a5fa;
+}
+
+.client-origin-bar.origin-whatsapp {
+    background: #34d399;
+}
+
+.client-origin-bar.origin-other {
+    background: #94a3b8;
+}
+
+.client-origin-count {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    min-width: 24px;
+    text-align: right;
+}
+
+.client-no-leads {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    font-style: italic;
+    padding: 6px 0;
+}
+
+/* --- Client Source Badge --- */
+.client-source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    font-weight: 500;
+}
+
+.client-source-badge.source-tintim {
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+}
+
+.client-source-badge.source-kommo {
+    background: rgba(168, 85, 247, 0.12);
+    color: #c084fc;
+}
+
+.client-source-badge.source-both {
+    background: rgba(6, 182, 212, 0.12);
+    color: #22d3ee;
+}
+
+/* --- Client Card Meta (updated) --- */
+.client-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.client-sheet-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.client-sheet-link:hover {
+    color: var(--accent-primary);
+}
+
+/* --- Client Card Footer (updated for 3 buttons) --- */
+.client-card-footer .btn-details {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--accent-primary-subtle);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-family: inherit;
+}
+
+.client-card-footer .btn-details:hover {
+    background: rgba(99, 102, 241, 0.2);
+}
+
+@media (max-width: 768px) {
+    .client-card-kpis {
+        gap: 6px;
+    }
+
+    .client-kpi-value {
+        font-size: 0.9rem;
+    }
+
+    .client-kpi-label {
+        font-size: 0.62rem;
+    }
 }
 
 /* --- Activity Feed --- */

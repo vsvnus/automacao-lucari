@@ -17,6 +17,9 @@ const state = {
     dashPeriod: '30d',
     dashFrom: null,
     dashTo: null,
+    clientsPeriod: '30d',
+    clientsDateFrom: null,
+    clientsDateTo: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -418,6 +421,122 @@ function setupPeriodSelector() {
             state.dateTo = toInput ? toInput.value : null;
             updatePeriodLabels();
             updateDashboard();
+        });
+    }
+}
+
+// ============================================
+// Clients Period Selector
+// ============================================
+function getClientsDateRange() {
+    const SP_OFFSET = -3;
+
+    function spMidnightToUTC(date) {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), -SP_OFFSET, 0, 0));
+    }
+
+    function spNow() {
+        const now = new Date();
+        const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+        return new Date(utcMs + SP_OFFSET * 3600000);
+    }
+
+    const today = spNow();
+    let from, to;
+
+    switch (state.clientsPeriod) {
+        case 'today':
+            from = spMidnightToUTC(today);
+            to = null;
+            break;
+        case '7d': {
+            const d = new Date(today);
+            d.setDate(d.getDate() - 7);
+            from = spMidnightToUTC(d);
+            to = null;
+            break;
+        }
+        case '30d': {
+            const d = new Date(today);
+            d.setDate(d.getDate() - 30);
+            from = spMidnightToUTC(d);
+            to = null;
+            break;
+        }
+        case 'custom': {
+            if (state.clientsDateFrom) {
+                from = spMidnightToUTC(new Date(state.clientsDateFrom + 'T00:00:00'));
+            } else {
+                from = spMidnightToUTC(today);
+            }
+            if (state.clientsDateTo) {
+                const toDate = new Date(state.clientsDateTo + 'T00:00:00');
+                toDate.setDate(toDate.getDate() + 1);
+                to = spMidnightToUTC(toDate);
+            } else {
+                to = null;
+            }
+            break;
+        }
+        default:
+            from = spMidnightToUTC(today);
+            to = null;
+    }
+
+    return {
+        from: from ? from.toISOString() : undefined,
+        to: to ? to.toISOString() : undefined,
+    };
+}
+
+function buildClientsDateQS() {
+    const { from, to } = getClientsDateRange();
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
+}
+
+function getClientsPeriodLabel() {
+    switch (state.clientsPeriod) {
+        case 'today': return 'hoje';
+        case '7d': return 'últimos 7 dias';
+        case '30d': return 'últimos 30 dias';
+        case 'custom': return 'período selecionado';
+        default: return 'hoje';
+    }
+}
+
+function setupClientsPeriodSelector() {
+    const pills = document.querySelectorAll('.clients-period-pill');
+    const customRange = document.getElementById('clients-period-custom-range');
+    const btnApply = document.getElementById('btn-clients-period-apply');
+
+    pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+            pills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.clientsPeriod = pill.dataset.period;
+
+            if (state.clientsPeriod === 'custom') {
+                if (customRange) customRange.style.display = 'flex';
+            } else {
+                if (customRange) customRange.style.display = 'none';
+                loadClients();
+            }
+        });
+    });
+
+    if (btnApply) {
+        btnApply.addEventListener('click', () => {
+            const fromInput = document.getElementById('clients-period-from');
+            const toInput = document.getElementById('clients-period-to');
+            state.clientsDateFrom = fromInput ? fromInput.value : null;
+            state.clientsDateTo = toInput ? toInput.value : null;
+            loadClients();
         });
     }
 }
@@ -1328,8 +1447,37 @@ function formatPhoneDisplay(phone) {
 // ============================================
 // Client Management
 // ============================================
+async function fetchClientOrigins() {
+    try {
+        const res = await fetch(`/api/dashboard/client-origins${buildClientsDateQS()}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+    } catch {
+        return [];
+    }
+}
+
+function getOriginBarClass(origin) {
+    const o = (origin || '').toLowerCase();
+    if (o.includes('meta') || o.includes('facebook') || o.includes('instagram')) return 'origin-meta';
+    if (o.includes('google')) return 'origin-google';
+    if (o.includes('whatsapp') || o === 'whatsapp') return 'origin-whatsapp';
+    return 'origin-other';
+}
+
+function getOriginDisplayLabel(origin) {
+    const o = (origin || '').toLowerCase();
+    if (o.includes('meta')) return 'Meta Ads';
+    if (o.includes('google')) return 'Google Ads';
+    if (o.includes('whatsapp') || o === 'whatsapp') return 'WhatsApp';
+    return origin || 'Outro';
+}
+
 async function loadClients() {
-    const clients = await fetchClients();
+    const [clients, clientOrigins] = await Promise.all([
+        fetchClients(),
+        fetchClientOrigins(),
+    ]);
     state.clients = clients;
 
     const container = refs.clientList;
@@ -1347,19 +1495,64 @@ async function loadClients() {
         return;
     }
 
+    // Group origins by slug
+    const originsMap = {};
+    clientOrigins.forEach(row => {
+        if (!originsMap[row.slug]) originsMap[row.slug] = [];
+        originsMap[row.slug].push(row);
+    });
+
+    const periodLabel = getClientsPeriodLabel();
+
     container.innerHTML = '';
     clients.forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
         const webhookSource = client.webhook_source || 'tintim';
-        const sourceBadge = webhookSource === 'both' ? 'Tintim + Kommo'
+        const sourceLabel = webhookSource === 'both' ? 'Tintim + Kommo'
             : webhookSource === 'kommo' ? 'Kommo' : 'Tintim';
-        const instanceShort = client.tintim_instance_id
-            ? client.tintim_instance_id.substring(0, 12) + '...'
-            : 'Não configurado';
-        const sheetShort = client.spreadsheet_id
-            ? client.spreadsheet_id.substring(0, 16) + '...'
-            : 'Não configurado';
+        const sourceClass = webhookSource === 'both' ? 'source-both'
+            : webhookSource === 'kommo' ? 'source-kommo' : 'source-tintim';
+
+        // Aggregate KPIs from origins data
+        const origins = originsMap[client.slug] || [];
+        const totalLeads = origins.reduce((s, o) => s + o.total, 0);
+        const totalSales = origins.reduce((s, o) => s + o.sales, 0);
+        const totalRevenue = origins.reduce((s, o) => s + o.revenue, 0);
+        const conversion = totalLeads > 0 ? ((totalSales / totalLeads) * 100).toFixed(1) : '0';
+        const revenueStr = totalRevenue > 0
+            ? `R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`
+            : '—';
+
+        // Build origin bars
+        const maxOriginTotal = origins.length > 0 ? Math.max(...origins.map(o => o.total)) : 0;
+        let originsHtml = '';
+        if (totalLeads > 0) {
+            const filteredOrigins = origins.filter(o => o.total > 0);
+            originsHtml = filteredOrigins.map(o => {
+                const barWidth = maxOriginTotal > 0 ? Math.max(4, (o.total / maxOriginTotal) * 100) : 0;
+                const barClass = getOriginBarClass(o.origin);
+                const label = getOriginDisplayLabel(o.origin);
+                return `
+                    <div class="client-origin-row">
+                        <span class="client-origin-label">${escapeHtml(label)}</span>
+                        <div class="client-origin-bar-track">
+                            <div class="client-origin-bar ${barClass}" style="width:${barWidth}%"></div>
+                        </div>
+                        <span class="client-origin-count">${o.total}</span>
+                    </div>`;
+            }).join('');
+        } else {
+            originsHtml = `<div class="client-no-leads">Sem leads ${escapeHtml(periodLabel)}</div>`;
+        }
+
+        // Sheet link
+        const sheetLink = client.spreadsheet_id
+            ? `<a href="https://docs.google.com/spreadsheets/d/${encodeURIComponent(client.spreadsheet_id)}" target="_blank" rel="noopener" class="client-sheet-link">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                Planilha
+               </a>`
+            : '';
 
         const card = document.createElement('div');
         card.className = 'client-card';
@@ -1377,21 +1570,36 @@ async function loadClients() {
                     ${isActive ? 'Ativo' : 'Inativo'}
                 </span>
             </div>
-            <div class="client-meta">
-                <div class="client-meta-row">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                    Instance: <code>${escapeHtml(instanceShort)}</code>
+            <div class="client-card-kpis">
+                <div class="client-kpi">
+                    <div class="client-kpi-value">${totalLeads}</div>
+                    <div class="client-kpi-label">Leads</div>
                 </div>
-                <div class="client-meta-row">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-                    Planilha: <code>${escapeHtml(sheetShort)}</code>
+                <div class="client-kpi">
+                    <div class="client-kpi-value">${totalSales}</div>
+                    <div class="client-kpi-label">Vendas</div>
                 </div>
-                <div class="client-meta-row">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                    Aba: <code>${escapeHtml(client.sheet_name || 'auto')}</code>
+                <div class="client-kpi">
+                    <div class="client-kpi-value">${revenueStr}</div>
+                    <div class="client-kpi-label">Receita</div>
+                </div>
+                <div class="client-kpi">
+                    <div class="client-kpi-value">${conversion}%</div>
+                    <div class="client-kpi-label">Conversão</div>
                 </div>
             </div>
+            <div class="client-card-origins">
+                ${originsHtml}
+            </div>
+            <div class="client-card-meta">
+                <span class="client-source-badge ${sourceClass}">${escapeHtml(sourceLabel)}</span>
+                ${sheetLink}
+            </div>
             <div class="client-card-footer">
+                <button class="btn-details" onclick="navigateToClientDetails('${escapeHtml(client.slug)}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    Ver detalhes
+                </button>
                 <div style="flex:1"></div>
                 <button class="btn-text" onclick="handleEditClient('${escapeHtml(client.slug)}')">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -1930,6 +2138,7 @@ async function init() {
     setupInvestigationListeners();
     setupPeriodSelector();
     setupDashboardPeriodSelector();
+    setupClientsPeriodSelector();
     updatePeriodLabels();
 }
 
