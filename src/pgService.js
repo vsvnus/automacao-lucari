@@ -765,12 +765,25 @@ class PgService {
 
         try {
             const from = startDate || getTodayStartISO();
-            let sql = `SELECT
-                    COALESCE(l.origin, 'WhatsApp') AS origin,
+            // CTE: para cada telefone, pega a origem do PRIMEIRO new_lead (origem real)
+            // Vendas vêm pelo WhatsApp mas devem ser atribuídas à origem original do lead
+            let sql = `
+                WITH lead_first_origin AS (
+                    SELECT DISTINCT ON (phone)
+                        phone,
+                        COALESCE(origin, 'WhatsApp') AS true_origin
+                    FROM leads_log
+                    WHERE event_type = 'new_lead' AND processing_result = 'success'
+                    ORDER BY phone, created_at ASC
+                )
+                SELECT
+                    COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp')) AS origin,
                     COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') AS leads,
-                    COUNT(*) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0) AS sales,
+                    COUNT(*) FILTER (WHERE l.sale_amount > 0
+                        OR (l.processing_result = 'success' AND l.status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']))) AS sales,
                     COALESCE(SUM(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
                 FROM leads_log l
+                LEFT JOIN lead_first_origin lfo ON lfo.phone = l.phone
                 WHERE l.created_at >= $1`;
             const params = [from];
             let idx = 2;
@@ -779,7 +792,7 @@ class PgService {
                 params.push(endDate);
                 idx++;
             }
-            sql += ` GROUP BY COALESCE(l.origin, 'WhatsApp') ORDER BY leads DESC`;
+            sql += ` GROUP BY COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp')) ORDER BY leads DESC`;
 
             const { rows } = await this.query(sql, params);
             return rows.map(r => ({
@@ -799,22 +812,35 @@ class PgService {
 
         try {
             const from = startDate || getTodayStartISO();
-            let sql = `SELECT c.slug, c.name,
-                    COALESCE(l.origin, 'WhatsApp') AS origin,
-                    COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') AS leads,
-                    COUNT(*) FILTER (WHERE l.sale_amount IS NOT NULL AND l.sale_amount > 0) AS sales,
-                    COALESCE(SUM(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
-                FROM clients c
-                LEFT JOIN leads_log l ON l.client_id = c.id AND l.created_at >= $1`;
+            // Mesma lógica: atribui vendas à origem real do lead (não do canal de venda)
             const params = [from];
             let idx = 2;
+            let dateFilter = '';
             if (endDate) {
-                sql += ` AND l.created_at <= $${idx}`;
+                dateFilter = ` AND l.created_at <= $${idx}`;
                 params.push(endDate);
                 idx++;
             }
-            sql += ` WHERE c.active = true
-                GROUP BY c.id, c.slug, c.name, COALESCE(l.origin, 'WhatsApp')
+            const sql = `
+                WITH lead_first_origin AS (
+                    SELECT DISTINCT ON (phone)
+                        phone,
+                        COALESCE(origin, 'WhatsApp') AS true_origin
+                    FROM leads_log
+                    WHERE event_type = 'new_lead' AND processing_result = 'success'
+                    ORDER BY phone, created_at ASC
+                )
+                SELECT c.slug, c.name,
+                    COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp')) AS origin,
+                    COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') AS leads,
+                    COUNT(*) FILTER (WHERE l.sale_amount > 0
+                        OR (l.processing_result = 'success' AND l.status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']))) AS sales,
+                    COALESCE(SUM(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
+                FROM clients c
+                LEFT JOIN leads_log l ON l.client_id = c.id AND l.created_at >= $1${dateFilter}
+                LEFT JOIN lead_first_origin lfo ON lfo.phone = l.phone
+                WHERE c.active = true
+                GROUP BY c.id, c.slug, c.name, COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp'))
                 HAVING COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') > 0
                 ORDER BY c.name, leads DESC`;
 
