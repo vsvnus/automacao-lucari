@@ -720,7 +720,7 @@ class PgService {
             );
 
             // 2. Sales
-            const sq = buildWhere(`event_type = 'status_update' AND processing_result = 'success' AND sale_amount IS NOT NULL`);
+            const sq = buildWhere(`event_type = 'status_update' AND processing_result = 'success' AND (sale_amount > 0 OR status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']))`);
             const { rows: sRows } = await this.query(
                 `SELECT COUNT(*) as count FROM leads_log ${sq.where}`, sq.params
             );
