@@ -1753,14 +1753,63 @@ class PgService {
         try {
             const fs = require('fs');
             const path = require('path');
-            const schemaPath = path.join(__dirname, '..', 'infra', 'schema-leads.sql');
 
+            // Step 1: Run base schema (idempotent CREATE IF NOT EXISTS)
+            const schemaPath = path.join(__dirname, '..', 'infra', 'schema-leads.sql');
             if (fs.existsSync(schemaPath)) {
                 const schema = fs.readFileSync(schemaPath, 'utf-8');
                 await this.query(schema);
-                logger.info('Schema migrations executadas com sucesso');
+                logger.info('Base schema applied');
+            }
+
+            // Step 2: Run versioned migrations from migrations/ directory
+            const migrationsDir = path.join(__dirname, '..', 'migrations');
+            if (!fs.existsSync(migrationsDir)) {
+                logger.info('No migrations directory found, skipping versioned migrations');
+                return;
+            }
+
+            // Create migrations tracking table
+            await this.query(`
+                CREATE TABLE IF NOT EXISTS pgmigrations (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) UNIQUE NOT NULL,
+                    run_on TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+
+            // Get already-run migrations
+            const { rows: executed } = await this.query('SELECT name FROM pgmigrations ORDER BY id');
+            const executedSet = new Set(executed.map(r => r.name));
+
+            // Get migration files sorted
+            const files = fs.readdirSync(migrationsDir)
+                .filter(f => f.endsWith('.sql'))
+                .sort();
+
+            let applied = 0;
+            for (const file of files) {
+                if (executedSet.has(file)) continue;
+
+                const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
+                await this.query('BEGIN');
+                try {
+                    await this.query(sql);
+                    await this.query('INSERT INTO pgmigrations (name) VALUES ($1)', [file]);
+                    await this.query('COMMIT');
+                    applied++;
+                    logger.info(`Migration applied: ${file}`);
+                } catch (err) {
+                    await this.query('ROLLBACK');
+                    logger.error(`Migration failed: ${file}`, { error: err.message });
+                    throw err;
+                }
+            }
+
+            if (applied > 0) {
+                logger.info(`${applied} migration(s) applied successfully`);
             } else {
-                logger.warn('Arquivo de schema não encontrado, pulando migrations');
+                logger.info('All migrations up to date');
             }
         } catch (error) {
             logger.error('Erro ao executar migrations', { error: error.message });
