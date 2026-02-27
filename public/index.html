@@ -443,7 +443,7 @@
                 </div>
             </div>
 
-            <!-- Webhook Banner -->
+            <!-- Webhook Banners -->
             <div class="webhook-banner" id="automacao-webhook-banner">
                 <div class="webhook-banner-content">
                     <div class="webhook-icon">
@@ -459,6 +459,29 @@
                     </div>
                 </div>
                 <button class="btn-copy" id="btn-copy-webhook" title="Copiar URL">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copiar</span>
+                </button>
+            </div>
+            <div class="webhook-banner" id="kommo-webhook-banner" style="margin-top: 8px;">
+                <div class="webhook-banner-content">
+                    <div class="webhook-icon" style="background: var(--accent-orange-subtle); color: var(--accent-orange);">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                    </div>
+                    <div class="webhook-details">
+                        <span class="webhook-label">URL do Webhook Kommo</span>
+                        <code id="webhook-url-kommo" class="webhook-url">carregando...</code>
+                    </div>
+                </div>
+                <button class="btn-copy" id="btn-copy-webhook-kommo" title="Copiar URL">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -839,6 +862,21 @@
                             </div>
                             <small class="form-hint">Cole no Tintim em: Configurações → Webhooks → Conversa criada /
                                 Conversa alterada</small>
+                        </div>
+                        <div class="setting-row setting-row-stacked" style="margin-top: 16px;">
+                            <label class="setting-label">URL do Webhook Kommo</label>
+                            <div class="webhook-edit-group">
+                                <input type="url" id="settings-webhook-kommo" class="setting-input" readonly
+                                    style="background: var(--bg-secondary); cursor: default;" />
+                                <button class="btn-copy btn-sm" id="btn-copy-webhook-kommo-settings" title="Copiar URL">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <small class="form-hint">Cole no Kommo em: Configurações → Comunicações → Adicionar webhook</small>
                         </div>
                     </div>
                 </div>
