@@ -1474,32 +1474,6 @@ $('#btn-copy-webhook-kommo-settings')?.addEventListener('click', () => {
     }
 });
 
-// Copy Kommo Webhook URL (Dashboard)
-?.addEventListener('click', () => {
-    const url = .textContent;
-    navigator.clipboard.writeText(url).then(() => {
-        const btn = ;
-        btn.classList.add('copied');
-        btn.querySelector('span').textContent = 'Copiado!';
-        showToast('URL Kommo copiada!', 'success');
-        setTimeout(() => {
-            btn.classList.remove('copied');
-            btn.querySelector('span').textContent = 'Copiar';
-        }, 2000);
-    });
-});
-
-// Copy Kommo Webhook URL (Settings)
-?.addEventListener('click', () => {
-    const input = ;
-    const url = input?.value?.trim();
-    if (url) {
-        navigator.clipboard.writeText(url).then(() => {
-            showToast('URL Kommo copiada!', 'success');
-        });
-    }
-});
-
 // ============================================
 // User Management
 // ============================================
