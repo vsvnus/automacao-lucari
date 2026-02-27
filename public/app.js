@@ -1341,6 +1341,13 @@ async function loadSettings() {
         if (webhookInput) webhookInput.value = fallback;
     }
 
+    // Kommo webhook URL (derivada da URL base)
+    const kommoUrl = `${window.location.origin}/webhook/kommo`;
+    const kommoUrlEl = $("#webhook-url-kommo");
+    if (kommoUrlEl) kommoUrlEl.textContent = kommoUrl;
+    const kommoSettingsInput = $("#settings-webhook-kommo");
+    if (kommoSettingsInput) kommoSettingsInput.value = kommoUrl;
+
     // Porta
     const port = window.location.port || '80';
     const portEl = $('#settings-port');
@@ -1439,6 +1446,58 @@ $('#btn-copy-webhook')?.addEventListener('click', () => {
             btn.querySelector('span').textContent = 'Copiar';
         }, 2000);
     });
+});
+
+// Copy Kommo Webhook URL (Dashboard)
+$('#btn-copy-webhook-kommo')?.addEventListener('click', () => {
+    const url = $('#webhook-url-kommo').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = $('#btn-copy-webhook-kommo');
+        btn.classList.add('copied');
+        btn.querySelector('span').textContent = 'Copiado!';
+        showToast('URL Kommo copiada!', 'success');
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.querySelector('span').textContent = 'Copiar';
+        }, 2000);
+    });
+});
+
+// Copy Kommo Webhook URL (Settings)
+$('#btn-copy-webhook-kommo-settings')?.addEventListener('click', () => {
+    const input = $('#settings-webhook-kommo');
+    const url = input?.value?.trim();
+    if (url) {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('URL Kommo copiada!', 'success');
+        });
+    }
+});
+
+// Copy Kommo Webhook URL (Dashboard)
+?.addEventListener('click', () => {
+    const url = .textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = ;
+        btn.classList.add('copied');
+        btn.querySelector('span').textContent = 'Copiado!';
+        showToast('URL Kommo copiada!', 'success');
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.querySelector('span').textContent = 'Copiar';
+        }, 2000);
+    });
+});
+
+// Copy Kommo Webhook URL (Settings)
+?.addEventListener('click', () => {
+    const input = ;
+    const url = input?.value?.trim();
+    if (url) {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('URL Kommo copiada!', 'success');
+        });
+    }
 });
 
 // ============================================
