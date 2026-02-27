@@ -11,9 +11,12 @@ const state = {
     clients: [],
     activityLog: [],
     webhookCount: 0,
-    period: '30d',
+    period: '7d',
     dateFrom: null,
     dateTo: null,
+    dashPeriod: '30d',
+    dashFrom: null,
+    dashTo: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -33,12 +36,13 @@ const refs = {
 
 // Sections that belong to Automação Leads app
 const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts'];
+const TINTIM_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'keywords'];
 
 function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'sdr', 'calculadora', 'relatorio'];
+    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'keywords', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -48,11 +52,19 @@ function navigateTo(section, replace = false) {
     const target = $(`#section-${section}`);
     if (target) target.classList.add('active');
 
-    // Update sidebar active state - Automação sections all highlight 'automacao'
+    // Update sidebar active state
     const sidebarSection = AUTOMACAO_SECTIONS.includes(section) ? 'automacao' : section;
     $$('.nav-item').forEach(item => {
         item.classList.toggle('active', item.dataset.section === sidebarSection);
     });
+
+    // Auto-open Tintim submenu when navigating to its sections
+    const tintimParent = document.querySelector('.nav-app-tintim');
+    const tintimSubmenu = document.getElementById('submenu-tintim');
+    if (tintimParent && tintimSubmenu && TINTIM_SECTIONS.includes(section)) {
+        tintimParent.classList.add('open');
+        tintimSubmenu.classList.add('open');
+    }
 
     // Update automacao tab bar active state across all sections that have it
     if (AUTOMACAO_SECTIONS.includes(section)) {
@@ -72,6 +84,7 @@ function navigateTo(section, replace = false) {
         clients: 'Automação de Leads',
         logs: 'Automação de Leads',
         alerts: 'Automação de Leads',
+        keywords: 'Palavras-Chave',
         sdr: 'SDR de IA',
         calculadora: 'Calculadora',
         relatorio: 'Relatórios'
@@ -105,6 +118,7 @@ function navigateTo(section, replace = false) {
             searchLeads('');
         }
     }
+    if (section === 'keywords') loadKeywordsSection();
     if (section === 'sdr') loadSDRSection();
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
@@ -548,6 +562,265 @@ async function loadDashboardOverview() {
     } catch (e) {
         console.error('Failed to load dashboard overview:', e);
     }
+
+    // Load enhanced overview data (client summary, funnel, origins)
+    loadOverviewEnhanced();
+}
+
+
+function getDashboardDateRange() {
+    const SP_OFFSET = -3;
+    function spMidnightToUTC(date) {
+        const d = new Date(date); d.setHours(0,0,0,0);
+        return new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate(),-SP_OFFSET,0,0));
+    }
+    function spNow() {
+        const now = new Date();
+        return new Date(now.getTime() + now.getTimezoneOffset()*60000 + SP_OFFSET*3600000);
+    }
+    const today = spNow();
+    let from, to;
+    switch (state.dashPeriod) {
+        case 'today':   from = spMidnightToUTC(today); to = null; break;
+        case '7d':      { const d=new Date(today); d.setDate(d.getDate()-6); from=spMidnightToUTC(d); to=null; break; }
+        case '30d':     { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; break; }
+        case 'custom':
+            if (state.dashFrom) { const p=state.dashFrom.split('-'); from=spMidnightToUTC(new Date(+p[0],p[1]-1,+p[2])); }
+            if (state.dashTo)   { const p=state.dashTo.split('-'); const e=new Date(+p[0],p[1]-1,+p[2]); e.setDate(e.getDate()+1); to=spMidnightToUTC(e); }
+            break;
+        default:        { const d=new Date(today); d.setDate(d.getDate()-29); from=spMidnightToUTC(d); to=null; }
+    }
+    return { from: from?.toISOString(), to: to?.toISOString() };
+}
+
+function buildDashboardQS() {
+    const { from, to } = getDashboardDateRange();
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return qs ? '?' + qs : '';
+}
+
+function setupDashboardPeriodSelector() {
+    const pills = document.querySelectorAll('.dashboard-period-pill');
+    const customRange = document.getElementById('dashboard-period-custom-range');
+    const btnApply = document.getElementById('btn-dashboard-period-apply');
+
+    pills.forEach(pill => {
+        pill.addEventListener('click', () => {
+            pills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            state.dashPeriod = pill.dataset.period;
+            if (state.dashPeriod === 'custom') {
+                if (customRange) customRange.style.display = 'flex';
+            } else {
+                if (customRange) customRange.style.display = 'none';
+                loadOverviewEnhanced();
+            }
+        });
+    });
+
+    if (btnApply) {
+        btnApply.addEventListener('click', () => {
+            state.dashFrom = document.getElementById('dashboard-period-from')?.value || null;
+            state.dashTo   = document.getElementById('dashboard-period-to')?.value || null;
+            if (customRange) customRange.style.display = 'none';
+            pills.forEach(p => p.classList.toggle('active', p.dataset.period === 'custom'));
+            loadOverviewEnhanced();
+        });
+    }
+}
+
+async function loadOverviewEnhanced() {
+    try {
+        const qs = buildDashboardQS();
+        const [overviewRes, sdrPipelineRes] = await Promise.all([
+            fetch(`/api/dashboard/overview${qs}`),
+            fetch('/api/sdr/global/pipeline').catch(() => null),
+        ]);
+        if (!overviewRes.ok) return;
+        const data = await overviewRes.json();
+
+        // Update period label in client table header
+        const periodLabel = document.getElementById('client-summary-period');
+        if (periodLabel) periodLabel.textContent = getPeriodLabel();
+
+        // Render client summary table
+        renderClientSummary(data.clients, data.comparison);
+
+        // Render SDR funnel
+        const sdrPipeline = (sdrPipelineRes && sdrPipelineRes.ok) ? await sdrPipelineRes.json() : null;
+        renderFunnel(sdrPipeline);
+
+        // Render origin breakdown
+        renderOriginBreakdown(data.origins);
+
+        // Render Google Ads keywords mini-card
+        renderKeywordsOverview(data.keywords);
+    } catch (e) {
+        console.error('Failed to load enhanced overview:', e);
+    }
+}
+
+function renderClientSummary(clients, comparison) {
+    const tbody = document.getElementById('client-summary-body');
+    if (!tbody) return;
+
+    if (!clients || clients.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:24px;">Nenhum cliente ativo</td></tr>';
+        return;
+    }
+
+    // Update today vs yesterday chip
+    const comparisonEl = document.getElementById('client-summary-comparison');
+    if (comparisonEl && comparison) {
+        const diff = comparison.today - comparison.yesterday;
+        const arrow = diff > 0 ? '\u2191' : diff < 0 ? '\u2193' : '';
+        const color = diff > 0 ? 'var(--accent-green)' : diff < 0 ? 'var(--accent-red)' : 'var(--text-tertiary)';
+        comparisonEl.innerHTML = `Hoje: <strong>${comparison.today}</strong> leads <span style="color:${color}">${arrow} ${diff !== 0 ? Math.abs(diff) : ''} vs ontem</span>`;
+    }
+
+    tbody.innerHTML = clients.map(c => {
+        const revenue = c.revenue > 0 ? `R$ ${c.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
+        return `<tr>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="client-avatar" style="width:28px;height:28px;font-size:0.65rem;">${escapeHtml(getInitials(c.name))}</div>
+                    <span>${escapeHtml(c.name)}</span>
+                </div>
+            </td>
+            <td style="text-align:right;">${c.totalLeads}</td>
+            <td style="text-align:right;">${c.sales}</td>
+            <td style="text-align:right;">${revenue}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderFunnel(sdrData) {
+    const container = document.getElementById('funnel-container');
+    if (!container) return;
+
+    if (!sdrData || !sdrData.pipeline) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:24px;">SDR de IA indispon\u00edvel</div>';
+        return;
+    }
+
+    const p = sdrData.pipeline;
+    const stages = [
+        { label: 'Conversas iniciadas', value: sdrData.conversations, color: 'var(--accent-primary)' },
+        { label: 'Leads capturados',    value: p.new + p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-cyan)' },
+        { label: 'Interessados',        value: p.interested + p.qualified + p.proposal + p.won, color: 'var(--accent-orange)' },
+        { label: 'Qualificados',        value: p.qualified + p.proposal + p.won, color: 'var(--accent-primary-hover)' },
+        { label: 'Proposta enviada',    value: p.proposal + p.won, color: 'var(--accent-yellow, #f0a500)' },
+        { label: 'Convertidos',         value: p.won, color: 'var(--accent-green)' },
+    ];
+
+    const max = Math.max(stages[0].value, 1);
+
+    container.innerHTML = stages.map((s, i) => {
+        const pct = Math.max((s.value / max) * 100, 2);
+        const dropoff = i > 0 && stages[i - 1].value > 0
+            ? ` <span style="color:var(--text-tertiary);font-size:0.7rem;">(-${Math.round((1 - s.value / stages[i - 1].value) * 100)}%)</span>`
+            : '';
+        return `<div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span style="font-size:0.8rem;color:var(--text-secondary)">${s.label}</span>
+                <span style="font-size:0.8rem;font-weight:600;">${s.value}${dropoff}</span>
+            </div>
+            <div style="height:8px;background:var(--bg-surface);border-radius:4px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${s.color};border-radius:4px;transition:width 0.5s var(--ease-out);"></div>
+            </div>
+        </div>`;
+    }).join('') + (p.lost > 0
+        ? `<div style="margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:8px;font-size:0.75rem;color:var(--text-tertiary);display:flex;justify-content:space-between;">
+            <span>Perdidos</span><span>${p.lost}</span>
+        </div>`
+        : '');
+}
+
+function renderOriginBreakdown(origins) {
+    const container = document.getElementById('origin-breakdown-container');
+    if (!container || !origins) return;
+
+    const total = origins.reduce((sum, o) => sum + o.total, 0);
+    if (total === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:24px;">Sem dados</div>';
+        return;
+    }
+
+    const colorMap = {
+        'Meta Ads': { bg: 'var(--accent-primary-subtle)', color: 'var(--accent-primary)', bar: 'var(--accent-primary)' },
+        'Google Ads': { bg: 'var(--accent-google-subtle)', color: 'var(--accent-google)', bar: 'var(--accent-google)' },
+        'WhatsApp': { bg: 'var(--accent-green-subtle)', color: 'var(--accent-green)', bar: 'var(--accent-green)' },
+    };
+
+    container.innerHTML = origins.map(o => {
+        const pct = Math.round((o.total / total) * 100);
+        const colors = colorMap[o.origin] || { bg: 'var(--bg-surface)', color: 'var(--text-secondary)', bar: 'var(--text-tertiary)' };
+        return `<div style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colors.bar};"></span>
+                    <span style="font-size:0.85rem;font-weight:500;">${escapeHtml(o.origin)}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <span style="font-size:0.85rem;font-weight:600;">${o.total}</span>
+                    <span style="font-size:0.7rem;color:var(--text-tertiary);">${pct}%</span>
+                </div>
+            </div>
+            <div style="height:6px;background:var(--bg-surface);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:${pct}%;background:${colors.bar};border-radius:3px;transition:width 0.5s var(--ease-out);"></div>
+            </div>
+            ${o.sales > 0 ? `<div style="font-size:0.7rem;color:var(--accent-green);margin-top:4px;">${o.sales} venda${o.sales !== 1 ? 's' : ''} \u00b7 R$ ${o.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function renderKeywordsOverview(kw) {
+    const container = document.getElementById('keywords-overview-stats');
+    if (!container) return;
+
+    if (!kw || kw.totalLeads === 0) {
+        container.innerHTML = '<div style="text-align:center;color:var(--text-tertiary);padding:16px;font-size:0.85rem;">Sem leads Google Ads no per\u00edodo</div>';
+        return;
+    }
+
+    const convRate = kw.totalLeads > 0 ? ((kw.conversions / kw.totalLeads) * 100).toFixed(0) : 0;
+    const revenue = kw.revenue > 0 ? `R$ ${kw.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` : '\u2014';
+
+    const statsHtml = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;color:var(--accent-google);">${kw.uniqueKeywords}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Keywords</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;">${kw.totalLeads}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Leads Google</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.4rem;font-weight:700;color:var(--accent-green);">${kw.conversions} <span style="font-size:0.75rem;">(${convRate}%)</span></div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Convers\u00f5es</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.1rem;font-weight:700;color:var(--accent-green);">${revenue}</div>
+            <div style="font-size:0.7rem;color:var(--text-tertiary);margin-top:2px;">Receita</div>
+        </div>
+    </div>`;
+
+    const topKwHtml = kw.topKeywords && kw.topKeywords.length
+        ? `<div style="border-top:1px solid var(--border-subtle);padding-top:12px;">
+            ${kw.topKeywords.map(k => `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">
+                <span style="font-size:0.8rem;color:var(--text-secondary);">${escapeHtml(k.keyword || '\u2014')}</span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:0.8rem;font-weight:600;">${k.leads}</span>
+                    ${k.converted ? '<span style="font-size:0.65rem;color:var(--accent-green);">&#10003; convertido</span>' : ''}
+                </div>
+            </div>`).join('')}
+        </div>`
+        : '';
+
+    container.innerHTML = statsHtml + topKwHtml;
 }
 
 // ============================================
@@ -666,7 +939,7 @@ async function loadDashboardClients() {
     }
 
     container.innerHTML = '';
-    clients.slice(0, 5).forEach(client => {
+    clients.forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
         const count = leadCounts[client.slug] || leadCounts[client.id] || 0;
@@ -760,7 +1033,9 @@ function renderLogItem(log, detailed = false) {
     const isFailed = log.result === 'failed' || log.result === 'error';
     const isNewLead = log.event_type === 'new_lead';
     const isUpdate = log.event_type === 'status_update' || log.event_type === 'lead.update';
-    const isSale = isUpdate && log.sale_amount && parseFloat(log.sale_amount) > 0;
+    const SALE_STATUS_KWS = ["comprou","comprado","venda","vendido","fechou","fechado","ganho","ganhou","convertido","contrato","assinado","pago","pagou","sale","won","closed"];
+    const isSaleByStatus = log.status && SALE_STATUS_KWS.some(kw => log.status.toLowerCase().includes(kw));
+    const isSale = isUpdate && ((log.sale_amount !== null && log.sale_amount !== undefined && parseFloat(log.sale_amount) > 0) || isSaleByStatus);
     const isRecovered = log.status && (log.status.includes('Recuperad') || log.status.includes('não encontrado'));
 
     const timestamp = new Date(log.timestamp);
@@ -881,6 +1156,9 @@ async function loadClients() {
     clients.forEach(client => {
         const initial = getInitials(client.name);
         const isActive = client.active !== false;
+        const webhookSource = client.webhook_source || 'tintim';
+        const sourceBadge = webhookSource === 'both' ? 'Tintim + Kommo'
+            : webhookSource === 'kommo' ? 'Kommo' : 'Tintim';
         const instanceShort = client.tintim_instance_id
             ? client.tintim_instance_id.substring(0, 12) + '...'
             : 'Não configurado';
@@ -989,6 +1267,9 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         spreadsheet_id: $('#client-sheet').value.trim(),
         sheet_name: 'auto',
         active: true,
+        webhook_source: $('#client-webhook-source').value,
+        kommo_pipeline_id: null,
+        kommo_account_id: $('#client-kommo-account') ? $('#client-kommo-account').value.trim() || null : null,
     };
 
     try {
@@ -1010,6 +1291,23 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         showToast(err.message || 'Erro ao salvar cliente', 'error');
     }
 });
+
+// Toggle Kommo Pipeline field visibility based on webhook source
+function toggleKommoPipelineField() {
+    const source = document.getElementById('client-webhook-source');
+    const group = document.getElementById('kommo-pipeline-group');
+    const instanceGroup = document.getElementById('client-instance');
+    if (!source || !group) return;
+    const val = source.value;
+    group.style.display = (val === 'kommo' || val === 'both') ? '' : 'none';
+    // Tintim instance is optional when source is kommo-only
+    if (instanceGroup) {
+        instanceGroup.required = (val !== 'kommo');
+    }
+}
+
+// Listen for source change
+document.getElementById('client-webhook-source')?.addEventListener('change', toggleKommoPipelineField);
 
 async function updateClient(clientData) {
     const res = await fetch(`/admin/clients/${clientData.id}`, {
@@ -1042,6 +1340,13 @@ async function loadSettings() {
         const fallback = `${window.location.origin}/webhook/tintim`;
         if (webhookInput) webhookInput.value = fallback;
     }
+
+    // Kommo webhook URL (derivada da URL base)
+    const kommoUrl = `${window.location.origin}/webhook/kommo`;
+    const kommoUrlEl = $("#webhook-url-kommo");
+    if (kommoUrlEl) kommoUrlEl.textContent = kommoUrl;
+    const kommoSettingsInput = $("#settings-webhook-kommo");
+    if (kommoSettingsInput) kommoSettingsInput.value = kommoUrl;
 
     // Porta
     const port = window.location.port || '80';
@@ -1141,6 +1446,32 @@ $('#btn-copy-webhook')?.addEventListener('click', () => {
             btn.querySelector('span').textContent = 'Copiar';
         }, 2000);
     });
+});
+
+// Copy Kommo Webhook URL (Dashboard)
+$('#btn-copy-webhook-kommo')?.addEventListener('click', () => {
+    const url = $('#webhook-url-kommo').textContent;
+    navigator.clipboard.writeText(url).then(() => {
+        const btn = $('#btn-copy-webhook-kommo');
+        btn.classList.add('copied');
+        btn.querySelector('span').textContent = 'Copiado!';
+        showToast('URL Kommo copiada!', 'success');
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.querySelector('span').textContent = 'Copiar';
+        }, 2000);
+    });
+});
+
+// Copy Kommo Webhook URL (Settings)
+$('#btn-copy-webhook-kommo-settings')?.addEventListener('click', () => {
+    const input = $('#settings-webhook-kommo');
+    const url = input?.value?.trim();
+    if (url) {
+        navigator.clipboard.writeText(url).then(() => {
+            showToast('URL Kommo copiada!', 'success');
+        });
+    }
 });
 
 // ============================================
@@ -1318,10 +1649,11 @@ document.addEventListener('keydown', (e) => {
     switch (e.key) {
         case '1': navigateTo('dashboard'); break;
         case '2': navigateTo('automacao'); break;
-        case '3': navigateTo('sdr'); break;
-        case '4': navigateTo('calculadora'); break;
-        case '5': navigateTo('relatorio'); break;
-        case '6': navigateTo('settings'); break;
+        case '3': navigateTo('keywords'); break;
+        case '4': navigateTo('sdr'); break;
+        case '5': navigateTo('calculadora'); break;
+        case '6': navigateTo('relatorio'); break;
+        case '7': navigateTo('settings'); break;
         case 'n':
         case 'N':
             navigateTo('clients');
@@ -1376,6 +1708,17 @@ async function init() {
     // 1. Initial Navigation (Routing)
     const initialSection = getSectionFromUrl();
     // Use replace=true to correctly set the initial history state without pushing a new entry
+    // Tintim submenu toggle
+    const tintimToggle = document.querySelector('[data-toggle="tintim"]');
+    if (tintimToggle) {
+        tintimToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            tintimToggle.classList.toggle('open');
+            const submenu = document.getElementById('submenu-tintim');
+            if (submenu) submenu.classList.toggle('open');
+        });
+    }
+
     navigateTo(initialSection, true);
 
     // 2. Load Data
@@ -1391,6 +1734,7 @@ async function init() {
     // 3. Setup Listeners
     setupInvestigationListeners();
     setupPeriodSelector();
+    setupDashboardPeriodSelector();
     updatePeriodLabels();
 }
 
@@ -1528,9 +1872,10 @@ function applyFilterToResults() {
     if (currentLogFilter === 'errors') {
         filtered = filtered.filter(item => item.result === 'failed' || item.result === 'error');
     } else if (currentLogFilter === 'sales') {
+        const SALE_FILTER_KWS = ['comprou','comprado','venda','vendido','fechou','fechado','ganho','ganhou','convertido','contrato','assinado','pago','pagou','sale','won','closed'];
         filtered = filtered.filter(item =>
-            (item.sale_amount && parseFloat(item.sale_amount) > 0) ||
-            (item.status && item.status.toLowerCase().includes('vend'))
+            (item.sale_amount !== null && item.sale_amount !== undefined && parseFloat(item.sale_amount) > 0) ||
+            (item.status && SALE_FILTER_KWS.some(kw => item.status.toLowerCase().includes(kw)))
         );
     } else if (currentLogFilter === 'new_leads') {
         filtered = filtered.filter(item => item.event_type === 'new_lead');
@@ -1733,6 +2078,9 @@ function openModalForEdit(client) {
     $('#client-name').value = client.name;
     $('#client-instance').value = client.tintim_instance_id;
     $('#client-sheet').value = client.spreadsheet_id;
+    $('#client-webhook-source').value = client.webhook_source || 'tintim';
+    if ($('#client-kommo-account')) $('#client-kommo-account').value = client.kommo_account_id || '';
+    toggleKommoPipelineField();
 
     // Change UI to "Edit" mode
     const title = refs.modal.querySelector('h3');
@@ -2972,6 +3320,17 @@ async function loadCalcSection() {
 // ============================================
 
 async function loadAlertsSection() {
+    // Try new errors-summary endpoint first, fallback to legacy
+    try {
+        const res = await fetch("/api/dashboard/errors-summary");
+        if (res.ok) {
+            const data = await res.json();
+            renderErrorsSummaryNew(data);
+            return;
+        }
+    } catch { /* fallback below */ }
+
+    // Fallback: try legacy alerts endpoint
     try {
         const res = await fetch("/api/alerts/errors?limit=50");
         if (!res.ok) throw new Error("Falha ao carregar alertas");
@@ -2981,8 +3340,109 @@ async function loadAlertsSection() {
     } catch (err) {
         console.error("Erro ao carregar alertas:", err);
         const list = document.getElementById("alerts-error-list");
-        if (list) list.innerHTML = '<p class="empty-state">Erro ao carregar alertas</p>';
+        if (list) list.innerHTML = '<p class="empty-state">Nenhum erro encontrado. Sistema funcionando normalmente.</p>';
     }
+}
+
+function renderErrorsSummaryNew(data) {
+    // Update stat cards
+    const rateEl = document.getElementById("error-success-rate");
+    const countEl = document.getElementById("error-total-count");
+    const lastEl = document.getElementById("error-last-date");
+
+    if (rateEl) {
+        const total = data.errorsByType.reduce((s, e) => s + e.count, 0);
+        rateEl.textContent = total === 0 ? '100%' : total + ' erro' + (total !== 1 ? 's' : '');
+        rateEl.style.color = total === 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+    }
+    if (countEl) countEl.textContent = data.errorsByType.reduce((s, e) => s + e.count, 0);
+    if (lastEl && data.recentErrors.length > 0) {
+        lastEl.textContent = formatTimeAgo(data.recentErrors[0].timestamp);
+    } else if (lastEl) {
+        lastEl.textContent = 'Nenhum';
+        lastEl.style.color = 'var(--accent-green)';
+    }
+
+    // Render error groups
+    const list = document.getElementById("alerts-error-list");
+    if (!list) return;
+
+    if (data.recentErrors.length === 0) {
+        list.innerHTML = `<div class="card" style="margin-bottom:20px;">
+            <div class="activity-empty" style="padding:32px;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="1.5" opacity="0.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <p style="color:var(--accent-green);font-weight:600;">Sistema sem erros</p>
+                <small>Todos os leads foram processados com sucesso.</small>
+            </div>
+        </div>`;
+        return;
+    }
+
+    // Group errors by type with actionable suggestions
+    const suggestions = {
+        'permission': 'Verifique se a conta de servico do Dashboard tem acesso de Editor na planilha do Google Sheets do cliente.',
+        'sheets': 'Erro na conexao com Google Sheets. Verifique credenciais e permissoes da planilha.',
+        'recuperado': 'Lead foi recuperado manualmente apos falha no processamento original. Nenhuma acao necessaria.',
+        'default': 'Erro de processamento. Verifique o payload do webhook e tente reprocessar.'
+    };
+
+    function getSuggestion(errorMsg) {
+        if (!errorMsg) return suggestions.default;
+        const lower = errorMsg.toLowerCase();
+        if (lower.includes('permission') || lower.includes('permissao')) return suggestions.permission;
+        if (lower.includes('sheet') || lower.includes('planilha')) return suggestions.sheets;
+        if (lower.includes('recuperado') || lower.includes('recovered')) return suggestions.recuperado;
+        return suggestions.default;
+    }
+
+    // Render error types summary
+    let html = '';
+    if (data.errorsByType.length > 0) {
+        html += '<div class="card" style="margin-bottom:20px;"><div class="card-header"><h3 class="card-title">Tipos de Erro</h3></div><div class="card-body" style="padding:0;">';
+        html += data.errorsByType.map(e => {
+            const suggestion = getSuggestion(e.errorType);
+            const clients = e.affectedClients.join(', ');
+            return `<div style="padding:16px 20px;border-bottom:1px solid var(--border-subtle);">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+                    <div style="flex:1;">
+                        <div style="font-weight:500;font-size:0.85rem;margin-bottom:4px;">${escapeHtml(e.errorType || 'Erro desconhecido')}</div>
+                        <div style="font-size:0.75rem;color:var(--text-tertiary);">${clients ? 'Clientes: ' + escapeHtml(clients) : ''}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="badge-status badge-error">${e.count}x</span>
+                        <span style="font-size:0.7rem;color:var(--text-tertiary);">${formatTimeAgo(e.lastOccurrence)}</span>
+                    </div>
+                </div>
+                <div style="padding:8px 12px;background:var(--accent-primary-subtle);border-radius:8px;font-size:0.75rem;color:var(--accent-primary);">
+                    <strong>Resolucao:</strong> ${escapeHtml(suggestion)}
+                </div>
+            </div>`;
+        }).join('');
+        html += '</div></div>';
+    }
+
+    // Render recent errors list
+    html += '<div class="card"><div class="card-header"><h3 class="card-title">Erros Recentes</h3></div><div class="card-body" style="padding:0;">';
+    html += data.recentErrors.map(err => {
+        const time = new Date(err.timestamp).toLocaleString('pt-BR');
+        return `<div class="activity-item" style="border-bottom:1px solid var(--border-subtle);">
+            <div class="activity-icon-wrapper stat-icon-error">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+            <div class="activity-content">
+                <div class="activity-title">
+                    <span>${escapeHtml(err.name || formatPhoneDisplay(err.phone))}</span>
+                    <span class="badge-status badge-error">Erro</span>
+                    ${err.origin ? `<span class="badge-status badge-origin-default">${escapeHtml(err.origin)}</span>` : ''}
+                </div>
+                <div class="activity-subtitle">${escapeHtml(err.client)} \u00b7 ${time}</div>
+                ${err.errorMessage ? `<div style="margin-top:6px;padding:6px 10px;background:var(--accent-red-subtle);border-radius:6px;font-size:0.75rem;color:var(--accent-red);">${escapeHtml(err.errorMessage)}</div>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+    html += '</div></div>';
+
+    list.innerHTML = html;
 }
 
 function renderAlertsStats(stats) {
@@ -3402,9 +3862,8 @@ async function openRelatorioModal(client = null) {
 
     $('#modal-relatorio-title').textContent = isEdit ? 'Editar Cliente' : 'Novo Cliente';
     $('#relatorio-client-edit-id').value = client?.id || '';
-    $('#rel-semanal-tab').value = client?.semanal_tab_name || 'Atualizar Projeção Semanal';
-    $('#rel-mensal-tab').value = client?.mensal_tab_name || 'Métricas Gerenciadores';
-    $('#rel-lead-metric').value = client?.lead_metric || 'fb_ads:actions_lead';
+
+    $('#rel-lead-metric-ig').checked = client?.lead_metric === 'ig:new_followers_count';
     $('#rel-notes').value = client?.notes || '';
     $('#rel-spreadsheet-url').value = client?.spreadsheet_id || '';
     $('#rel-spreadsheet-id').value = client?.spreadsheet_id || '';
@@ -3758,9 +4217,8 @@ $('#form-relatorio-client')?.addEventListener('submit', async (e) => {
         meta_ads_integration_id: $('#rel-meta-select')?.value || null,
         google_ads_integration_id: $('#rel-google-select')?.value || null,
         spreadsheet_id: sheetId,
-        semanal_tab_name: $('#rel-semanal-tab').value.trim() || 'Atualizar Projeção Semanal',
-        mensal_tab_name: $('#rel-mensal-tab').value.trim() || 'Métricas Gerenciadores',
-        lead_metric: $('#rel-lead-metric').value || 'fb_ads:actions_lead',
+
+        lead_metric: $('#rel-lead-metric-ig').checked ? 'ig:new_followers_count' : null,
         metrics_config: metricsConfig,
         notes: $('#rel-notes').value.trim() || null,
         active: true,
@@ -3832,3 +4290,493 @@ $('#btn-relatorio-refresh-execs')?.addEventListener('click', loadRelatorioExecut
 $('#modal-relatorio-client')?.addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeRelatorioModal();
 });
+
+// ============================================
+// Keywords Section (Palavras-Chave Google Ads)
+// ============================================
+
+const kwState = {
+    period: '7d',
+    clientId: null,
+    dateFrom: null,
+    dateTo: null,
+};
+
+function getKwDateRange() {
+    const now = new Date();
+    let from, to;
+    if (kwState.period === 'custom' && kwState.dateFrom && kwState.dateTo) {
+        from = kwState.dateFrom;
+        to = kwState.dateTo;
+    } else {
+        const days = kwState.period === '7d' ? 7 : kwState.period === '90d' ? 90 : 30;
+        from = new Date(now.getTime() - days * 86400000).toISOString();
+        to = now.toISOString();
+    }
+    return { from, to };
+}
+
+function buildKwParams() {
+    const { from, to } = getKwDateRange();
+    const params = new URLSearchParams();
+    if (kwState.clientId) params.set('client', kwState.clientId);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return params.toString();
+}
+
+async function loadKeywordsSection() {
+    // Populate client select
+    const select = document.getElementById('kw-client-select');
+    if (select && select.options.length <= 1) {
+        try {
+            const clients = await fetch('/admin/clients', { credentials: 'same-origin' }).then(r => r.json());
+            clients.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c._db_id || c.id;
+                opt.textContent = c.name;
+                select.appendChild(opt);
+            });
+        } catch (e) { console.error('Failed to load clients for keywords', e); }
+    }
+
+    await Promise.all([
+        loadKeywordsStats(),
+        loadKeywordsOverview(),
+        loadKeywordsTrend(),
+        loadKeywordsBreakdown(),
+        loadKeywordsCampaigns(),
+    ]);
+}
+
+async function loadKeywordsStats() {
+    try {
+        const data = await fetch('/api/keywords/stats?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const el = (id) => document.getElementById(id);
+        if (el('kw-stat-unique')) el('kw-stat-unique').textContent = data.uniqueKeywords || 0;
+        if (el('kw-stat-leads')) el('kw-stat-leads').textContent = data.totalLeads || 0;
+        if (el('kw-stat-top')) el('kw-stat-top').textContent = data.topKeyword || '—';
+        if (el('kw-stat-rate')) el('kw-stat-rate').textContent = (data.conversionRate || 0) + '%';
+        if (el('kw-stat-conversions')) el('kw-stat-conversions').textContent = data.totalConversions || 0;
+        if (el('kw-stat-value')) el('kw-stat-value').textContent = 'R$ ' + (data.totalValue || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    } catch (e) { console.error('Keywords stats error', e); }
+}
+
+async function loadKeywordsOverview() {
+    try {
+        const data = await fetch('/api/keywords/overview?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const tbody = document.getElementById('kw-ranking-body');
+        if (!tbody) return;
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhuma keyword encontrada no periodo</td></tr>';
+            return;
+        }
+
+        const maxLeads = Math.max(...data.map(d => parseInt(d.leads, 10)));
+        tbody.innerHTML = data.map(row => {
+            const leads = parseInt(row.leads, 10);
+            const conversions = parseInt(row.conversions, 10);
+            const rate = parseFloat(row.rate || 0);
+            const value = parseFloat(row.total_value || 0);
+            const barWidth = maxLeads > 0 ? (leads / maxLeads * 100) : 0;
+            const lastDate = row.last_date ? new Date(row.last_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '—';
+            const keyword = row.keyword || '(sem keyword)';
+            const campaign = row.campaign || '(sem campanha)';
+            return '<tr class="kw-row-clickable" data-keyword="' + escapeHtml(keyword) + '">' +
+                '<td><div class="kw-cell-bar"><div class="kw-bar" style="width:' + barWidth + '%"></div><span class="kw-keyword-text">' + escapeHtml(keyword) + '</span></div></td>' +
+                '<td>' + escapeHtml(campaign) + '</td>' +
+                '<td>' + leads + '</td>' +
+                '<td>' + conversions + '</td>' +
+                '<td>' + rate + '%</td>' +
+                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                '<td>' + lastDate + '</td>' +
+                '</tr>';
+        }).join('');
+
+        // Click handler for keyword detail
+        tbody.querySelectorAll('.kw-row-clickable').forEach(row => {
+            row.addEventListener('click', () => {
+                const kw = row.dataset.keyword;
+                openKeywordDetail(kw);
+            });
+        });
+
+        // Sorting click handlers on headers
+        const thElements = document.querySelectorAll('#kw-ranking-table thead th');
+        thElements.forEach((th, i) => {
+            th.style.cursor = 'pointer';
+            th.onclick = () => sortKeywordsTable(i);
+        });
+    } catch (e) { console.error('Keywords overview error', e); }
+}
+
+async function loadKeywordsTrend() {
+    try {
+        const data = await fetch('/api/keywords/trend?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        renderKwTrendChart(data);
+    } catch (e) { console.error('Keywords trend error', e); }
+}
+
+function renderKwTrendChart(data) {
+    const canvas = document.getElementById('kw-trend-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 200 * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = '200px';
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = 200;
+    const padding = { top: 20, right: 20, bottom: 40, left: 40 };
+    const chartW = w - padding.left - padding.right;
+    const chartH = h - padding.top - padding.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (!data || data.length === 0) {
+        ctx.fillStyle = '#5c5e6a';
+        ctx.font = '13px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Sem dados no periodo', w / 2, h / 2);
+        return;
+    }
+
+    const maxVal = Math.max(...data.map(d => parseInt(d.leads, 10)), 1);
+    const barGap = 4;
+    const barWidth = Math.max(4, (chartW / data.length) - barGap);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartH / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(w - padding.right, y);
+        ctx.stroke();
+    }
+
+    // Y axis labels
+    ctx.fillStyle = '#5c5e6a';
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartH / 4) * i;
+        const val = Math.round(maxVal * (1 - i / 4));
+        ctx.fillText(val.toString(), padding.left - 8, y + 4);
+    }
+
+    // Legend
+    const legendY = 8;
+    ctx.font = '11px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(66, 133, 244, 0.7)';
+    ctx.fillRect(w - 220, legendY - 6, 10, 10);
+    ctx.fillStyle = '#8b8d97';
+    ctx.fillText('Leads', w - 206, legendY + 3);
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+    ctx.fillRect(w - 150, legendY - 6, 10, 10);
+    ctx.fillStyle = '#8b8d97';
+    ctx.fillText('Conversões', w - 136, legendY + 3);
+
+    // Store bar positions for tooltip
+    const barPositions = [];
+
+    // Bars
+    data.forEach((d, i) => {
+        const leads = parseInt(d.leads, 10);
+        const conversions = parseInt(d.conversions || 0, 10);
+        const barH = (leads / maxVal) * chartH;
+        const x = padding.left + i * (barWidth + barGap);
+        const y = padding.top + chartH - barH;
+
+        // Lead bar
+        ctx.fillStyle = 'rgba(66, 133, 244, 0.7)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barH, [3, 3, 0, 0]);
+        ctx.fill();
+
+        // Conversion overlay
+        if (conversions > 0) {
+            const convH = (conversions / maxVal) * chartH;
+            ctx.fillStyle = 'rgba(34, 197, 94, 0.8)';
+            ctx.beginPath();
+            ctx.roundRect(x, padding.top + chartH - convH, barWidth, convH, [3, 3, 0, 0]);
+            ctx.fill();
+        }
+
+        // X axis label (show every N labels)
+        const showEvery = Math.max(1, Math.floor(data.length / 10));
+        if (i % showEvery === 0) {
+            ctx.fillStyle = '#5c5e6a';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            const dateStr = d.day ? new Date(d.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) : '';
+            ctx.fillText(dateStr, x + barWidth / 2, h - 8);
+        }
+
+        barPositions.push({ x, y, w: barWidth, h: barH, leads, conversions, day: d.day });
+    });
+
+    // Tooltip on hover
+    const tooltip = document.getElementById('kw-chart-tooltip');
+    if (tooltip) {
+        canvas.onmousemove = function(e) {
+            const canvasRect = canvas.getBoundingClientRect();
+            const mx = e.clientX - canvasRect.left;
+            const my = e.clientY - canvasRect.top;
+            let found = false;
+            for (const bar of barPositions) {
+                if (mx >= bar.x && mx <= bar.x + bar.w && my >= bar.y && my <= bar.y + bar.h) {
+                    const dateStr = bar.day ? new Date(bar.day).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '';
+                    tooltip.innerHTML = '<strong>' + dateStr + '</strong><br>Leads: ' + bar.leads + '<br>Conversões: ' + bar.conversions;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.clientX - canvasRect.left + 12) + 'px';
+                    tooltip.style.top = (e.clientY - canvasRect.top - 10) + 'px';
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) tooltip.style.display = 'none';
+        };
+        canvas.onmouseleave = function() { tooltip.style.display = 'none'; };
+    }
+}
+
+
+async function openKeywordDetail(keyword) {
+    const modal = document.getElementById('modal-keyword-detail');
+    const title = document.getElementById('kw-detail-title');
+    const body = document.getElementById('kw-detail-body');
+    if (!modal) return;
+
+    modal.style.display = 'flex';
+    if (title) title.textContent = 'Keyword: ' + keyword;
+    if (body) body.innerHTML = '<p style="color:var(--text-secondary)">Carregando...</p>';
+
+    try {
+        const params = new URLSearchParams();
+        params.set('keyword', keyword);
+        const { from, to } = getKwDateRange();
+        if (kwState.clientId) params.set('client', kwState.clientId);
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+
+        const data = await fetch('/api/keywords/detail?' + params.toString(), { credentials: 'same-origin' }).then(r => r.json());
+
+        if (!data || data.length === 0) {
+            body.innerHTML = '<p class="empty-state">Nenhum lead encontrado para esta keyword</p>';
+            return;
+        }
+
+        body.innerHTML = '<table class="keywords-table" style="width:100%"><thead><tr>' +
+            '<th>Nome</th><th>Telefone</th><th>Status</th><th>Campanha</th><th>Convertido</th><th>Data</th>' +
+            '</tr></thead><tbody>' +
+            data.map(row => {
+                const date = row.created_at ? new Date(row.created_at).toLocaleDateString('pt-BR') : '—';
+                return '<tr>' +
+                    '<td>' + escapeHtml(row.lead_name || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.lead_phone || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.lead_status || '—') + '</td>' +
+                    '<td>' + escapeHtml(row.campaign || '—') + '</td>' +
+                    '<td>' + (row.converted ? '<span style="color:var(--accent-green)">Sim</span>' : 'Nao') + '</td>' +
+                    '<td>' + date + '</td>' +
+                    '</tr>';
+            }).join('') +
+            '</tbody></table>';
+    } catch (e) {
+        body.innerHTML = '<p class="empty-state">Erro ao carregar detalhes</p>';
+    }
+}
+
+// Device + Location breakdown
+async function loadKeywordsBreakdown() {
+    try {
+        const data = await fetch('/api/keywords/breakdown?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        // Device breakdown
+        const deviceEl = document.getElementById('kw-device-breakdown');
+        if (deviceEl && data.devices) {
+            const total = data.devices.reduce((s, d) => s + parseInt(d.count, 10), 0) || 1;
+            deviceEl.innerHTML = data.devices.length === 0 ? '<p class="empty-state" style="font-size:13px">Sem dados</p>' : data.devices.map(d => {
+                const pct = Math.round(parseInt(d.count, 10) / total * 100);
+                const label = d.device_type || 'Desconhecido';
+                const icon = label.toLowerCase().includes('mobile') ? '\ud83d\udcf1' : label.toLowerCase().includes('desktop') ? '\ud83d\udcbb' : '\ud83c\udf10';
+                return '<div class="kw-breakdown-item">' +
+                    '<span class="kw-breakdown-label">' + icon + ' ' + escapeHtml(label) + '</span>' +
+                    '<div class="kw-breakdown-bar-bg"><div class="kw-breakdown-bar" style="width:' + pct + '%"></div></div>' +
+                    '<span class="kw-breakdown-pct">' + pct + '%</span>' +
+                    '</div>';
+            }).join('');
+        }
+        // Location breakdown
+        const locEl = document.getElementById('kw-location-breakdown');
+        if (locEl && data.locations) {
+            const total = data.locations.reduce((s, d) => s + parseInt(d.count, 10), 0) || 1;
+            locEl.innerHTML = data.locations.length === 0 ? '<p class="empty-state" style="font-size:13px">Sem dados</p>' : data.locations.slice(0, 8).map(d => {
+                const pct = Math.round(parseInt(d.count, 10) / total * 100);
+                const label = d.location_state || 'Desconhecido';
+                return '<div class="kw-breakdown-item">' +
+                    '<span class="kw-breakdown-label">' + escapeHtml(label) + '</span>' +
+                    '<div class="kw-breakdown-bar-bg"><div class="kw-breakdown-bar kw-bar-location" style="width:' + pct + '%"></div></div>' +
+                    '<span class="kw-breakdown-pct">' + pct + '%</span>' +
+                    '</div>';
+            }).join('');
+        }
+    } catch (e) { console.error('Keywords breakdown error', e); }
+}
+
+// Campaigns table
+async function loadKeywordsCampaigns() {
+    try {
+        const data = await fetch('/api/keywords/campaigns?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const tbody = document.getElementById('kw-campaigns-body');
+        if (!tbody) return;
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma campanha encontrada</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.map(row => {
+            const leads = parseInt(row.leads, 10);
+            const conversions = parseInt(row.conversions, 10);
+            const value = parseFloat(row.total_value || 0);
+            const campaign = row.campaign || '(sem campanha)';
+            return '<tr>' +
+                '<td>' + escapeHtml(campaign) + '</td>' +
+                '<td>' + (row.keywords || 0) + '</td>' +
+                '<td>' + leads + '</td>' +
+                '<td>' + conversions + '</td>' +
+                '<td>R$ ' + value.toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                '</tr>';
+        }).join('');
+    } catch (e) { console.error('Keywords campaigns error', e); }
+}
+
+// CSV export
+function exportKeywordsCsv() {
+    const table = document.getElementById('kw-ranking-table');
+    if (!table) return;
+    const rows = table.querySelectorAll('tr');
+    let csv = '';
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('th, td');
+        const rowData = Array.from(cells).map(c => '"' + c.textContent.replace(/"/g, '""') + '"');
+        csv += rowData.join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'keywords_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// Column sorting for keywords table
+let kwSortCol = null;
+let kwSortAsc = true;
+
+function sortKeywordsTable(colIndex) {
+    const table = document.getElementById('kw-ranking-table');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    if (rows.length <= 1) return;
+
+    if (kwSortCol === colIndex) { kwSortAsc = !kwSortAsc; } else { kwSortCol = colIndex; kwSortAsc = false; }
+
+    rows.sort((a, b) => {
+        const aText = a.cells[colIndex]?.textContent?.trim() || '';
+        const bText = b.cells[colIndex]?.textContent?.trim() || '';
+        const aNum = parseFloat(aText.replace(/[^0-9.,\-]/g, '').replace(',', '.'));
+        const bNum = parseFloat(bText.replace(/[^0-9.,\-]/g, '').replace(',', '.'));
+        if (!isNaN(aNum) && !isNaN(bNum)) return kwSortAsc ? aNum - bNum : bNum - aNum;
+        return kwSortAsc ? aText.localeCompare(bText) : bText.localeCompare(aText);
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+
+    // Update sort indicators
+    table.querySelectorAll('th').forEach((th, i) => {
+        th.classList.remove('kw-sort-asc', 'kw-sort-desc');
+        if (i === colIndex) th.classList.add(kwSortAsc ? 'kw-sort-asc' : 'kw-sort-desc');
+    });
+}
+
+// Keywords event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Period pills
+    document.querySelectorAll('.kw-period').forEach(pill => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.kw-period').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            const period = pill.dataset.kwperiod;
+            kwState.period = period;
+            const customRange = document.getElementById('kw-custom-range');
+            if (customRange) customRange.style.display = period === 'custom' ? 'flex' : 'none';
+            if (period !== 'custom') loadKeywordsSection();
+        });
+    });
+
+    // Client select
+    const kwClientSelect = document.getElementById('kw-client-select');
+    if (kwClientSelect) {
+        kwClientSelect.addEventListener('change', () => {
+            kwState.clientId = kwClientSelect.value || null;
+            loadKeywordsSection();
+        });
+    }
+
+    // Custom date apply
+    const btnKwApply = document.getElementById('btn-kw-apply');
+    if (btnKwApply) {
+        btnKwApply.addEventListener('click', () => {
+            const from = document.getElementById('kw-from');
+            const to = document.getElementById('kw-to');
+            if (from && to && from.value && to.value) {
+                kwState.dateFrom = new Date(from.value).toISOString();
+                kwState.dateTo = new Date(to.value + 'T23:59:59').toISOString();
+                loadKeywordsSection();
+            }
+        });
+    }
+
+    // Reload button
+    const btnReloadKw = document.getElementById('btn-reload-keywords');
+    if (btnReloadKw) {
+        btnReloadKw.addEventListener('click', () => loadKeywordsSection());
+    }
+
+    // Backfill button
+    const btnBackfill = document.getElementById('btn-kw-backfill');
+    if (btnBackfill) {
+        btnBackfill.addEventListener('click', async () => {
+            if (!confirm('Migrar dados historicos de keywords do JSONB? Isso pode levar alguns segundos.')) return;
+            btnBackfill.disabled = true;
+            btnBackfill.textContent = 'Migrando...';
+            try {
+                const res = await fetch('/api/keywords/backfill', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+                alert('Migrados: ' + (res.migrated || 0) + ' registros');
+                loadKeywordsSection();
+            } catch (e) {
+                alert('Erro ao migrar: ' + e.message);
+            } finally {
+                btnBackfill.disabled = false;
+                btnBackfill.textContent = 'Migrar dados historicos';
+            }
+        });
+    }
+
+    // Close modal on overlay click
+    const kwModal = document.getElementById('modal-keyword-detail');
+    if (kwModal) {
+        kwModal.addEventListener('click', (e) => {
+            if (e.target === kwModal) kwModal.style.display = 'none';
+        });
+    }
+});
+

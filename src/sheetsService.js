@@ -1,10 +1,10 @@
 /**
  * SheetsService — Integração com Google Sheets API v4
- * 
+ *
  * Features:
  *   - Autenticação via Service Account
  *   - Abas mensais automáticas no formato "Mês-AA" (ex: "Fevereiro-26")
- *   - Segue o padrão de colunas existente do cliente
+ *   - Mapeamento dinâmico de colunas (lê headers reais da planilha)
  *   - Retry com backoff exponencial
  */
 
@@ -29,7 +29,7 @@ const TERMINAL_STATUSES = [
     'desqualificado',
 ];
 
-// Cabeçalhos padrão (conforme planilha real do cliente)
+// Cabeçalhos padrão (fallback se não houver aba anterior para copiar)
 const HEADERS = [
     'Nome do Lead',
     'Telefone',
@@ -46,6 +46,25 @@ const HEADERS = [
     'DIA 5',
     'Comentários',
 ];
+
+// Aliases para mapeamento dinâmico de headers → campos lógicos
+const HEADER_ALIASES = {
+    nome:           ['nome do lead', 'nome'],
+    telefone:       ['telefone'],
+    origem:         ['meio de contato'],
+    data:           ['data 1º contato', 'data 1', 'data 1o contato'],
+    dataFechamento: ['data fechamento', 'data de fechamento'],
+    valor:          ['valor de fechamento', 'valor'],
+    cidade:         ['cidade'],
+    produto:        ['produto'],
+    status:         ['status lead', 'status'],
+    dia1:           ['dia 1'],
+    dia2:           ['dia 2'],
+    dia3:           ['dia 3'],
+    dia4:           ['dia 4'],
+    dia5:           ['dia 5'],
+    comentarios:    ['comentários', 'comentarios'],
+};
 
 class SheetsService {
     constructor() {
@@ -75,7 +94,7 @@ class SheetsService {
                     authConfig.credentials = parsed;
                     logger.info('Usando credenciais do Google via GOOGLE_CREDENTIALS_B64');
                 } catch (e) {
-                    logger.warn('GOOGLE_CREDENTIALS_B64 inv\u00e1lido, tentando fallback...', { error: e.message });
+                    logger.warn('GOOGLE_CREDENTIALS_B64 inválido, tentando fallback...', { error: e.message });
                 }
             }
 
@@ -87,7 +106,7 @@ class SheetsService {
                     authConfig.credentials = parsed;
                     logger.info('Usando credenciais do Google via GOOGLE_CREDENTIALS_JSON');
                 } catch (e) {
-                    logger.warn('GOOGLE_CREDENTIALS_JSON inv\u00e1lido, tentando fallback...', { error: e.message });
+                    logger.warn('GOOGLE_CREDENTIALS_JSON inválido, tentando fallback...', { error: e.message });
                 }
             }
 
@@ -185,7 +204,7 @@ class SheetsService {
 
     /**
      * Garante que a aba existe. Se não, cria com cabeçalhos formatados.
-     * Pode receber a lista de abas existentes para evitar re-fetch.
+     * Copia headers da aba anterior se disponível (preserva estrutura do cliente).
      */
     async ensureSheet(spreadsheetId, sheetName, existingSheetsList, traceId) {
         const cacheKey = `${spreadsheetId}:${sheetName}`;
@@ -224,12 +243,32 @@ class SheetsService {
                 },
             });
 
-            // Inserir cabeçalhos
+            // Determinar headers: copiar da aba anterior se disponível
+            let headersToUse = HEADERS;
+            if (existingSheets && existingSheets.length > 0) {
+                const prevSheet = this.findPreviousMonthSheet(existingSheets);
+                if (prevSheet) {
+                    try {
+                        const prevHeaders = await this.sheets.spreadsheets.values.get({
+                            spreadsheetId,
+                            range: `'${prevSheet}'!1:1`,
+                        });
+                        if (prevHeaders.data.values?.[0]?.length > 0) {
+                            headersToUse = prevHeaders.data.values[0];
+                            logger.info(`Headers copiados de "${prevSheet}" (${headersToUse.length} colunas)`);
+                        }
+                    } catch (e) {
+                        logger.warn(`Falha ao copiar headers de "${prevSheet}": ${e.message}`);
+                    }
+                }
+            }
+
+            const lastColLetter = String.fromCharCode(64 + headersToUse.length);
             await this.sheets.spreadsheets.values.update({
                 spreadsheetId,
-                range: `'${sheetName}'!A1:N1`,
+                range: `'${sheetName}'!A1:${lastColLetter}1`,
                 valueInputOption: 'RAW',
-                requestBody: { values: [HEADERS] },
+                requestBody: { values: [headersToUse] },
             });
 
             // Formatar cabeçalho (negrito + fundo + texto branco)
@@ -273,7 +312,7 @@ class SheetsService {
                                         sheetId,
                                         dimension: 'COLUMNS',
                                         startIndex: 0,
-                                        endIndex: 14,
+                                        endIndex: headersToUse.length,
                                     },
                                 },
                             },
@@ -283,7 +322,7 @@ class SheetsService {
             }
 
             this.spreadsheetCache.set(cacheKey, true);
-            logger.info(`✅ Aba "${sheetName}" criada com cabeçalhos do padrão do cliente`);
+            logger.info(`Aba "${sheetName}" criada com ${headersToUse.length} colunas`);
 
             // Registrar criação de aba no trail
             if (traceId) {
@@ -294,6 +333,59 @@ class SheetsService {
             logger.error(`Erro ao garantir aba "${sheetName}"`, { error: error.message });
             throw error;
         }
+    }
+
+    /**
+     * Lê os headers (row 1) e retorna mapeamento campo → { index, letter }.
+     * Cache por spreadsheetId:sheetName.
+     *
+     * Exemplo de retorno:
+     *   { nome: { index: 0, letter: 'A' }, status: { index: 8, letter: 'I' }, ... _totalCols: 14 }
+     */
+    async getColumnMapping(spreadsheetId, sheetName) {
+        const cacheKey = `${spreadsheetId}:${sheetName}:colmap`;
+        if (this.spreadsheetCache.has(cacheKey)) {
+            return this.spreadsheetCache.get(cacheKey);
+        }
+
+        const response = await this.sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `'${sheetName}'!1:1`,
+        });
+
+        const headers = (response.data.values || [[]])[0];
+        const mapping = {};
+
+        for (let i = 0; i < headers.length; i++) {
+            const header = (headers[i] || '').trim().toLowerCase();
+            if (!header) continue;
+
+            for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+                if (mapping[field]) continue; // First match wins
+                if (aliases.some(alias => header === alias)) {
+                    mapping[field] = { index: i, letter: String.fromCharCode(65 + i) };
+                    break;
+                }
+            }
+        }
+
+        mapping._totalCols = headers.length;
+
+        const required = ['nome', 'telefone', 'status', 'comentarios'];
+        const missing = required.filter(f => !mapping[f]);
+        if (missing.length > 0) {
+            logger.warn(`Colunas faltando em "${sheetName}": ${missing.join(', ')}`, { headers });
+        }
+
+        this.spreadsheetCache.set(cacheKey, mapping);
+        logger.info(`Mapeamento de colunas para "${sheetName}":`, {
+            produto: mapping.produto?.letter,
+            status: mapping.status?.letter,
+            comentarios: mapping.comentarios?.letter,
+            totalCols: mapping._totalCols,
+        });
+
+        return mapping;
     }
 
     /**
@@ -323,16 +415,17 @@ class SheetsService {
 
     /**
      * Copia leads ativos do mês anterior para a nova aba do mês atual.
-     * Exclui leads com status terminal (Contato Finalizado, Venda, Desqualificado, Comprou).
-     * Mantém leads com status ativo (Lead Gerado, Lead Conectado, Proposta, Geladeira, etc).
-     * Limpa as colunas DIA 1-5 (I-M) e Comentários (N) dos leads copiados.
+     * Usa mapeamento dinâmico para encontrar a coluna de status e as colunas a limpar.
      */
     async copyActiveLeadsFromSheet(spreadsheetId, sourceSheetName, targetSheetName) {
         try {
-            // Ler todos os dados da aba de origem (pular cabeçalho)
+            const colMap = await this.getColumnMapping(spreadsheetId, sourceSheetName);
+            const totalCols = colMap._totalCols || 14;
+            const lastCol = String.fromCharCode(64 + totalCols);
+
             const response = await this.sheets.spreadsheets.values.get({
                 spreadsheetId,
-                range: `'${sourceSheetName}'!A2:N`,
+                range: `'${sourceSheetName}'!A2:${lastCol}`,
             });
 
             const allRows = response.data.values || [];
@@ -342,11 +435,10 @@ class SheetsService {
                 return;
             }
 
-            // Filtrar: manter apenas leads com status NÃO terminal
-            // Coluna H (status) = índice 7
+            // Filtrar por status usando coluna mapeada
+            const statusIdx = colMap.status ? colMap.status.index : 7;
             const activeRows = allRows.filter(row => {
-                const status = (row[7] || '').toLowerCase().trim();
-                // Excluir se o status contém qualquer keyword terminal
+                const status = (row[statusIdx] || '').toLowerCase().trim();
                 const isTerminal = TERMINAL_STATUSES.some(ts => status.includes(ts));
                 return !isTerminal;
             });
@@ -356,33 +448,30 @@ class SheetsService {
                 return;
             }
 
-            // Limpar colunas DIA 1-5 (I-M, índices 8-12) e Comentários (N, índice 13) dos leads copiados
+            // Índices das colunas a limpar (DIAs, Comentários, Fechamento)
+            const cleanIndices = [];
+            for (const field of ['dia1', 'dia2', 'dia3', 'dia4', 'dia5', 'comentarios', 'dataFechamento', 'valor']) {
+                if (colMap[field]) cleanIndices.push(colMap[field].index);
+            }
+
             const cleanedRows = activeRows.map(row => {
                 const newRow = [...row];
-                // Garantir que a row tem 14 colunas
-                while (newRow.length < 14) newRow.push('');
-                // Limpar DIA 1-5 e Comentários
-                newRow[8] = '';   // I: DIA 1
-                newRow[9] = '';   // J: DIA 2
-                newRow[10] = '';  // K: DIA 3
-                newRow[11] = '';  // L: DIA 4
-                newRow[12] = '';  // M: DIA 5
-                newRow[13] = '';  // N: Comentários
-                // Limpar data/valor de fechamento (novo mês, reiniciar)
-                newRow[4] = '';   // E: Data Fechamento
-                newRow[5] = '';   // F: Valor Fechamento
+                while (newRow.length < totalCols) newRow.push('');
+                for (const idx of cleanIndices) {
+                    if (idx < newRow.length) newRow[idx] = '';
+                }
                 return newRow;
             });
 
             // Inserir os leads ativos na nova aba (a partir da linha 2, após cabeçalho)
             await this.sheets.spreadsheets.values.update({
                 spreadsheetId,
-                range: `'${targetSheetName}'!A2:N${cleanedRows.length + 1}`,
+                range: `'${targetSheetName}'!A2:${lastCol}${cleanedRows.length + 1}`,
                 valueInputOption: 'RAW',
                 requestBody: { values: cleanedRows },
             });
 
-            logger.info(`✅ ${cleanedRows.length} leads ativos copiados de "${sourceSheetName}" para "${targetSheetName}" (${allRows.length - cleanedRows.length} excluídos por status terminal)`);
+            logger.info(`${cleanedRows.length} leads ativos copiados de "${sourceSheetName}" para "${targetSheetName}" (${allRows.length - cleanedRows.length} excluídos por status terminal)`);
 
         } catch (error) {
             // Não falhar a criação da aba por causa da cópia
@@ -391,22 +480,10 @@ class SheetsService {
     }
 
     /**
-     * Insere um lead na planilha.
-     * Usa values.update com célula exata para evitar deslocamento de colunas.
-     *
-     * Colunas preenchidas pela automação:
-     *   A: Nome do Lead
-     *   B: Telefone
-     *   C: Meio de Contato (detectado: Meta Ads / Google Ads / WhatsApp)
-     *   D: Data 1º Contato
-     *   G: Produto (auto-detectado)
-     *   H: Status Lead ("Lead Gerado")
-     *   N: Comentários (dinâmico conforme origem)
-     *
-     * Colunas deixadas para a equipe:
-     *   E: Data Fechamento
-     *   F: Valor de Fechamento
-     *   I-M: DIA 1 a DIA 5
+     * Insere um lead na planilha usando mapeamento dinâmico de colunas.
+     * Escreve SOMENTE nas colunas necessárias via batchUpdate (células individuais).
+     * NUNCA escreve nas colunas DIA (preserva fórmulas existentes).
+     * NUNCA escreve em Cidade, Data Fechamento, Valor (equipe preenche).
      */
     async insertLead(client, leadData) {
         let lastError = null;
@@ -420,43 +497,74 @@ class SheetsService {
                 }
 
                 const sheetName = await this.resolveSheetName(client);
+                const colMap = await this.getColumnMapping(spreadsheetId, sheetName);
 
                 // Encontrar a próxima linha vazia (após os dados existentes)
                 const nextRow = await this.getNextEmptyRow(spreadsheetId, sheetName);
 
-                // Montar linha COMPLETA com todas as 14 colunas (A-N)
-                const row = [
-                    leadData.name,                          // A: Nome do Lead
-                    leadData.phone,                         // B: Telefone
-                    leadData.origin || 'WhatsApp',          // C: Meio de Contato (dinâmico)
-                    leadData.date,                          // D: Data 1º Contato
-                    '',                                     // E: Data Fechamento (equipe)
-                    '',                                     // F: Valor de Fechamento (equipe)
-                    leadData.product || '',                 // G: Produto
-                    'Lead Gerado',                          // H: Status Lead
-                    '',                                     // I: DIA 1 (equipe)
-                    '',                                     // J: DIA 2 (equipe)
-                    '',                                     // K: DIA 3 (equipe)
-                    '',                                     // L: DIA 4 (equipe)
-                    '',                                     // M: DIA 5 (equipe)
-                    leadData.originComment || 'Lead recebido via automação',  // N: Comentários
-                ];
+                // Montar atualizações individuais por célula
+                const updates = [];
+                const addCell = (field, value) => {
+                    if (colMap[field] && value !== undefined && value !== null) {
+                        updates.push({
+                            range: `'${sheetName}'!${colMap[field].letter}${nextRow}`,
+                            values: [[value]],
+                        });
+                    }
+                };
 
-                // Usar values.update com célula exata (não append!)
-                await this.sheets.spreadsheets.values.update({
+                // Colunas sempre preenchidas
+                addCell('nome', leadData.name);
+                addCell('telefone', leadData.phone);
+                addCell('origem', leadData.origin || 'WhatsApp');
+                addCell('data', leadData.date);
+
+                // Produto: SOMENTE se detectado (preserva dropdown validation)
+                if (leadData.product) {
+                    addCell('produto', leadData.product);
+                }
+
+                // Status: usa valor do leadData (default "Lead Gerado")
+                addCell('status', leadData.status || 'Lead Gerado');
+                // Comentários: deixados vazios (equipe preenche manualmente)
+
+                // Para leads recuperados: escreve fechamento/valor se fornecidos
+                if (leadData.closeDate) {
+                    addCell('dataFechamento', leadData.closeDate);
+                }
+                if (leadData.saleAmount && leadData.saleAmount > 0) {
+                    const formattedValue = typeof leadData.saleAmount === 'number'
+                        ? `R$ ${leadData.saleAmount.toFixed(2).replace('.', ',')}`
+                        : leadData.saleAmount;
+                    addCell('valor', formattedValue);
+                }
+
+                // NUNCA escreve: DIA 1-5, Cidade
+
+                if (updates.length === 0) {
+                    throw new Error('Nenhuma coluna mapeada para inserção');
+                }
+
+                // Usar batchUpdate com células individuais (não sobrescreve DIAs)
+                await this.sheets.spreadsheets.values.batchUpdate({
                     spreadsheetId,
-                    range: `'${sheetName}'!A${nextRow}:N${nextRow}`,
-                    valueInputOption: 'RAW',
-                    requestBody: { values: [row] },
+                    requestBody: {
+                        valueInputOption: 'USER_ENTERED',
+                        data: updates,
+                    },
                 });
+
+                // Escrever fórmulas DIA (cadência de follow-up)
+                await this.writeDiaFormulas(spreadsheetId, sheetName, nextRow, colMap);
 
                 // Formatar "(Auto)" em verde na célula do nome
                 await this.formatAutoTag(spreadsheetId, sheetName, nextRow, leadData.name);
 
-                logger.info(`Lead inserido em "${sheetName}"`, {
+                logger.info(`Lead inserido em "${sheetName}" (mapeamento dinâmico)`, {
                     client: client.name,
                     phone: leadData.phone,
                     attempt,
+                    columns: updates.map(u => u.range.split('!')[1]),
                 });
 
                 return { success: true, attempt, sheetName };
@@ -565,12 +673,8 @@ class SheetsService {
 
     /**
      * Atualiza o status de um lead existente na planilha.
+     * Usa mapeamento dinâmico de colunas para encontrar as colunas corretas.
      * Busca primeiro no mês atual, depois em meses anteriores.
-     * Atualiza colunas:
-     *   E: Data Fechamento
-     *   F: Valor de Fechamento
-     *   H: Status Lead
-     *   N: Comentários (append)
      */
     async updateLeadStatus(client, updateData) {
         let lastError = null;
@@ -618,48 +722,51 @@ class SheetsService {
                     return { success: false, error: 'Lead não encontrado na planilha' };
                 }
 
-                // Preparar as atualizações em batch
+                // Obter mapeamento de colunas da aba onde o lead foi encontrado
+                const colMap = await this.getColumnMapping(spreadsheetId, sheetName);
+
+                // Preparar as atualizações em batch usando colunas mapeadas
                 const updates = [];
 
-                // Coluna A: Nome do Lead (se fornecido)
-                if (updateData.name) {
+                // Nome do Lead
+                if (updateData.name && colMap.nome) {
                     updates.push({
-                        range: `'${sheetName}'!A${row}`,
+                        range: `'${sheetName}'!${colMap.nome.letter}${row}`,
                         values: [[updateData.name]],
                     });
                 }
 
-                // Coluna E: Data Fechamento
-                if (updateData.closeDate) {
+                // Data Fechamento
+                if (updateData.closeDate && colMap.dataFechamento) {
                     updates.push({
-                        range: `'${sheetName}'!E${row}`,
+                        range: `'${sheetName}'!${colMap.dataFechamento.letter}${row}`,
                         values: [[updateData.closeDate]],
                     });
                 }
 
-                // Coluna F: Valor de Fechamento
-                if (updateData.saleAmount !== undefined && updateData.saleAmount !== null) {
+                // Valor de Fechamento
+                if (updateData.saleAmount !== undefined && updateData.saleAmount !== null && colMap.valor) {
                     const formattedValue = typeof updateData.saleAmount === 'number'
                         ? `R$ ${updateData.saleAmount.toFixed(2).replace('.', ',')}`
                         : updateData.saleAmount;
                     updates.push({
-                        range: `'${sheetName}'!F${row}`,
+                        range: `'${sheetName}'!${colMap.valor.letter}${row}`,
                         values: [[formattedValue]],
                     });
                 }
 
-                // Coluna H: Status Lead
-                if (updateData.status) {
+                // Status Lead (coluna mapeada, não hardcoded H)
+                if (updateData.status && colMap.status) {
                     updates.push({
-                        range: `'${sheetName}'!H${row}`,
+                        range: `'${sheetName}'!${colMap.status.letter}${row}`,
                         values: [[updateData.status]],
                     });
                 }
 
-                // Coluna N: Comentários (adicionar nota de atualização)
-                if (updateData.comment) {
+                // Comentários (coluna mapeada, não hardcoded N)
+                if (updateData.comment && colMap.comentarios) {
                     updates.push({
-                        range: `'${sheetName}'!N${row}`,
+                        range: `'${sheetName}'!${colMap.comentarios.letter}${row}`,
                         values: [[updateData.comment]],
                     });
                 }
@@ -677,12 +784,13 @@ class SheetsService {
                     },
                 });
 
-                logger.info(`Lead atualizado na linha ${row} de "${sheetName}"`, {
+                logger.info(`Lead atualizado na linha ${row} de "${sheetName}" (mapeamento dinâmico)`, {
                     client: client.name,
                     phone: updateData.phone,
                     status: updateData.status,
                     saleAmount: updateData.saleAmount,
                     attempt,
+                    columns: updates.map(u => u.range.split('!')[1]),
                 });
 
                 return { success: true, attempt, sheetName, row };
@@ -789,6 +897,154 @@ class SheetsService {
         } catch (error) {
             // Não falhar a inserção por causa da formatação
             logger.warn('Erro ao formatar tag (Auto)', { error: error.message });
+        }
+    }
+
+
+    /**
+     * Lê o padrão de fórmulas DIA de linhas existentes na planilha.
+     * Retorna os offsets (ex: [1, 2, 4, 5]) e se usa IF wrapper.
+     * Cache por spreadsheetId:sheetName.
+     */
+    async getDiaFormulaOffsets(spreadsheetId, sheetName, colMap) {
+        const cacheKey = `${spreadsheetId}:${sheetName}:diaOffsets`;
+        if (this.spreadsheetCache.has(cacheKey)) {
+            return this.spreadsheetCache.get(cacheKey);
+        }
+
+        const diaFields = ['dia1', 'dia2', 'dia3', 'dia4', 'dia5'].filter(f => colMap[f]);
+        if (diaFields.length === 0) return null;
+
+        const dataCol = colMap.data ? colMap.data.letter : 'D';
+
+        try {
+            const totalCols = colMap._totalCols || 14;
+            const lastCol = String.fromCharCode(64 + totalCols);
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!A2:${lastCol}100`,
+                valueRenderOption: 'FORMULA',
+            });
+            const rows = response.data.values || [];
+
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const firstDiaIdx = colMap[diaFields[0]].index;
+                const cellFormula = (row[firstDiaIdx] || '').toString();
+
+                if (!cellFormula.startsWith('=')) continue;
+
+                const offsets = [];
+                const hasIfWrapper = cellFormula.toUpperCase().includes('IF(');
+
+                for (const field of diaFields) {
+                    const idx = colMap[field].index;
+                    const formula = (row[idx] || '').toString();
+                    const match = formula.match(/[A-Z]\d+\+(\d+)/i);
+                    if (match) offsets.push(parseInt(match[1]));
+                }
+
+                if (offsets.length > 0) {
+                    const result = { dataCol, offsets, hasIfWrapper, diaFields };
+                    this.spreadsheetCache.set(cacheKey, result);
+                    logger.info(`Padrão DIA detectado para "${sheetName}": offsets=[${offsets}], wrapper=${hasIfWrapper}`);
+                    return result;
+                }
+            }
+        } catch (error) {
+            logger.warn(`Erro ao ler padrão DIA de "${sheetName}"`, { error: error.message });
+        }
+
+        // Padrão default se nenhuma fórmula encontrada
+        const defaultOffsets = diaFields.length >= 5 ? [1, 2, 4, 5] : [1, 2, 4, 5];
+        const result = { dataCol, offsets: defaultOffsets.slice(0, diaFields.length), hasIfWrapper: true, diaFields };
+        this.spreadsheetCache.set(cacheKey, result);
+        logger.info(`Usando padrão DIA default para "${sheetName}": offsets=[${result.offsets}]`);
+        return result;
+    }
+
+    /**
+     * Escreve fórmulas DIA na linha do lead inserido.
+     * Usa o padrão detectado da planilha ou default [1, 2, 4, 5].
+     * Aplica formatação de data (dd/MM/yyyy) nas células.
+     */
+    async writeDiaFormulas(spreadsheetId, sheetName, row, colMap) {
+        try {
+            const pattern = await this.getDiaFormulaOffsets(spreadsheetId, sheetName, colMap);
+            if (!pattern) return;
+
+            const { dataCol, offsets, hasIfWrapper, diaFields } = pattern;
+
+            const updates = [];
+            for (let i = 0; i < Math.min(diaFields.length, offsets.length); i++) {
+                const field = diaFields[i];
+                const offset = offsets[i];
+                const letter = colMap[field].letter;
+
+                let formula;
+                if (hasIfWrapper) {
+                    formula = `=IF(${dataCol}${row}="";"";${dataCol}${row}+${offset})`;
+                } else {
+                    formula = `=${dataCol}${row}+${offset}`;
+                }
+
+                updates.push({
+                    range: `'${sheetName}'!${letter}${row}`,
+                    values: [[formula]],
+                });
+            }
+
+            if (updates.length === 0) return;
+
+            // Escrever fórmulas
+            await this.sheets.spreadsheets.values.batchUpdate({
+                spreadsheetId,
+                requestBody: {
+                    valueInputOption: 'USER_ENTERED',
+                    data: updates,
+                },
+            });
+
+            // Aplicar formatação de data nas células DIA
+            const sheetId = await this.getSheetIdByName(spreadsheetId, sheetName);
+            if (sheetId !== null) {
+                const diaStartCol = colMap[diaFields[0]].index;
+                const diaEndCol = colMap[diaFields[Math.min(diaFields.length, offsets.length) - 1]].index + 1;
+
+                await this.sheets.spreadsheets.batchUpdate({
+                    spreadsheetId,
+                    requestBody: {
+                        requests: [{
+                            repeatCell: {
+                                range: {
+                                    sheetId,
+                                    startRowIndex: row - 1,
+                                    endRowIndex: row,
+                                    startColumnIndex: diaStartCol,
+                                    endColumnIndex: diaEndCol,
+                                },
+                                cell: {
+                                    userEnteredFormat: {
+                                        numberFormat: {
+                                            type: 'DATE',
+                                            pattern: 'dd/MM/yyyy',
+                                        },
+                                    },
+                                },
+                                fields: 'userEnteredFormat.numberFormat',
+                            },
+                        }],
+                    },
+                });
+            }
+
+            logger.info(`Fórmulas DIA escritas para linha ${row} de "${sheetName}"`, {
+                offsets,
+                columns: updates.map(u => u.range.split('!')[1]),
+            });
+        } catch (error) {
+            // Não falhar a inserção por causa das fórmulas DIA
+            logger.warn(`Erro ao escrever fórmulas DIA na linha ${row}`, { error: error.message });
         }
     }
 

@@ -96,3 +96,22 @@ CREATE TABLE IF NOT EXISTS lead_trail (
 CREATE INDEX IF NOT EXISTS idx_lead_trail_trace ON lead_trail(trace_id);
 CREATE INDEX IF NOT EXISTS idx_lead_trail_created ON lead_trail(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_lead_trail_status ON lead_trail(status) WHERE status = 'error';
+
+-- Kommo CRM integration (2026-02-26)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS webhook_source VARCHAR(20) DEFAULT 'tintim';
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS kommo_pipeline_id VARCHAR(100);
+
+CREATE TABLE IF NOT EXISTS kommo_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_id UUID REFERENCES clients(id),
+    event_type VARCHAR(100),
+    kommo_lead_id VARCHAR(50),
+    kommo_account_id VARCHAR(50),
+    payload JSONB,
+    processing_result VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kommo_events_created ON kommo_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kommo_events_lead ON kommo_events(kommo_lead_id);
+CREATE INDEX IF NOT EXISTS idx_kommo_events_client ON kommo_events(client_id);

@@ -74,6 +74,14 @@ FASE 4 — PROMOÇÃO PARA PRODUÇÃO (SÓ APÓS APROVAÇÃO DE VINICIUS)
 
 Dashboard para gestão de leads recebidos via webhooks Tintim. Automatiza inserção em Google Sheets por cliente/mês, com painel de métricas, alertas e gerenciamento de usuários.
 
+### IMPORTANTE: Frontend Centralizado
+> O Dashboard é o **ÚNICO frontend** do ecossistema Lucari. SDR, Relatórios e Calculadora são **backend-only** (API + automação). Seus frontends são seções dentro deste dashboard, que faz proxy das chamadas API:
+> - `/api/sdr/*` → SDR backend (sdr.vin8n.online)
+> - `/api/relatorio/*` → Relatório backend (relatorio.vin8n.online)
+> - `/api/calc/*` → Calculadora backend (calc.vin8n.online)
+>
+> **NUNCA crie frontends separados para esses serviços.** Alterações de UI vão SEMPRE neste repo (automacao-lucari).
+
 ## URLs
 
 | Ambiente | URL |
@@ -165,6 +173,61 @@ Novos campos na aba Configuração do tenant SDR:
 - Events: `lead.create`, `lead.update`
 - Filtro: só Meta/Google Ads → planilha (orgânico ignorado)
 
+
+
+## Kommo CRM Integration (2026-02-26)
+
+### Overview
+Kommo CRM (formerly amoCRM) webhook receiver. Processes lead events from Kommo in parallel with existing Tintim webhooks.
+
+### Endpoint
+- `POST /webhook/kommo` (public, rate-limited)
+- Content-Type: `application/x-www-form-urlencoded` (Kommo's native format)
+- Auth: `X-Signature` header HMAC-SHA1 (verified against `KOMMO_CLIENT_SECRET` env var)
+- Response: Must return 200 within 2 seconds (Kommo auto-disables after 100+ failures in 2h)
+
+### Client Configuration
+Each client has:
+- `webhook_source`: `tintim` | `kommo` | `both` (default: `tintim`)
+- `kommo_pipeline_id`: Pipeline ID in Kommo that maps to this client
+
+Client matching: Kommo webhook includes `pipeline_id` in lead events. Each client is matched by their `kommo_pipeline_id`.
+
+### Events Handled
+| Kommo Event | Handler | Action |
+|-------------|---------|--------|
+| `leads[add]` | handleLeadAdded | Insert lead in Google Sheets |
+| `leads[update]` | handleLeadUpdated | Log update |
+| `leads[status]` (142) | handleLeadStatus | SALE: update sheet + keyword_conversions |
+| `leads[status]` (143) | handleLeadStatus | LOST: log as Perdido (Kommo) |
+| `contacts[add/update]` | handleContactEvent | Extract phone, link to lead |
+
+### System Stage IDs (fixed across all Kommo accounts)
+- `142` = Closed Won (venda)
+- `143` = Closed Lost (perda)
+
+### Phone Number Flow
+1. Kommo lead events do NOT contain phone numbers directly
+2. Phone comes from linked contact events (`contacts[add]` with `custom_fields` code `PHONE`)
+3. Contact events include `linked_leads_id` mapping contact to lead
+4. `findPhoneForKommoLead()` queries `kommo_events` for the phone linked to a lead
+5. On sale detection (142), phone is used to update sheet and keyword_conversions
+
+### Database
+- `kommo_events` table: raw JSONB payload storage (like `webhook_events` for Tintim)
+- Columns: `client_id`, `event_type`, `kommo_lead_id`, `kommo_account_id`, `payload`, `processing_result`
+- `clients.webhook_source`: tintim/kommo/both
+- `clients.kommo_pipeline_id`: maps pipeline to client
+
+### Environment Variables
+- `KOMMO_CLIENT_SECRET`: HMAC-SHA1 secret for webhook signature verification (optional in dev)
+
+### Files
+- `src/kommoHandler.js`: Main webhook processor
+- `src/server.js`: Route `/webhook/kommo` with urlencoded middleware + async processing
+- `src/pgService.js`: Updated CRUD with `webhook_source` and `kommo_pipeline_id`
+- `public/index.html`: Client modal with source selector
+- `public/app.js`: Toggle Kommo pipeline field based on source selection
 ## Problemas Comuns
 
 ### "Google Sheets não disponível"
@@ -188,3 +251,20 @@ Novos campos na aba Configuração do tenant SDR:
 ## Owner
 - **Vinicius Pimentel** (vinnipimentelgestor@gmail.com)
 - GitHub: vsvnus | Company: Lucari
+
+### Fix: Desalinhamento de Colunas nas Planilhas (2026-02-25)
+
+**Problema**: Cada planilha tinha estrutura diferente (Perim: 14 cols com Cidade, Mar das Ilhas/Rotta: 13 cols), mas `insertLead` usava posições hardcoded (A-N com 14 colunas fixas), causando:
+- Perim: Status escrito em Produto (col H), Status real (col I) vazio
+- Mar das Ilhas/Rotta: Comentários em col N (deveria M)
+- Todos: Fórmulas DIA sobrescritas com strings vazias
+
+**Solução**:
+- `getColumnMapping(spreadsheetId, sheetName)` — lê headers reais e mapeia por aliases
+- `insertLead` agora usa `batchUpdate` com células individuais (nunca toca DIA/Cidade)
+- `updateLeadStatus` usa mapeamento dinâmico (não mais colunas hardcoded E/F/H/N)
+- `ensureSheet` copia headers da aba anterior (preserva estrutura do cliente)
+- `copyActiveLeadsFromSheet` usa mapeamento para filtro/limpeza
+- Correção retroativa executada: Perim (20), Mar das Ilhas (112), Rotta (37), Raydan (70 fórmulas DIA)
+
+**Colunas DIA**: NUNCA são escritas pela automação. Preserva fórmulas e preenchimento manual.

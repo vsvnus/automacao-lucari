@@ -48,16 +48,32 @@
 
             <div class="nav-group-label">APLICAÇÕES</div>
 
-            <a href="#" class="nav-item nav-app-automacao" data-section="automacao">
-                <span class="nav-app-dot dot-automacao"></span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                </svg>
-                <span>Automação Leads</span>
-                <span class="nav-badge" id="alerts-badge" style="display:none;">0</span>
-            </a>
+            <div class="nav-group-parent" id="nav-tintim">
+                <a href="#" class="nav-item nav-app-tintim" data-toggle="tintim">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 20V10"></path>
+                        <path d="M18 20V4"></path>
+                        <path d="M6 20v-4"></path>
+                    </svg>
+                    <span>Dados Tintim + Kommo</span>
+                    <svg class="nav-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </a>
+                <div class="nav-submenu" id="submenu-tintim">
+                    <a href="#" class="nav-item nav-sub-item nav-app-automacao" data-section="automacao">
+                        <span class="nav-app-dot dot-automacao"></span>
+                        <span>Automação Leads</span>
+                        <span class="nav-badge" id="alerts-badge" style="display:none;">0</span>
+                    </a>
+                    <a href="#" class="nav-item nav-sub-item nav-app-keywords" data-section="keywords">
+                        <span class="nav-app-dot dot-keywords"></span>
+                        <span>Palavras-Chave</span>
+                    </a>
+                </div>
+            </div>
             <a href="#" class="nav-item nav-app-sdr" data-section="sdr">
                 <span class="nav-app-dot dot-sdr"></span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -194,6 +210,22 @@
                 </button>
             </div>
 
+            <!-- Seletor de período: Visão Geral -->
+            <div class="period-selector" style="margin-bottom:20px;">
+                <div class="period-pills">
+                    <button class="dashboard-period-pill active" data-period="30d">30 dias</button>
+                    <button class="dashboard-period-pill" data-period="7d">7 dias</button>
+                    <button class="dashboard-period-pill" data-period="today">Hoje</button>
+                    <button class="dashboard-period-pill" data-period="custom">Personalizado</button>
+                </div>
+                <div id="dashboard-period-custom-range" class="period-custom-range" style="display:none;">
+                    <input type="date" class="period-date-input" id="dashboard-period-from" />
+                    <span class="period-range-sep">até</span>
+                    <input type="date" class="period-date-input" id="dashboard-period-to" />
+                    <button class="btn-primary btn-sm" id="btn-dashboard-period-apply">Aplicar</button>
+                </div>
+            </div>
+
             <!-- Overview Grid: 4 App Cards -->
             <div class="overview-grid">
                 <!-- Card: Automação de Leads -->
@@ -321,6 +353,69 @@
                     <div class="overview-card-action">Acessar <span>&rarr;</span></div>
                 </div>
             </div>
+
+            <!-- Resumo por Cliente -->
+            <div class="card" style="margin-top:24px;">
+                <div class="card-header">
+                    <h3 class="card-title">Resumo por Cliente
+                        <span class="badge badge-subtle" style="font-size:0.65rem;margin-left:8px;vertical-align:middle;">Automação de Leads</span>
+                    </h3>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span class="text-secondary" id="client-summary-period">Carregando...</span>
+                        <span class="text-secondary" id="client-summary-comparison" style="font-size:0.8rem;"></span>
+                    </div>
+                </div>
+                <div class="card-body" style="padding:0;">
+                    <table class="data-table" id="client-summary-table">
+                        <thead>
+                            <tr>
+                                <th>Cliente</th>
+                                <th style="text-align:right;">Leads</th>
+                                <th style="text-align:right;">Vendas</th>
+                                <th style="text-align:right;">Receita</th>
+                            </tr>
+                        </thead>
+                        <tbody id="client-summary-body">
+                            <tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Funil + Origem -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Funil de Conversão
+                            <span class="badge badge-subtle" style="font-size:0.65rem;margin-left:8px;vertical-align:middle;">SDR de IA</span>
+                        </h3>
+                    </div>
+                    <div class="card-body" id="funnel-container">
+                        <div style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Origem dos Leads
+                            <span class="badge badge-subtle" style="font-size:0.65rem;margin-left:8px;vertical-align:middle;">Automação de Leads</span>
+                        </h3>
+                    </div>
+                    <div class="card-body" id="origin-breakdown-container">
+                        <div style="text-align:center;color:var(--text-tertiary);padding:24px;">Carregando...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Google Ads — Palavras-chave mini-card -->
+            <div class="card" style="margin-top:20px;" id="keywords-overview-card">
+                <div class="card-header">
+                    <h3 class="card-title">Google Ads — Palavras-chave</h3>
+                    <a href="#" onclick="navigateTo('keywords');return false;" style="font-size:0.8rem;color:var(--accent-primary);text-decoration:none;">Ver análise completa →</a>
+                </div>
+                <div class="card-body" id="keywords-overview-stats">
+                    <div style="text-align:center;color:var(--text-tertiary);padding:16px;">Carregando...</div>
+                </div>
+            </div>
         </section>
 
         <!-- ===== SECTION: Automação de Leads ===== -->
@@ -328,8 +423,8 @@
             <div class="automacao-tabs">
                 <button class="automacao-tab active" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab" data-autotab="logs">Logs</button>
-                <button class="automacao-tab" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge" style="display:none;">0</span></button>
             </div>
 
             <div class="page-header">
@@ -348,7 +443,7 @@
                 </div>
             </div>
 
-            <!-- Webhook Banner -->
+            <!-- Webhook Banners -->
             <div class="webhook-banner" id="automacao-webhook-banner">
                 <div class="webhook-banner-content">
                     <div class="webhook-icon">
@@ -372,6 +467,29 @@
                     <span>Copiar</span>
                 </button>
             </div>
+            <div class="webhook-banner" id="kommo-webhook-banner" style="margin-top: 8px;">
+                <div class="webhook-banner-content">
+                    <div class="webhook-icon" style="background: var(--accent-orange-subtle); color: var(--accent-orange);">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                    </div>
+                    <div class="webhook-details">
+                        <span class="webhook-label">URL do Webhook Kommo</span>
+                        <code id="webhook-url-kommo" class="webhook-url">carregando...</code>
+                    </div>
+                </div>
+                <button class="btn-copy" id="btn-copy-webhook-kommo" title="Copiar URL">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copiar</span>
+                </button>
+            </div>
 
             <!-- Client Alerts -->
             <div id="dashboard-alerts" style="display: none;"></div>
@@ -379,9 +497,9 @@
             <!-- Period Selector -->
             <div class="period-selector" id="period-selector">
                 <div class="period-pills">
-                    <button class="period-pill active" data-period="today">Hoje</button>
+                    <button class="period-pill" data-period="today">Hoje</button>
                     <button class="period-pill" data-period="yesterday">Ontem</button>
-                    <button class="period-pill" data-period="7d">7 dias</button>
+                    <button class="period-pill active" data-period="7d">7 dias</button>
                     <button class="period-pill" data-period="30d">30 dias</button>
                     <button class="period-pill" data-period="custom">Personalizado</button>
                 </div>
@@ -481,8 +599,8 @@
             <div class="automacao-tabs">
                 <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab active" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab" data-autotab="logs">Logs</button>
-                <button class="automacao-tab" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge-c" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-c" style="display:none;">0</span></button>
             </div>
             <div class="page-header">
                 <div>
@@ -557,12 +675,12 @@
             <div class="automacao-tabs">
                 <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab active" data-autotab="logs">Logs</button>
-                <button class="automacao-tab" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge-l" style="display:none;">0</span></button>
+                <button class="automacao-tab active" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-l" style="display:none;">0</span></button>
             </div>
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Logs do Sistema</h2>
+                    <h2 class="page-title">Leads</h2>
                     <p class="page-subtitle">Histórico completo de leads processados</p>
                 </div>
             </div>
@@ -623,17 +741,17 @@
         </section>
 
         <!-- ===== SECTION: Settings ===== -->
-        <!-- ===== SECTION: Avisos ===== -->
+        <!-- ===== SECTION: Erros ===== -->
         <section class="page-section" id="section-alerts">
             <div class="automacao-tabs">
                 <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
-                <button class="automacao-tab" data-autotab="logs">Logs</button>
-                <button class="automacao-tab active" data-autotab="alerts">Avisos <span class="tab-badge" id="tab-alerts-badge-a" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab active" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-a" style="display:none;">0</span></button>
             </div>
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Avisos & Erros</h2>
+                    <h2 class="page-title">Erros</h2>
                     <p class="page-subtitle">Rastreamento de processamento de leads</p>
                 </div>
                 <div class="header-actions">
@@ -647,45 +765,24 @@
                 </div>
             </div>
 
-            <!-- Stats Cards -->
-            <div class="stats-grid" id="alerts-stats">
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Erros Hoje</span>
+            <div id="alerts-summary" style="margin-bottom:20px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;" id="error-stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Taxa de Sucesso</div>
+                        <div class="stat-value" id="error-success-rate">&mdash;</div>
                     </div>
-                    <div class="stat-value" id="alert-errors-today">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Ultima Hora</span>
+                    <div class="stat-card">
+                        <div class="stat-label">Erros (30d)</div>
+                        <div class="stat-value" id="error-total-count">&mdash;</div>
                     </div>
-                    <div class="stat-value" id="alert-errors-hour">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Total Processados</span>
-                    </div>
-                    <div class="stat-value" id="alert-total-today">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Taxa de Sucesso</span>
-                    </div>
-                    <div class="stat-value" id="alert-success-rate">-</div>
-                </div>
-            </div>
-
-            <!-- Errors List -->
-            <div class="card" style="margin-top: 1.5rem;">
-                <div class="card-header">
-                    <h3>Erros Recentes</h3>
-                </div>
-                <div class="card-body">
-                    <div id="alerts-error-list" class="alerts-error-list">
-                        <p class="empty-state">Carregando...</p>
+                    <div class="stat-card">
+                        <div class="stat-label">Último Erro</div>
+                        <div class="stat-value" id="error-last-date">&mdash;</div>
                     </div>
                 </div>
             </div>
+            <div id="alerts-error-list"></div>
+            <div id="alerts-clients-grid" class="cards-grid"></div>
         </section>
 
         <!-- Trail Modal -->
@@ -765,6 +862,21 @@
                             </div>
                             <small class="form-hint">Cole no Tintim em: Configurações → Webhooks → Conversa criada /
                                 Conversa alterada</small>
+                        </div>
+                        <div class="setting-row setting-row-stacked" style="margin-top: 16px;">
+                            <label class="setting-label">URL do Webhook Kommo</label>
+                            <div class="webhook-edit-group">
+                                <input type="url" id="settings-webhook-kommo" class="setting-input" readonly
+                                    style="background: var(--bg-secondary); cursor: default;" />
+                                <button class="btn-copy btn-sm" id="btn-copy-webhook-kommo-settings" title="Copiar URL">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            <small class="form-hint">Cole no Kommo em: Configurações → Comunicações → Adicionar webhook</small>
                         </div>
                     </div>
                 </div>
@@ -1632,6 +1744,216 @@
             </div>
         </section>
 
+        <!-- ===== SECTION: Palavras-Chave (Google Ads Keywords) ===== -->
+        <section class="page-section" id="section-keywords">
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Palavras-Chave Google Ads</h2>
+                    <p class="page-subtitle">Performance de keywords nas campanhas Google</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-icon" id="btn-reload-keywords" title="Recarregar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="keywords-filters">
+                <select class="keywords-client-select" id="kw-client-select">
+                    <option value="">Todos os Clientes</option>
+                </select>
+                <div class="period-pills">
+                    <button class="period-pill kw-period active" data-kwperiod="7d">7 dias</button>
+                    <button class="period-pill kw-period" data-kwperiod="30d">30 dias</button>
+                    <button class="period-pill kw-period" data-kwperiod="90d">90 dias</button>
+                    <button class="period-pill kw-period" data-kwperiod="custom">Custom</button>
+                </div>
+                <div class="kw-custom-range" id="kw-custom-range" style="display:none;">
+                    <input type="date" class="period-date-input" id="kw-from" />
+                    <span class="period-range-sep">ate</span>
+                    <input type="date" class="period-date-input" id="kw-to" />
+                    <button class="btn-primary btn-sm" id="btn-kw-apply">Aplicar</button>
+                </div>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="keywords-stats-grid">
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-unique">0</span>
+                        <span class="kw-stat-label">Keywords Unicas</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-leads">0</span>
+                        <span class="kw-stat-label">Leads Google Ads</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-top">—</span>
+                        <span class="kw-stat-label">Top Keyword</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-rate">0%</span>
+                        <span class="kw-stat-label">Taxa de Conversao</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-conversions">0</span>
+                        <span class="kw-stat-label">Total Conversoes</span>
+                    </div>
+                </div>
+                <div class="kw-stat-card">
+                    <div class="kw-stat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                    <div class="kw-stat-data">
+                        <span class="kw-stat-value" id="kw-stat-value">R$ 0,00</span>
+                        <span class="kw-stat-label">Valor Total</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trend Chart -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <h3>Tendencia de Leads por Dia</h3>
+                </div>
+                <div class="card-body">
+                    <div class="kw-trend-chart" id="kw-trend-chart" style="position:relative">
+                        <canvas id="kw-trend-canvas" height="200"></canvas>
+                        <div id="kw-chart-tooltip" style="display:none;position:absolute;background:rgba(20,21,30,0.95);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 12px;font-size:12px;color:#e0e0e0;pointer-events:none;z-index:10;white-space:nowrap"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Breakdown: Device + Location -->
+            <div class="kw-breakdown-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
+                <div class="card">
+                    <div class="card-header"><h3>Dispositivos</h3></div>
+                    <div class="card-body" id="kw-device-breakdown">
+                        <p class="empty-state" style="font-size:13px">Carregando...</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>Estados</h3></div>
+                    <div class="card-body" id="kw-location-breakdown">
+                        <p class="empty-state" style="font-size:13px">Carregando...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Keywords Ranking Table -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <h3>Ranking de Keywords</h3>
+                    <button class="btn-text" onclick="exportKeywordsCsv()" style="font-size:12px;display:flex;align-items:center;gap:4px">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Exportar CSV
+                    </button>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div class="table-wrapper">
+                        <table class="keywords-table" id="kw-ranking-table">
+                            <thead>
+                                <tr>
+                                    <th class="kw-sortable">Keyword</th>
+                                    <th class="kw-sortable">Campanha</th>
+                                    <th class="kw-sortable">Leads</th>
+                                    <th class="kw-sortable">Conversoes</th>
+                                    <th class="kw-sortable">Taxa</th>
+                                    <th class="kw-sortable">Valor Total</th>
+                                    <th class="kw-sortable">Ultima Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kw-ranking-body">
+                                <tr><td colspan="7" class="empty-state">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <!-- Campaigns Table -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <h3>Campanhas</h3>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div class="table-wrapper">
+                        <table class="keywords-table">
+                            <thead>
+                                <tr>
+                                    <th>Campanha</th>
+                                    <th>Keywords</th>
+                                    <th>Leads</th>
+                                    <th>Conversoes</th>
+                                    <th>Valor Total</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kw-campaigns-body">
+                                <tr><td colspan="5" class="empty-state">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Backfill Button -->
+            <div style="margin-top: 24px; text-align: right;">
+                <button class="btn-text" id="btn-kw-backfill" style="font-size: 12px; color: var(--text-tertiary);">
+                    Migrar dados historicos
+                </button>
+            </div>
+        </section>
+
     </main>
 
     <!-- Modal Adicionar Cliente -->
@@ -1659,7 +1981,7 @@
                 </div>
                 <div class="form-group">
                     <label for="client-instance">Tintim Instance ID</label>
-                    <input type="text" id="client-instance" placeholder="UUID do Tintim (instanceId)" required>
+                    <input type="text" id="client-instance" placeholder="UUID do Tintim (instanceId)">
                     <small class="form-hint">Encontre no painel do Tintim do cliente</small>
                 </div>
                 <div class="form-group">
@@ -1667,6 +1989,20 @@
                     <input type="text" id="client-sheet" placeholder="ID extraído da URL da planilha" required>
                     <small class="form-hint">Da URL:
                         docs.google.com/spreadsheets/d/<strong>ESSE_ID</strong>/edit</small>
+                </div>
+                <div class="form-group">
+                    <label for="client-webhook-source">Fonte de Leads</label>
+                    <select id="client-webhook-source">
+                        <option value="tintim">Tintim</option>
+                        <option value="kommo">Kommo CRM</option>
+                        <option value="both">Ambos (Tintim + Kommo)</option>
+                    </select>
+                    <small class="form-hint">De onde chegam os webhooks de leads deste cliente</small>
+                </div>
+                <div class="form-group" id="kommo-pipeline-group" style="display:none">
+                    <label for="client-kommo-account">Kommo Account ID</label>
+                    <input type="text" id="client-kommo-account" placeholder="ID da conta Kommo (ex: 35268356)">
+                    <small class="form-hint">Aparece na URL: seudominio.kommo.com (veja em Settings)</small>
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
@@ -1784,26 +2120,13 @@
                     <details>
                         <summary style="font-size:0.8rem;color:var(--text-secondary);cursor:pointer;padding:4px 0;">
                             Configurações avançadas</summary>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label for="rel-semanal-tab">Aba Semanal</label>
-                                <input type="text" id="rel-semanal-tab" value="Atualizar Projeção Semanal">
-                            </div>
-                            <div class="form-group" style="margin-bottom:0;">
-                                <label for="rel-mensal-tab">Aba Mensal</label>
-                                <input type="text" id="rel-mensal-tab" value="Métricas Gerenciadores">
-                            </div>
-                        </div>
+
                         <div class="form-group" style="margin-top:12px;margin-bottom:0;">
-                            <label for="rel-lead-metric">Métrica de Lead/Ação</label>
-                            <select id="rel-lead-metric">
-                                <option value="fb_ads:actions_lead">Leads (padrão)</option>
-                                <option value="fb_ads:actions_onsite_conversion_messaging_conversation_started_7d">
-                                    Mensagens Iniciadas</option>
-                                <option value="fb_ads:page_follows">Novos Seguidores</option>
-                                <option value="sum_leads_messages">Soma (Leads + Mensagens)</option>
-                                <option value="google_ads:conversions">Google Ads (Conversões)</option>
-                            </select>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox" id="rel-lead-metric-ig" style="width:16px;height:16px;cursor:pointer;">
+                                <label for="rel-lead-metric-ig" style="margin:0;cursor:pointer;">Usar novos seguidores como métrica de leads</label>
+                            </div>
+                            <small style="display:block;color:var(--text-tertiary);margin-top:4px;">Quando ativo, a coluna de Leads será preenchida com novos seguidores do Instagram.</small>
                         </div>
                         <div class="form-group" style="margin-top:12px;margin-bottom:0;">
                             <label for="rel-notes">Observações</label>
@@ -1880,6 +2203,24 @@
 
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
+
+<!-- Keyword Detail Modal -->
+<div class="modal-overlay" id="modal-keyword-detail" style="display:none;">
+    <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 id="kw-detail-title">Detalhes da Keyword</h3>
+            <button class="btn-icon" onclick="document.getElementById('modal-keyword-detail').style.display='none'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body" id="kw-detail-body">
+            <p>Carregando...</p>
+        </div>
+    </div>
+</div>
 
     <script src="app.js?v=1.3.0"></script>
     <script src="alerts.js?v=1.3.0"></script>
