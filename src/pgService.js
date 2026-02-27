@@ -524,7 +524,7 @@ class PgService {
             let sql = `SELECT c.slug, COUNT(*) as count
                         FROM leads_log l
                         JOIN clients c ON l.client_id = c.id
-                        WHERE l.created_at >= $1 AND l.processing_result = 'success'`;
+                        WHERE l.created_at >= $1 AND l.processing_result = 'success' AND l.event_type = 'new_lead'`;
             const params = [from];
             let paramIdx = 2;
 
