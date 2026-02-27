@@ -2462,6 +2462,12 @@ function renderSdrConfig(tenant) {
     // Integrações Google
     if (f('cfg-google-sheet')) f('cfg-google-sheet').value = tenant.google_sheet_id || '';
     if (f('cfg-google-calendar')) f('cfg-google-calendar').value = tenant.google_calendar_id || '';
+
+    // WhatsApp / Evolution
+    if (f('cfg-reject-call')) f('cfg-reject-call').value = tenant.reject_call != null ? String(tenant.reject_call) : 'true';
+    if (f('cfg-always-online')) f('cfg-always-online').value = tenant.always_online != null ? String(tenant.always_online) : 'true';
+    if (f('cfg-msg-call')) f('cfg-msg-call').value = tenant.msg_call || '';
+    if (f('cfg-read-messages')) f('cfg-read-messages').value = tenant.read_messages != null ? String(tenant.read_messages) : 'false';
 }
 
 // Save config form
@@ -2502,6 +2508,10 @@ $('#form-sdr-config')?.addEventListener('submit', async (e) => {
             max_follow_ups: parseInt($('#cfg-followup-max')?.value) >= 0 ? parseInt($('#cfg-followup-max')?.value) : undefined,
             google_sheet_id: $('#cfg-google-sheet')?.value.trim() || undefined,
             google_calendar_id: $('#cfg-google-calendar')?.value.trim() || undefined,
+            reject_call: $('#cfg-reject-call')?.value === 'true',
+            always_online: $('#cfg-always-online')?.value === 'true',
+            msg_call: $('#cfg-msg-call')?.value.trim() || undefined,
+            read_messages: $('#cfg-read-messages')?.value === 'true',
         };
 
         const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}`, {
