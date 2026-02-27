@@ -499,8 +499,8 @@ class SheetsService {
                 const sheetName = await this.resolveSheetName(client);
                 const colMap = await this.getColumnMapping(spreadsheetId, sheetName);
 
-                // Encontrar a próxima linha vazia (após os dados existentes)
-                const nextRow = await this.getNextEmptyRow(spreadsheetId, sheetName);
+                // Encontrar a posição correta por data (ordem cronológica)
+                const { row: nextRow, needsInsert } = await this.findInsertRowByDate(spreadsheetId, sheetName, colMap, leadData.date);
 
                 // Montar atualizações individuais por célula
                 const updates = [];
@@ -543,6 +543,30 @@ class SheetsService {
 
                 if (updates.length === 0) {
                     throw new Error('Nenhuma coluna mapeada para inserção');
+                }
+
+                // Se precisa inserir linha no meio (manter ordem cronológica)
+                if (needsInsert) {
+                    const sheetMeta = await this.sheets.spreadsheets.get({ spreadsheetId });
+                    const sheetObj = sheetMeta.data.sheets.find(s => s.properties.title === sheetName);
+                    if (sheetObj) {
+                        await this.sheets.spreadsheets.batchUpdate({
+                            spreadsheetId,
+                            requestBody: {
+                                requests: [{
+                                    insertDimension: {
+                                        range: {
+                                            sheetId: sheetObj.properties.sheetId,
+                                            dimension: 'ROWS',
+                                            startIndex: nextRow - 1, // 0-indexed
+                                            endIndex: nextRow,       // insert 1 row
+                                        },
+                                        inheritFromBefore: true,
+                                    },
+                                }],
+                            },
+                        });
+                    }
                 }
 
                 // Usar batchUpdate com células individuais (não sobrescreve DIAs)
@@ -1052,6 +1076,73 @@ class SheetsService {
      * Encontra a próxima linha vazia na coluna A da aba.
      * Retorna o número da linha (1-indexed).
      */
+
+    /**
+     * Encontra a linha correta para inserir um lead mantendo ordem cronológica por data.
+     * Lê a coluna de data e encontra a posição onde a nova data deve ser inserida.
+     * Se não conseguir determinar, retorna a próxima linha vazia (append no final).
+     */
+    async findInsertRowByDate(spreadsheetId, sheetName, colMap, leadDate) {
+        try {
+            if (!colMap.data || !leadDate) {
+                return { row: await this.getNextEmptyRow(spreadsheetId, sheetName), needsInsert: false };
+            }
+
+            const dateCol = colMap.data.letter;
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!${dateCol}:${dateCol}`,
+            });
+
+            const values = (response.data.values || []).map(r => r[0] || '');
+            if (values.length <= 1) {
+                // Only header or empty — append
+                return { row: values.length + 1, needsInsert: false };
+            }
+
+            // Parse lead date (DD/MM/YYYY format)
+            const parseBRDate = (str) => {
+                if (!str) return null;
+                const parts = String(str).trim().split('/');
+                if (parts.length !== 3) return null;
+                const [d, m, y] = parts.map(Number);
+                if (!d || !m || !y) return null;
+                return new Date(y, m - 1, d);
+            };
+
+            const newDate = parseBRDate(leadDate);
+            if (!newDate || isNaN(newDate.getTime())) {
+                return { row: values.length + 1, needsInsert: false };
+            }
+
+            // Find correct position (skip header at index 0)
+            // Dates should be ascending (oldest first)
+            const lastDataRow = values.length; // last row with data
+            
+            // Check from the end — if new date >= last date, append at end
+            for (let i = lastDataRow - 1; i >= 1; i--) {
+                const existingDate = parseBRDate(values[i]);
+                if (!existingDate) continue;
+                
+                if (newDate >= existingDate) {
+                    // Insert after this row
+                    const insertAt = i + 2; // +1 for 0-index, +1 for "after"
+                    if (insertAt > lastDataRow) {
+                        // Append at end
+                        return { row: lastDataRow + 1, needsInsert: false };
+                    }
+                    return { row: insertAt, needsInsert: true };
+                }
+            }
+
+            // New date is before all existing dates — insert at row 2 (after header)
+            return { row: 2, needsInsert: true };
+        } catch (error) {
+            logger.warn('Erro ao buscar posição por data, usando append', { error: error.message });
+            return { row: await this.getNextEmptyRow(spreadsheetId, sheetName), needsInsert: false };
+        }
+    }
+
     async getNextEmptyRow(spreadsheetId, sheetName) {
         try {
             const response = await this.sheets.spreadsheets.values.get({

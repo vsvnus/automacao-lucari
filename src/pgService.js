@@ -250,8 +250,8 @@ class PgService {
             }
 
             await this.query(
-                `INSERT INTO leads_log (client_id, event_type, phone, lead_name, status, product, sale_amount, origin, sheet_name, sheet_row, processing_result, error_message)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                `INSERT INTO leads_log (client_id, event_type, phone, lead_name, status, product, sale_amount, origin, sheet_name, sheet_row, processing_result, error_message, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))`,
                 [
                     clientUuid,
                     leadInfo.eventType || 'new_lead',
@@ -265,6 +265,7 @@ class PgService {
                     leadInfo.sheetRow || null,
                     leadInfo.result || 'success',
                     leadInfo.error || null,
+                    leadInfo.leadDate || null,
                 ]
             );
         } catch (error) {

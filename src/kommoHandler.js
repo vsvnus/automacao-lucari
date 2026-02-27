@@ -369,6 +369,7 @@ class KommoHandler {
                 sheetName: result.sheetName,
                 result: 'success',
                 error: null,
+                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
             });
         } else {
             logger.error('[Kommo] Falha ao inserir lead na planilha: ' + (result.error || 'erro desconhecido'));
@@ -380,6 +381,7 @@ class KommoHandler {
                 origin: channel,
                 result: 'failed',
                 error: 'Falha Planilha: ' + (result.error || 'erro desconhecido'),
+                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
             });
         }
 
@@ -429,6 +431,7 @@ class KommoHandler {
                 origin: channel,
                 result: 'filtered',
                 error: null,
+                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
             });
             return { type: 'lead.add', leadId: leadId, status: 'filtered_organic', source: sourceValue };
         }
@@ -529,6 +532,7 @@ class KommoHandler {
                     origin: channel,
                     result: 'filtered',
                     error: null,
+                    leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
                 });
                 return { type: 'lead.first_status', leadId: leadId, status: 'filtered_organic', source: sourceValue };
             }
@@ -605,6 +609,7 @@ class KommoHandler {
                     origin: channel || 'Kommo CRM',
                     result: 'success',
                     error: null,
+                    leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
                 });
             } catch (err) {
                 logger.error('[Kommo] Erro ao processar venda: ' + err.message);
@@ -624,6 +629,7 @@ class KommoHandler {
                 origin: channel || 'Kommo CRM',
                 result: 'success',
                 error: null,
+                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
             });
 
             return { type: 'lead.lost', leadId: leadId, client: client.name };
