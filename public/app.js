@@ -1479,10 +1479,19 @@ function getOriginDisplayLabel(origin) {
 }
 
 async function loadClients() {
-    const [clients, clientOrigins] = await Promise.all([
-        fetchClients(),
-        fetchClientOrigins(),
-    ]);
+    console.log('[DEBUG] loadClients() CALLED');
+    let clientOrigins = [];
+    let clients = [];
+    try {
+        [clients, clientOrigins] = await Promise.all([
+            fetchClients(),
+            fetchClientOrigins(),
+        ]);
+    } catch (err) {
+        console.error('[DEBUG] loadClients Promise.all FAILED:', err);
+        clients = await fetchClients();
+    }
+    console.log('[DEBUG] loadClients result:', clients.length, 'clients,', clientOrigins.length, 'origins');
     state.clients = clients;
 
     const container = refs.clientList;
