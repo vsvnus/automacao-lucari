@@ -1449,15 +1449,10 @@ function formatPhoneDisplay(phone) {
 // ============================================
 async function fetchClientOrigins() {
     try {
-        const url = `/api/dashboard/client-origins${buildClientsDateQS()}`;
-        console.log('[DEBUG] fetchClientOrigins URL:', url);
-        const res = await fetch(url);
-        console.log('[DEBUG] fetchClientOrigins status:', res.status);
+        const res = await fetch(`/api/dashboard/client-origins${buildClientsDateQS()}`);
         const data = await res.json();
-        console.log('[DEBUG] fetchClientOrigins data:', data?.length, 'items', data?.[0]);
         return Array.isArray(data) ? data : [];
-    } catch (err) {
-        console.error('[DEBUG] fetchClientOrigins error:', err);
+    } catch {
         return [];
     }
 }
@@ -1479,19 +1474,10 @@ function getOriginDisplayLabel(origin) {
 }
 
 async function loadClients() {
-    console.log('[DEBUG] loadClients() CALLED');
-    let clientOrigins = [];
-    let clients = [];
-    try {
-        [clients, clientOrigins] = await Promise.all([
-            fetchClients(),
-            fetchClientOrigins(),
-        ]);
-    } catch (err) {
-        console.error('[DEBUG] loadClients Promise.all FAILED:', err);
-        clients = await fetchClients();
-    }
-    console.log('[DEBUG] loadClients result:', clients.length, 'clients,', clientOrigins.length, 'origins');
+    const [clients, clientOrigins] = await Promise.all([
+        fetchClients(),
+        fetchClientOrigins(),
+    ]);
     state.clients = clients;
 
     const container = refs.clientList;
@@ -1510,8 +1496,6 @@ async function loadClients() {
     }
 
     // Group origins by slug
-    console.log('[DEBUG] loadClients: clients=', clients.length, 'origins=', clientOrigins.length);
-    if (clientOrigins.length > 0) console.log('[DEBUG] first origin:', clientOrigins[0], 'typeof total:', typeof clientOrigins[0].total);
     const originsMap = {};
     clientOrigins.forEach(row => {
         if (!originsMap[row.slug]) originsMap[row.slug] = [];
@@ -1532,21 +1516,21 @@ async function loadClients() {
 
         // Aggregate KPIs from origins data
         const origins = originsMap[client.slug] || [];
-        const totalLeads = origins.reduce((s, o) => s + o.total, 0);
-        const totalSales = origins.reduce((s, o) => s + o.sales, 0);
-        const totalRevenue = origins.reduce((s, o) => s + o.revenue, 0);
+        const totalLeads = origins.reduce((s, o) => s + (o.leads || 0), 0);
+        const totalSales = origins.reduce((s, o) => s + (o.sales || 0), 0);
+        const totalRevenue = origins.reduce((s, o) => s + (o.revenue || 0), 0);
         const conversion = totalLeads > 0 ? ((totalSales / totalLeads) * 100).toFixed(1) : '0';
         const revenueStr = totalRevenue > 0
             ? `R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`
             : '—';
 
         // Build origin bars
-        const maxOriginTotal = origins.length > 0 ? Math.max(...origins.map(o => o.total)) : 0;
+        const maxOriginLeads = origins.length > 0 ? Math.max(...origins.map(o => o.leads || 0)) : 0;
         let originsHtml = '';
         if (totalLeads > 0) {
-            const filteredOrigins = origins.filter(o => o.total > 0);
+            const filteredOrigins = origins.filter(o => o.leads > 0);
             originsHtml = filteredOrigins.map(o => {
-                const barWidth = maxOriginTotal > 0 ? Math.max(4, (o.total / maxOriginTotal) * 100) : 0;
+                const barWidth = maxOriginLeads > 0 ? Math.max(4, (o.leads / maxOriginLeads) * 100) : 0;
                 const barClass = getOriginBarClass(o.origin);
                 const label = getOriginDisplayLabel(o.origin);
                 return `
@@ -1555,7 +1539,7 @@ async function loadClients() {
                         <div class="client-origin-bar-track">
                             <div class="client-origin-bar ${barClass}" style="width:${barWidth}%"></div>
                         </div>
-                        <span class="client-origin-count">${o.total}</span>
+                        <span class="client-origin-count">${o.leads}</span>
                     </div>`;
             }).join('');
         } else {

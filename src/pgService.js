@@ -553,48 +553,6 @@ class PgService {
         return this.getLeadsCountByClient();
     }
 
-    async getLeadsByClientAndOrigin(startDate, endDate) {
-        if (!this.isAvailable()) return [];
-
-        try {
-            const from = startDate || getTodayStartISO();
-            const toTs = endDate || null;
-
-            const { rows } = await this.query(`
-                SELECT c.slug,
-                       COALESCE(l.origin, 'WhatsApp') AS origin,
-                       count(*) FILTER (
-                           WHERE l.processing_result = 'success' AND l.event_type = 'new_lead'
-                       ) AS total,
-                       count(*) FILTER (
-                           WHERE l.sale_amount > 0
-                              OR (l.processing_result = 'success' AND l.status ILIKE ANY(
-                                   ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']
-                              ))
-                       ) AS sales,
-                       COALESCE(sum(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
-                FROM clients c
-                LEFT JOIN leads_log l ON l.client_id = c.id
-                    AND l.created_at >= $1
-                    AND ($2::timestamptz IS NULL OR l.created_at < $2)
-                WHERE c.active = true
-                GROUP BY c.slug, COALESCE(l.origin, 'WhatsApp')
-                ORDER BY c.slug, total DESC
-            `, [from, toTs]);
-
-            return rows.map(r => ({
-                slug: r.slug,
-                origin: r.origin,
-                total: parseInt(r.total),
-                sales: parseInt(r.sales),
-                revenue: parseFloat(r.revenue),
-            }));
-        } catch (error) {
-            logger.error('Erro ao buscar leads por cliente e origem', { error: error.message });
-            return [];
-        }
-    }
-
     async getLeadTimeline(phone) {
         if (!this.isAvailable()) return [];
 
