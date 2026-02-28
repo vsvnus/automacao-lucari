@@ -1449,10 +1449,15 @@ function formatPhoneDisplay(phone) {
 // ============================================
 async function fetchClientOrigins() {
     try {
-        const res = await fetch(`/api/dashboard/client-origins${buildClientsDateQS()}`);
+        const url = `/api/dashboard/client-origins${buildClientsDateQS()}`;
+        console.log('[DEBUG] fetchClientOrigins URL:', url);
+        const res = await fetch(url);
+        console.log('[DEBUG] fetchClientOrigins status:', res.status);
         const data = await res.json();
+        console.log('[DEBUG] fetchClientOrigins data:', data?.length, 'items', data?.[0]);
         return Array.isArray(data) ? data : [];
-    } catch {
+    } catch (err) {
+        console.error('[DEBUG] fetchClientOrigins error:', err);
         return [];
     }
 }
@@ -1496,6 +1501,8 @@ async function loadClients() {
     }
 
     // Group origins by slug
+    console.log('[DEBUG] loadClients: clients=', clients.length, 'origins=', clientOrigins.length);
+    if (clientOrigins.length > 0) console.log('[DEBUG] first origin:', clientOrigins[0], 'typeof total:', typeof clientOrigins[0].total);
     const originsMap = {};
     clientOrigins.forEach(row => {
         if (!originsMap[row.slug]) originsMap[row.slug] = [];
