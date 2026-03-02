@@ -452,9 +452,9 @@ class SheetsService {
                 return;
             }
 
-            // Índices das colunas a limpar (DIAs, Comentários, Fechamento)
+            // Índices das colunas a limpar (Comentários, Fechamento, Valor — DIAs preservados)
             const cleanIndices = [];
-            for (const field of ['dia1', 'dia2', 'dia3', 'dia4', 'dia5', 'comentarios', 'dataFechamento', 'valor']) {
+            for (const field of ['comentarios', 'dataFechamento', 'valor']) {
                 if (colMap[field]) cleanIndices.push(colMap[field].index);
             }
 
@@ -530,7 +530,7 @@ class SheetsService {
 
     /**
      * Limpa a aba duplicada: remove leads com status terminal,
-     * reseta colunas DIA 1-5 (exceto formulas), Comentarios, Data Fechamento, Valor.
+     * reseta colunas Comentarios, Data Fechamento, Valor. DIAs (cadencia) sao preservados.
      */
     async cleanDuplicatedSheet(spreadsheetId, sheetName, sheetId) {
         try {
@@ -626,19 +626,7 @@ class SheetsService {
                     }
                 }
 
-                // DIA 1-5: so limpar se NAO for formula (preservar formulas existentes)
-                for (const field of ['dia1', 'dia2', 'dia3', 'dia4', 'dia5']) {
-                    if (colMap[field]) {
-                        const idx = colMap[field].index;
-                        const formulaValue = (formulaRows[origIdx] && formulaRows[origIdx][idx]) || '';
-                        if (!formulaValue.toString().startsWith('=')) {
-                            clearUpdates.push({
-                                range: `'${sheetName}'!${colMap[field].letter}${newRow}`,
-                                values: [['']],
-                            });
-                        }
-                    }
-                }
+                // DIA 1-5: preservados integralmente (datas de cadencia do lead)
 
                 newRow++;
             }
