@@ -5157,71 +5157,6 @@ function sortKeywordsTable(colIndex) {
     });
 }
 
-// Keywords event listeners
-document.addEventListener('DOMContentLoaded', () => {
-    // Period pills
-    document.querySelectorAll('.kw-period').forEach(pill => {
-        pill.addEventListener('click', () => {
-            document.querySelectorAll('.kw-period').forEach(p => p.classList.remove('active'));
-            pill.classList.add('active');
-            const period = pill.dataset.kwperiod;
-            kwState.period = period;
-            const customRange = document.getElementById('kw-custom-range');
-            if (customRange) customRange.style.display = period === 'custom' ? 'flex' : 'none';
-            if (period !== 'custom') loadKeywordsSection();
-        });
-    });
-
-    // Client select
-    const kwClientSelect = document.getElementById('kw-client-select');
-    if (kwClientSelect) {
-        kwClientSelect.addEventListener('change', () => {
-            kwState.clientId = kwClientSelect.value || null;
-            loadKeywordsSection();
-        });
-    }
-
-    // Custom date apply
-    const btnKwApply = document.getElementById('btn-kw-apply');
-    if (btnKwApply) {
-        btnKwApply.addEventListener('click', () => {
-            const from = document.getElementById('kw-from');
-            const to = document.getElementById('kw-to');
-            if (from && to && from.value && to.value) {
-                kwState.dateFrom = new Date(from.value).toISOString();
-                kwState.dateTo = new Date(to.value + 'T23:59:59').toISOString();
-                loadKeywordsSection();
-            }
-        });
-    }
-
-    // Reload button
-    const btnReloadKw = document.getElementById('btn-reload-keywords');
-    if (btnReloadKw) {
-        btnReloadKw.addEventListener('click', () => loadKeywordsSection());
-    }
-
-    // Backfill button
-    const btnBackfill = document.getElementById('btn-kw-backfill');
-    if (btnBackfill) {
-        btnBackfill.addEventListener('click', async () => {
-            if (!confirm('Migrar dados historicos de keywords do JSONB? Isso pode levar alguns segundos.')) return;
-            btnBackfill.disabled = true;
-            btnBackfill.textContent = 'Migrando...';
-            try {
-                const res = await fetch('/api/keywords/backfill', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
-                alert('Migrados: ' + (res.migrated || 0) + ' registros');
-                loadKeywordsSection();
-            } catch (e) {
-                alert('Erro ao migrar: ' + e.message);
-            } finally {
-                btnBackfill.disabled = false;
-                btnBackfill.textContent = 'Migrar dados historicos';
-            }
-        });
-    }
-
-
 // ============================================
 // AGENDAMENTOS (SCHEDULES)
 // ============================================
@@ -5416,6 +5351,73 @@ async function runScheduleNow(slug) {
         loadAgendamentosSection();
     }
 }
+
+
+
+
+// Keywords event listeners
+document.addEventListener('DOMContentLoaded', () => {
+    // Period pills
+    document.querySelectorAll('.kw-period').forEach(pill => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.kw-period').forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            const period = pill.dataset.kwperiod;
+            kwState.period = period;
+            const customRange = document.getElementById('kw-custom-range');
+            if (customRange) customRange.style.display = period === 'custom' ? 'flex' : 'none';
+            if (period !== 'custom') loadKeywordsSection();
+        });
+    });
+
+    // Client select
+    const kwClientSelect = document.getElementById('kw-client-select');
+    if (kwClientSelect) {
+        kwClientSelect.addEventListener('change', () => {
+            kwState.clientId = kwClientSelect.value || null;
+            loadKeywordsSection();
+        });
+    }
+
+    // Custom date apply
+    const btnKwApply = document.getElementById('btn-kw-apply');
+    if (btnKwApply) {
+        btnKwApply.addEventListener('click', () => {
+            const from = document.getElementById('kw-from');
+            const to = document.getElementById('kw-to');
+            if (from && to && from.value && to.value) {
+                kwState.dateFrom = new Date(from.value).toISOString();
+                kwState.dateTo = new Date(to.value + 'T23:59:59').toISOString();
+                loadKeywordsSection();
+            }
+        });
+    }
+
+    // Reload button
+    const btnReloadKw = document.getElementById('btn-reload-keywords');
+    if (btnReloadKw) {
+        btnReloadKw.addEventListener('click', () => loadKeywordsSection());
+    }
+
+    // Backfill button
+    const btnBackfill = document.getElementById('btn-kw-backfill');
+    if (btnBackfill) {
+        btnBackfill.addEventListener('click', async () => {
+            if (!confirm('Migrar dados historicos de keywords do JSONB? Isso pode levar alguns segundos.')) return;
+            btnBackfill.disabled = true;
+            btnBackfill.textContent = 'Migrando...';
+            try {
+                const res = await fetch('/api/keywords/backfill', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+                alert('Migrados: ' + (res.migrated || 0) + ' registros');
+                loadKeywordsSection();
+            } catch (e) {
+                alert('Erro ao migrar: ' + e.message);
+            } finally {
+                btnBackfill.disabled = false;
+                btnBackfill.textContent = 'Migrar dados historicos';
+            }
+        });
+    }
 
 
     // Close modal on overlay click
