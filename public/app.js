@@ -4153,6 +4153,8 @@ async function loadRelatorioSettings() {
             }
             if (badge) { badge.style.display = ''; badge.textContent = '✓ Configurado'; }
         }
+        // Load scheduler config alongside settings
+        loadRelSchedulerConfig();
     } catch { /* serviço offline */ }
 }
 
@@ -4176,6 +4178,67 @@ $('#btn-rel-toggle-apikey')?.addEventListener('click', () => {
     const inp = $('#rel-api-key-input');
     if (inp) inp.type = inp.type === 'password' ? 'text' : 'password';
 });
+
+
+
+// ---- Scheduler Config ----
+
+async function loadRelSchedulerConfig() {
+    try {
+        const res = await fetch(RELATORIO_API_BASE + '/scheduler');
+        if (!res.ok) return;
+        const data = await res.json();
+        const daySelect = $('#rel-scheduler-day');
+        const hourSelect = $('#rel-scheduler-hour');
+        const toggle = $('#rel-scheduler-enabled');
+        const status = $('#rel-scheduler-status');
+        if (daySelect) daySelect.value = data.day_of_week ?? 1;
+        if (hourSelect) hourSelect.value = data.hour ?? 7;
+        if (toggle) toggle.checked = data.enabled !== false;
+        if (status) {
+            const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            const d = data.day_of_week ?? 1;
+            const h = data.hour ?? 7;
+            const enabled = data.enabled !== false;
+            status.textContent = enabled
+                ? `Ativo — ${days[d]} às ${String(h).padStart(2,'0')}:00 BRT`
+                : 'Desativado';
+            status.style.color = enabled ? 'var(--accent-green)' : 'var(--text-tertiary)';
+        }
+    } catch { /* serviço offline */ }
+}
+
+async function saveRelScheduler() {
+    const daySelect = $('#rel-scheduler-day');
+    const hourSelect = $('#rel-scheduler-hour');
+    if (!daySelect || !hourSelect) return;
+    try {
+        const res = await fetch(RELATORIO_API_BASE + '/scheduler', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                day_of_week: parseInt(daySelect.value),
+                hour: parseInt(hourSelect.value),
+            }),
+        });
+        if (!res.ok) throw new Error('Erro ao salvar');
+        showToast('Agendamento atualizado!', 'success');
+        await loadRelSchedulerConfig();
+    } catch (err) { showToast(err.message, 'error'); }
+}
+
+async function toggleRelScheduler(enabled) {
+    try {
+        const res = await fetch(RELATORIO_API_BASE + '/scheduler', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        if (!res.ok) throw new Error('Erro ao salvar');
+        showToast(enabled ? 'Agendamento ativado!' : 'Agendamento desativado!', 'success');
+        await loadRelSchedulerConfig();
+    } catch (err) { showToast(err.message, 'error'); }
+}
 
 // ---- Stats ----
 

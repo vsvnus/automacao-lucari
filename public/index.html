@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=1.4.0">
+    <link rel="stylesheet" href="style.css?v=1.5.0">
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
 </head>
@@ -1789,6 +1789,67 @@
                             <strong>app.reportei.com</strong> → Configurações → API</small>
                     </div>
                 </div>
+
+                <!-- Card: Agendamento Automático -->
+                <div class="card" id="relatorio-scheduler-card">
+                    <div class="card-header">
+                        <h3>Agendamento Automático</h3>
+                        <label class="schedule-toggle">
+                            <input type="checkbox" id="rel-scheduler-enabled" onchange="toggleRelScheduler(this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="card-body">
+                        <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px;">
+                            Define quando os relatórios semanais são preenchidos automaticamente.
+                            Relatórios mensais rodam na 1ª ocorrência do dia selecionado no mês.
+                        </p>
+                        <div class="schedule-edit-row">
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:0.8rem;color:var(--text-secondary);">Dia da semana</label>
+                                <select id="rel-scheduler-day" class="schedule-select" onchange="saveRelScheduler()">
+                                    <option value="0">Domingo</option>
+                                    <option value="1">Segunda-feira</option>
+                                    <option value="2">Terça-feira</option>
+                                    <option value="3">Quarta-feira</option>
+                                    <option value="4">Quinta-feira</option>
+                                    <option value="5">Sexta-feira</option>
+                                    <option value="6">Sábado</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:0.8rem;color:var(--text-secondary);">Horário (BRT)</label>
+                                <select id="rel-scheduler-hour" class="schedule-select" onchange="saveRelScheduler()">
+                                    <option value="0">00:00</option>
+                                    <option value="1">01:00</option>
+                                    <option value="2">02:00</option>
+                                    <option value="3">03:00</option>
+                                    <option value="4">04:00</option>
+                                    <option value="5">05:00</option>
+                                    <option value="6">06:00</option>
+                                    <option value="7">07:00</option>
+                                    <option value="8">08:00</option>
+                                    <option value="9">09:00</option>
+                                    <option value="10">10:00</option>
+                                    <option value="11">11:00</option>
+                                    <option value="12">12:00</option>
+                                    <option value="13">13:00</option>
+                                    <option value="14">14:00</option>
+                                    <option value="15">15:00</option>
+                                    <option value="16">16:00</option>
+                                    <option value="17">17:00</option>
+                                    <option value="18">18:00</option>
+                                    <option value="19">19:00</option>
+                                    <option value="20">20:00</option>
+                                    <option value="21">21:00</option>
+                                    <option value="22">22:00</option>
+                                    <option value="23">23:00</option>
+                                </select>
+                            </div>
+                        </div>
+                        <small id="rel-scheduler-status" style="color:var(--text-tertiary);margin-top:10px;display:block;"></small>
+                    </div>
+                </div>
             </div>
 
             <!-- Tab: Execuções -->
@@ -2325,7 +2386,7 @@
     </div>
 </div>
 
-    <script src="app.js?v=1.5.0"></script>
+    <script src="app.js?v=1.6.0"></script>
     <script src="alerts.js?v=1.3.0"></script>
 </body>
 
