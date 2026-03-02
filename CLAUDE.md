@@ -268,3 +268,30 @@ Client matching: Kommo webhook includes `pipeline_id` in lead events. Each clien
 - Correção retroativa executada: Perim (20), Mar das Ilhas (112), Rotta (37), Raydan (70 fórmulas DIA)
 
 **Colunas DIA**: NUNCA são escritas pela automação. Preserva fórmulas e preenchimento manual.
+
+## Alterações Recentes (2026-03-02)
+
+### Feature: Duplicação real de abas mensais
+- **Antes**: `ensureSheet()` usava `addSheet` + cópia de valores, perdendo formatação, cores, larguras e regras condicionais
+- **Depois**: Usa `duplicateSheet` da API Google Sheets (batchUpdate), preservando TUDO
+- **Métodos novos**: `duplicateSheetForNewMonth()`, `cleanDuplicatedSheet()`, `createMonthlyTabsForAllClients()`
+- **Fluxo**: Duplica aba anterior → Remove leads com status terminal → Reseta DIA/Comentários/Fechamento/Valor → Preserva fórmulas DIA
+- **HEADER_ALIASES.status**: Adicionado `venda` como alias (planilha Foguel Adv usa "Venda" como header de status)
+
+### Feature: Scheduler mensal (node-cron)
+- Roda todo dia 1 de cada mês às 07:00 BRT (10:00 UTC)
+- Cria abas do novo mês para TODOS os clientes cadastrados
+- Loga cada duplicação: cliente, aba origem, aba destino, leads copiados, leads excluídos
+- Dependência: `node-cron ^3.0.3`
+
+### Fix: Detecção de origem ctwa_clid
+- `detectOrigin()` agora verifica `ctwa_clid` (Click-to-WhatsApp Ad ID) com prioridade máxima → classifica como "Meta Ads"
+- Verifica também `payload.ad` nested (Tintim envia `ad.ad_name`, `ad.campaign_name` dentro de objeto)
+- **Impacto**: Leads do Mar das Ilhas e Lucas Raydan que eram filtrados como orgânicos agora serão corretamente detectados como Meta Ads
+
+### Status Terminais (constante TERMINAL_STATUSES)
+Leads com esses status NÃO são copiados para o mês seguinte:
+- `contato finalizado`
+- `venda`
+- `comprou`
+- `desqualificado`
