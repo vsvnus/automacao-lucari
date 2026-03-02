@@ -990,6 +990,156 @@ app.put('/api/admin/features/:slug', requireAuth, async (req, res) => {
 });
 
 
+
+// ====================================================
+// Schedule Management API
+// ====================================================
+
+function calculateNextRun(cronExpression, timezone) {
+    try {
+        const cronParser = require('node-cron');
+        // Simple next-run calculation based on cron expression
+        // Format: minute hour dayOfMonth month dayOfWeek
+        const parts = cronExpression.split(' ');
+        if (parts.length !== 5) return null;
+
+        const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+        const now = new Date();
+
+        // For monthly schedules (day of month specified)
+        if (dayOfMonth !== '*') {
+            const targetDay = parseInt(dayOfMonth, 10);
+            const targetHour = parseInt(hour, 10);
+            const targetMinute = parseInt(minute, 10);
+
+            let next = new Date(now);
+            next.setUTCHours(targetHour, targetMinute, 0, 0);
+            next.setUTCDate(targetDay);
+
+            // If this month's run has passed, go to next month
+            if (next <= now) {
+                next.setUTCMonth(next.getUTCMonth() + 1);
+            }
+            return next.toISOString();
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+app.get('/api/dashboard/schedules', requireAuth, async (_req, res) => {
+    const schedules = await pgService.getSchedules();
+
+    // Enrich with computed next_run if not set
+    for (const s of schedules) {
+        if (!s.next_run_at && s.enabled) {
+            s.next_run_at = calculateNextRun(s.cron_expression, s.timezone);
+        }
+    }
+
+    const activeCount = schedules.filter(s => s.enabled).length;
+    const nextRun = schedules
+        .filter(s => s.enabled && s.next_run_at)
+        .sort((a, b) => new Date(a.next_run_at) - new Date(b.next_run_at))[0];
+    const lastRun = schedules
+        .filter(s => s.last_run_at)
+        .sort((a, b) => new Date(b.last_run_at) - new Date(a.last_run_at))[0];
+
+    res.json({
+        stats: {
+            total: schedules.length,
+            active: activeCount,
+            nextRun: nextRun ? nextRun.next_run_at : null,
+            lastRun: lastRun ? { at: lastRun.last_run_at, status: lastRun.last_run_status } : null,
+        },
+        schedules,
+    });
+});
+
+app.put('/api/dashboard/schedules/:slug', requireAuth, async (req, res) => {
+    const { slug } = req.params;
+    const { enabled, cron_expression } = req.body;
+
+    const fields = {};
+    if (typeof enabled === 'boolean') fields.enabled = enabled;
+    if (cron_expression) fields.cron_expression = cron_expression;
+
+    if (Object.keys(fields).length === 0) {
+        return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    // If enabling, calculate next_run
+    if (fields.enabled === true) {
+        const schedule = await pgService.getSchedule(slug);
+        if (schedule) {
+            const cronExpr = fields.cron_expression || schedule.cron_expression;
+            fields.next_run_at = calculateNextRun(cronExpr, schedule.timezone);
+        }
+    }
+
+    const updated = await pgService.updateSchedule(slug, fields);
+    if (!updated) {
+        return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+
+    logger.info(`Schedule ${slug} atualizado`, { fields });
+    res.json(updated);
+});
+
+app.post('/api/dashboard/schedules/:slug/run', requireAuth, async (req, res) => {
+    const { slug } = req.params;
+    const schedule = await pgService.getSchedule(slug);
+    if (!schedule) {
+        return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+
+    if (slug === 'monthly_tabs') {
+        // Execute monthly tabs creation
+        const startTime = Date.now();
+        try {
+            const clients = clientManager.getAllClients();
+            if (!clients || clients.length === 0) {
+                return res.status(400).json({ error: 'Nenhum cliente cadastrado' });
+            }
+
+            const results = await sheetsService.createMonthlyTabsForAllClients(clients);
+
+            const summary = {
+                total: results.length,
+                created: results.filter(r => r.status === 'created').length,
+                createdBlank: results.filter(r => r.status === 'created_blank').length,
+                existing: results.filter(r => r.status === 'exists').length,
+                errors: results.filter(r => r.status === 'error').length,
+                skipped: results.filter(r => r.status === 'skipped').length,
+            };
+
+            const detail = JSON.stringify(summary);
+            const nextRun = calculateNextRun(schedule.cron_expression, schedule.timezone);
+
+            await pgService.updateSchedule(slug, {
+                last_run_at: new Date().toISOString(),
+                last_run_status: summary.errors > 0 ? 'error' : 'success',
+                last_run_detail: detail,
+                next_run_at: nextRun,
+            });
+
+            logger.info('Execução manual de monthly_tabs concluída', { summary, duration: Date.now() - startTime });
+            res.json({ status: 'success', summary, results, duration: Date.now() - startTime });
+        } catch (error) {
+            await pgService.updateSchedule(slug, {
+                last_run_at: new Date().toISOString(),
+                last_run_status: 'error',
+                last_run_detail: error.message,
+            });
+            logger.error('Execução manual de monthly_tabs falhou', { error: error.message });
+            res.status(500).json({ error: error.message });
+        }
+    } else {
+        res.status(400).json({ error: `Execução manual não implementada para: ${slug}` });
+    }
+});
+
 async function startServer() {
     try {
         // 1.5. Rodar migrations se necessário
@@ -1198,14 +1348,30 @@ async function startServer() {
         // ====================================================
         // Monthly tab scheduler (node-cron)
         // Dia 1 de cada mes as 07:00 BRT (10:00 UTC)
+        // Wrapped: verifica enabled no banco antes de executar
         // ====================================================
         const cron = require('node-cron');
         cron.schedule('0 10 1 * *', async () => {
+            logger.info('Scheduler mensal: Verificando se automação está habilitada...');
+
+            // Check if schedule is enabled in DB
+            const scheduleConfig = await pgService.getSchedule('monthly_tabs');
+            if (scheduleConfig && !scheduleConfig.enabled) {
+                logger.info('Scheduler mensal: Desabilitado via dashboard. Pulando execução.');
+                return;
+            }
+
             logger.info('Scheduler mensal: Criando abas do novo mes para todos os clientes');
+            const startTime = Date.now();
             try {
                 const clients = clientManager.getAllClients();
                 if (!clients || clients.length === 0) {
                     logger.warn('Scheduler mensal: Nenhum cliente cadastrado');
+                    await pgService.updateSchedule('monthly_tabs', {
+                        last_run_at: new Date().toISOString(),
+                        last_run_status: 'error',
+                        last_run_detail: 'Nenhum cliente cadastrado',
+                    });
                     return;
                 }
 
@@ -1220,7 +1386,7 @@ async function startServer() {
                     skipped: results.filter(r => r.status === 'skipped').length,
                 };
 
-                logger.info('Scheduler mensal concluido', { summary, details: results });
+                logger.info('Scheduler mensal concluido', { summary, details: results, duration: Date.now() - startTime });
 
                 // Log individual de cada cliente
                 for (const r of results) {
@@ -1230,13 +1396,28 @@ async function startServer() {
                         logger.error(`  ${r.client}: ERRO - ${r.error}`);
                     }
                 }
+
+                // Update schedule status in DB
+                const nextRun = calculateNextRun('0 10 1 * *', 'America/Sao_Paulo');
+                await pgService.updateSchedule('monthly_tabs', {
+                    last_run_at: new Date().toISOString(),
+                    last_run_status: summary.errors > 0 ? 'error' : 'success',
+                    last_run_detail: JSON.stringify(summary),
+                    next_run_at: nextRun,
+                });
             } catch (error) {
                 logger.error('Scheduler mensal falhou', { error: error.message });
+                await pgService.updateSchedule('monthly_tabs', {
+                    last_run_at: new Date().toISOString(),
+                    last_run_status: 'error',
+                    last_run_detail: error.message,
+                });
             }
         }, {
             timezone: 'America/Sao_Paulo',
         });
         logger.info('Scheduler mensal configurado: dia 1 de cada mes as 07:00 BRT');
+
 
     } catch (error) {
         logger.error('Erro ao iniciar servidor', { error: error.message });

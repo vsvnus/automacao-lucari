@@ -425,6 +425,7 @@
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
                 <button class="automacao-tab" data-autotab="logs">Leads</button>
                 <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
             </div>
 
             <div class="page-header">
@@ -629,6 +630,7 @@
                 <button class="automacao-tab active" data-autotab="clients">Clientes</button>
                 <button class="automacao-tab" data-autotab="logs">Leads</button>
                 <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-c" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
             </div>
             <div class="page-header">
                 <div>
@@ -730,6 +732,7 @@
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
                 <button class="automacao-tab active" data-autotab="logs">Leads</button>
                 <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-l" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
             </div>
             <div class="page-header">
                 <div>
@@ -801,6 +804,7 @@
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
                 <button class="automacao-tab" data-autotab="logs">Leads</button>
                 <button class="automacao-tab active" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-a" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
             </div>
             <div class="page-header">
                 <div>
@@ -836,6 +840,52 @@
             </div>
             <div id="alerts-error-list"></div>
             <div id="alerts-clients-grid" class="cards-grid"></div>
+        </section>
+
+
+        <!-- ===== SECTION: Agendamentos ===== -->
+        <section class="page-section" id="section-agendamentos">
+            <div class="automacao-tabs">
+                <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
+                <button class="automacao-tab" data-autotab="clients">Clientes</button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros</button>
+                <button class="automacao-tab active" data-autotab="agendamentos">Agendamentos</button>
+            </div>
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Agendamentos</h2>
+                    <p class="page-subtitle">Automações programadas do sistema</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-icon" id="btn-refresh-schedules" title="Atualizar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div id="schedules-stats" style="margin-bottom:20px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Ativos</div>
+                        <div class="stat-value" id="sched-active-count">&mdash;</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Próxima Execução</div>
+                        <div class="stat-value" id="sched-next-run" style="font-size:0.9rem;">&mdash;</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Última Execução</div>
+                        <div class="stat-value" id="sched-last-run" style="font-size:0.9rem;">&mdash;</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="schedules-list"></div>
         </section>
 
         <!-- Trail Modal -->

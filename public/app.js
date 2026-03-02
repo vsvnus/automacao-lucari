@@ -38,14 +38,14 @@ const refs = {
 // ============================================
 
 // Sections that belong to Automação Leads app
-const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts'];
-const TINTIM_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'keywords'];
+const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'agendamentos'];
+const TINTIM_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'agendamentos', 'keywords'];
 
 function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'keywords', 'sdr', 'calculadora', 'relatorio'];
+    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'agendamentos', 'keywords', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -87,6 +87,7 @@ function navigateTo(section, replace = false) {
         clients: 'Automação de Leads',
         logs: 'Automação de Leads',
         alerts: 'Automação de Leads',
+        agendamentos: 'Automação de Leads',
         keywords: 'Palavras-Chave',
         sdr: 'SDR de IA',
         calculadora: 'Calculadora',
@@ -125,6 +126,7 @@ function navigateTo(section, replace = false) {
     if (section === 'sdr') loadSDRSection();
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
+    if (section === 'agendamentos') loadAgendamentosSection();
     if (section === 'relatorio') loadRelatorioSection();
     if (section === 'dashboard') loadDashboardOverview();
 }
@@ -5218,6 +5220,199 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+
+// ============================================
+// AGENDAMENTOS (SCHEDULES)
+// ============================================
+
+async function loadAgendamentosSection() {
+    try {
+        const res = await fetch('/api/dashboard/schedules');
+        if (!res.ok) throw new Error('Falha ao carregar agendamentos');
+        const data = await res.json();
+        renderAgendamentosStats(data.stats);
+        renderAgendamentos(data.schedules);
+    } catch (err) {
+        console.error('Erro ao carregar agendamentos:', err);
+        const list = document.getElementById('schedules-list');
+        if (list) list.innerHTML = '<p class="empty-state">Erro ao carregar agendamentos</p>';
+    }
+
+    // Bind refresh button
+    const refreshBtn = document.getElementById('btn-refresh-schedules');
+    if (refreshBtn) {
+        refreshBtn.onclick = () => loadAgendamentosSection();
+    }
+}
+
+function formatScheduleDate(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function describeCron(cron, tz) {
+    if (!cron) return '';
+    const parts = cron.split(' ');
+    if (parts.length !== 5) return cron;
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+    // Convert UTC hour to BRT for display
+    let displayHour = parseInt(hour, 10);
+    if (tz === 'America/Sao_Paulo') {
+        // Cron runs in Sao Paulo timezone, so hour is already BRT-reference
+        // But the actual cron uses UTC (10 = 07:00 BRT)
+        displayHour = displayHour - 3;
+        if (displayHour < 0) displayHour += 24;
+    }
+    const timeStr = `${String(displayHour).padStart(2, '0')}:${String(parseInt(minute, 10)).padStart(2, '0')}`;
+
+    if (dayOfMonth !== '*' && month === '*' && dayOfWeek === '*') {
+        return `Todo dia ${dayOfMonth} de cada m\u00eas \u00e0s ${timeStr} (${tz})`;
+    }
+    if (dayOfMonth === '*' && dayOfWeek !== '*') {
+        const days = { '0': 'domingo', '1': 'segunda', '2': 'ter\u00e7a', '3': 'quarta', '4': 'quinta', '5': 'sexta', '6': 's\u00e1bado' };
+        return `Toda ${days[dayOfWeek] || dayOfWeek} \u00e0s ${timeStr} (${tz})`;
+    }
+    return `${cron} (${tz})`;
+}
+
+function renderAgendamentosStats(stats) {
+    const activeEl = document.getElementById('sched-active-count');
+    const nextEl = document.getElementById('sched-next-run');
+    const lastEl = document.getElementById('sched-last-run');
+
+    if (activeEl) activeEl.textContent = `${stats.active}/${stats.total}`;
+    if (nextEl) nextEl.textContent = stats.nextRun ? formatScheduleDate(stats.nextRun) : '—';
+    if (lastEl) {
+        if (stats.lastRun) {
+            const statusIcon = stats.lastRun.status === 'success' ? '\u2705' : '\u274c';
+            lastEl.innerHTML = `${statusIcon} ${formatScheduleDate(stats.lastRun.at)}`;
+        } else {
+            lastEl.textContent = '—';
+        }
+    }
+}
+
+function renderAgendamentos(schedules) {
+    const container = document.getElementById('schedules-list');
+    if (!container) return;
+
+    if (!schedules || schedules.length === 0) {
+        container.innerHTML = '<p class="empty-state">Nenhum agendamento configurado</p>';
+        return;
+    }
+
+    container.innerHTML = schedules.map(s => {
+        const statusClass = s.enabled ? 'schedule-enabled' : 'schedule-disabled';
+        const statusText = s.enabled ? 'Ativo' : 'Desativado';
+        const statusBadgeClass = s.enabled ? 'badge-success' : 'badge-muted';
+
+        let lastRunHtml = '';
+        if (s.last_run_at) {
+            const icon = s.last_run_status === 'success' ? '\u2705' : '\u274c';
+            const statusLabel = s.last_run_status === 'success' ? 'Sucesso' : 'Erro';
+            lastRunHtml = `<span>${icon} ${formatScheduleDate(s.last_run_at)} \u2014 ${statusLabel}</span>`;
+            if (s.last_run_detail && s.last_run_status === 'success') {
+                try {
+                    const detail = JSON.parse(s.last_run_detail);
+                    if (detail.created !== undefined) {
+                        lastRunHtml += `<span class="schedule-detail">${detail.created} criadas, ${detail.existing || 0} existentes, ${detail.errors || 0} erros</span>`;
+                    }
+                } catch {}
+            } else if (s.last_run_detail && s.last_run_status === 'error') {
+                lastRunHtml += `<span class="schedule-detail schedule-error-detail">${escapeHtml(s.last_run_detail)}</span>`;
+            }
+        } else {
+            lastRunHtml = '<span class="text-muted">Nunca executado</span>';
+        }
+
+        const nextRunHtml = s.next_run_at
+            ? formatScheduleDate(s.next_run_at)
+            : (s.enabled ? 'Calculando...' : '—');
+
+        return `
+        <div class="card schedule-card ${statusClass}" data-slug="${escapeHtml(s.slug)}">
+            <div class="schedule-card-header">
+                <div class="schedule-card-title">
+                    <label class="schedule-toggle">
+                        <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSchedule('${escapeHtml(s.slug)}', this.checked)">
+                        <span class="schedule-toggle-slider"></span>
+                    </label>
+                    <div>
+                        <h3 class="schedule-name">${escapeHtml(s.name)}</h3>
+                        <span class="badge ${statusBadgeClass}">${statusText}</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm schedule-run-btn" onclick="runScheduleNow('${escapeHtml(s.slug)}')" ${!s.enabled ? 'disabled' : ''}>
+                    Executar Agora
+                </button>
+            </div>
+            <div class="schedule-card-body">
+                <div class="schedule-info-row">
+                    <span class="schedule-label">Frequ\u00eancia</span>
+                    <span>${describeCron(s.cron_expression, s.timezone)}</span>
+                </div>
+                ${s.description ? `<div class="schedule-info-row"><span class="schedule-label">Descri\u00e7\u00e3o</span><span>${escapeHtml(s.description)}</span></div>` : ''}
+                <div class="schedule-info-row">
+                    <span class="schedule-label">\u00daltima execu\u00e7\u00e3o</span>
+                    <div class="schedule-last-run">${lastRunHtml}</div>
+                </div>
+                <div class="schedule-info-row">
+                    <span class="schedule-label">Pr\u00f3xima execu\u00e7\u00e3o</span>
+                    <span>${nextRunHtml}</span>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function toggleSchedule(slug, enabled) {
+    try {
+        const res = await fetch(`/api/dashboard/schedules/${slug}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        if (!res.ok) throw new Error('Falha ao atualizar');
+        loadAgendamentosSection();
+    } catch (err) {
+        console.error('Erro ao toggle schedule:', err);
+        alert('Erro ao atualizar agendamento');
+        loadAgendamentosSection(); // Revert UI
+    }
+}
+
+async function runScheduleNow(slug) {
+    if (!confirm('Executar esta automa\u00e7\u00e3o agora?')) return;
+
+    const btn = document.querySelector(`.schedule-card[data-slug="${slug}"] .schedule-run-btn`);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Executando...';
+    }
+
+    try {
+        const res = await fetch(`/api/dashboard/schedules/${slug}/run`, { method: 'POST' });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Falha na execu\u00e7\u00e3o');
+
+        if (data.summary) {
+            alert(`Conclu\u00eddo!\n\nCriadas: ${data.summary.created}\nExistentes: ${data.summary.existing}\nErros: ${data.summary.errors}\nDura\u00e7\u00e3o: ${Math.round(data.duration / 1000)}s`);
+        } else {
+            alert('Execu\u00e7\u00e3o conclu\u00edda com sucesso!');
+        }
+    } catch (err) {
+        console.error('Erro ao executar schedule:', err);
+        alert(`Erro: ${err.message}`);
+    } finally {
+        loadAgendamentosSection();
+    }
+}
+
 
     // Close modal on overlay click
     const kwModal = document.getElementById('modal-keyword-detail');

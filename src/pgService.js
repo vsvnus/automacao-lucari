@@ -1922,6 +1922,67 @@ class PgService {
             logger.error('Erro ao executar migrations', { error: error.message });
         }
     }
+
+    // ============================================================
+    // SCHEDULE CONFIGS
+    // ============================================================
+
+    async getSchedules() {
+        if (!this.isAvailable()) return [];
+        try {
+            const { rows } = await this.query('SELECT * FROM schedule_configs ORDER BY id');
+            return rows;
+        } catch (error) {
+            logger.error('Erro ao buscar schedules', { error: error.message });
+            return [];
+        }
+    }
+
+    async getSchedule(slug) {
+        if (!this.isAvailable()) return null;
+        try {
+            const { rows } = await this.query(
+                'SELECT * FROM schedule_configs WHERE slug = $1',
+                [slug]
+            );
+            return rows[0] || null;
+        } catch (error) {
+            logger.error('Erro ao buscar schedule', { error: error.message, slug });
+            return null;
+        }
+    }
+
+    async updateSchedule(slug, fields) {
+        if (!this.isAvailable()) return null;
+        try {
+            const setClauses = [];
+            const params = [];
+            let idx = 1;
+
+            const allowedFields = ['enabled', 'cron_expression', 'last_run_at', 'last_run_status', 'last_run_detail', 'next_run_at'];
+            for (const [key, value] of Object.entries(fields)) {
+                if (allowedFields.includes(key)) {
+                    setClauses.push(`${key} = $${idx}`);
+                    params.push(value);
+                    idx++;
+                }
+            }
+
+            if (setClauses.length === 0) return null;
+
+            setClauses.push(`updated_at = NOW()`);
+            params.push(slug);
+
+            const { rows } = await this.query(
+                `UPDATE schedule_configs SET ${setClauses.join(', ')} WHERE slug = $${idx} RETURNING *`,
+                params
+            );
+            return rows[0] || null;
+        } catch (error) {
+            logger.error('Erro ao atualizar schedule', { error: error.message, slug });
+            return null;
+        }
+    }
 }
 
 const pgService = new PgService();
