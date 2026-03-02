@@ -57,7 +57,7 @@ const HEADER_ALIASES = {
     valor:          ['valor de fechamento', 'valor'],
     cidade:         ['cidade'],
     produto:        ['produto'],
-    status:         ['status lead', 'status'],
+    status:         ['status lead', 'status', 'venda'],
     dia1:           ['dia 1'],
     dia2:           ['dia 2'],
     dia3:           ['dia 3'],
@@ -189,13 +189,17 @@ class SheetsService {
             return existingMatch;
         }
 
-        // Nenhuma aba do mês encontrada — criar nova
-        await this.ensureSheet(client.spreadsheet_id, targetName, existingSheets, traceId);
-
-        // Copiar leads ativos do mês anterior para a nova aba
+        // Nenhuma aba do mês encontrada — criar via duplicação ou do zero
         const previousSheet = this.findPreviousMonthSheet(existingSheets);
         if (previousSheet) {
-            await this.copyActiveLeadsFromSheet(client.spreadsheet_id, previousSheet, targetName);
+            // Duplicar aba do mês anterior (preserva formatação, cores, larguras, regras condicionais)
+            const result = await this.duplicateSheetForNewMonth(
+                client.spreadsheet_id, previousSheet, targetName, traceId
+            );
+            logger.info(`Aba "${targetName}" criada por duplicação de "${previousSheet}" para ${client.name}: ${result.copied} leads copiados, ${result.excluded} excluídos`);
+        } else {
+            // Sem aba anterior — criar do zero com headers
+            await this.ensureSheet(client.spreadsheet_id, targetName, existingSheets, traceId);
         }
 
         this.spreadsheetCache.set(cacheKey, targetName);
@@ -477,6 +481,271 @@ class SheetsService {
             // Não falhar a criação da aba por causa da cópia
             logger.error(`Erro ao copiar leads ativos de "${sourceSheetName}"`, { error: error.message });
         }
+    }
+
+    /**
+     * Duplica a aba do mes anterior para criar a aba do novo mes.
+     * Preserva toda formatacao, cores, larguras de coluna, regras condicionais.
+     * Apos duplicacao, limpa leads com status terminal e reseta colunas especificas.
+     */
+    async duplicateSheetForNewMonth(spreadsheetId, sourceSheetName, targetSheetName, traceId) {
+        const sourceSheetId = await this.getSheetIdByName(spreadsheetId, sourceSheetName);
+        if (sourceSheetId === null) {
+            throw new Error(`Aba fonte "${sourceSheetName}" nao encontrada`);
+        }
+
+        logger.info(`Duplicando aba "${sourceSheetName}" -> "${targetSheetName}"`);
+
+        // 1. Duplicar a aba inteira (preserva tudo: formatacao, cores, larguras, condicionais)
+        const response = await this.sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+                requests: [{
+                    duplicateSheet: {
+                        sourceSheetId,
+                        newSheetName: targetSheetName,
+                        insertSheetIndex: 0,
+                    },
+                }],
+            },
+        });
+
+        const newSheetId = response.data.replies[0].duplicateSheet.properties.sheetId;
+
+        // 2. Limpar leads com status terminal e resetar colunas
+        const result = await this.cleanDuplicatedSheet(spreadsheetId, targetSheetName, newSheetId);
+
+        // 3. Registrar no trail
+        if (traceId) {
+            pgService.addTrailStep(traceId, 0, 'tab_duplicated', 'ok',
+                `Aba "${targetSheetName}" duplicada de "${sourceSheetName}": ${result.copied} leads, ${result.excluded} excluidos`,
+                { sourceSheet: sourceSheetName, targetSheet: targetSheetName, ...result }, null);
+        }
+
+        // 4. Cache
+        this.spreadsheetCache.set(`${spreadsheetId}:${targetSheetName}`, true);
+
+        return result;
+    }
+
+    /**
+     * Limpa a aba duplicada: remove leads com status terminal,
+     * reseta colunas DIA 1-5 (exceto formulas), Comentarios, Data Fechamento, Valor.
+     */
+    async cleanDuplicatedSheet(spreadsheetId, sheetName, sheetId) {
+        try {
+            const colMap = await this.getColumnMapping(spreadsheetId, sheetName);
+            const totalCols = colMap._totalCols || 14;
+            const lastCol = String.fromCharCode(64 + totalCols);
+
+            // Ler todos os dados (valores renderizados)
+            const valuesResponse = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!A2:${lastCol}`,
+            });
+            const allRows = valuesResponse.data.values || [];
+
+            if (allRows.length === 0) {
+                logger.info(`Aba "${sheetName}" duplicada sem dados para limpar`);
+                return { copied: 0, excluded: 0, total: 0 };
+            }
+
+            // Ler formulas para detectar quais celulas DIA tem formula
+            const formulasResponse = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!A2:${lastCol}`,
+                valueRenderOption: 'FORMULA',
+            });
+            const formulaRows = formulasResponse.data.values || [];
+
+            // Identificar linhas com status terminal
+            const statusIdx = colMap.status ? colMap.status.index : null;
+            const terminalRowIndices = [];
+
+            if (statusIdx !== null) {
+                for (let i = 0; i < allRows.length; i++) {
+                    const status = (allRows[i][statusIdx] || '').toLowerCase().trim();
+                    if (TERMINAL_STATUSES.some(ts => status.includes(ts))) {
+                        terminalRowIndices.push(i);
+                    }
+                }
+            }
+
+            logger.info(`Aba "${sheetName}": ${allRows.length} leads total, ${terminalRowIndices.length} com status terminal`);
+
+            // Deletar linhas com status terminal (de baixo para cima, agrupando consecutivas)
+            if (terminalRowIndices.length > 0) {
+                const deleteRequests = [];
+                let i = terminalRowIndices.length - 1;
+                while (i >= 0) {
+                    let endIdx = terminalRowIndices[i];
+                    let startIdx = endIdx;
+                    while (i > 0 && terminalRowIndices[i - 1] === startIdx - 1) {
+                        i--;
+                        startIdx = terminalRowIndices[i];
+                    }
+                    deleteRequests.push({
+                        deleteDimension: {
+                            range: {
+                                sheetId,
+                                dimension: 'ROWS',
+                                startIndex: startIdx + 1,
+                                endIndex: endIdx + 2,
+                            },
+                        },
+                    });
+                    i--;
+                }
+
+                await this.sheets.spreadsheets.batchUpdate({
+                    spreadsheetId,
+                    requestBody: { requests: deleteRequests },
+                });
+            }
+
+            // Indices dos leads que ficaram (nao-terminais)
+            const remainingOriginalIndices = [];
+            for (let i = 0; i < allRows.length; i++) {
+                if (!terminalRowIndices.includes(i)) {
+                    remainingOriginalIndices.push(i);
+                }
+            }
+
+            // Limpar colunas dos leads que ficaram
+            const clearUpdates = [];
+            let newRow = 2;
+
+            for (const origIdx of remainingOriginalIndices) {
+                // Sempre limpar: Comentarios, Data Fechamento, Valor
+                for (const field of ['comentarios', 'dataFechamento', 'valor']) {
+                    if (colMap[field]) {
+                        clearUpdates.push({
+                            range: `'${sheetName}'!${colMap[field].letter}${newRow}`,
+                            values: [['']],
+                        });
+                    }
+                }
+
+                // DIA 1-5: so limpar se NAO for formula (preservar formulas existentes)
+                for (const field of ['dia1', 'dia2', 'dia3', 'dia4', 'dia5']) {
+                    if (colMap[field]) {
+                        const idx = colMap[field].index;
+                        const formulaValue = (formulaRows[origIdx] && formulaRows[origIdx][idx]) || '';
+                        if (!formulaValue.toString().startsWith('=')) {
+                            clearUpdates.push({
+                                range: `'${sheetName}'!${colMap[field].letter}${newRow}`,
+                                values: [['']],
+                            });
+                        }
+                    }
+                }
+
+                newRow++;
+            }
+
+            // Executar limpeza em batches
+            if (clearUpdates.length > 0) {
+                const BATCH_SIZE = 500;
+                for (let i = 0; i < clearUpdates.length; i += BATCH_SIZE) {
+                    const chunk = clearUpdates.slice(i, i + BATCH_SIZE);
+                    await this.sheets.spreadsheets.values.batchUpdate({
+                        spreadsheetId,
+                        requestBody: {
+                            valueInputOption: 'RAW',
+                            data: chunk,
+                        },
+                    });
+                }
+            }
+
+            const result = {
+                copied: remainingOriginalIndices.length,
+                excluded: terminalRowIndices.length,
+                total: allRows.length,
+            };
+
+            logger.info(`Aba "${sheetName}" limpa: ${result.copied} leads mantidos, ${result.excluded} terminais removidos`);
+            return result;
+
+        } catch (error) {
+            logger.error(`Erro ao limpar aba duplicada "${sheetName}"`, { error: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Cria abas do mes atual para TODOS os clientes cadastrados.
+     * Chamado pelo scheduler mensal (dia 1 de cada mes as 07:00 BRT).
+     * Retorna array de resultados por cliente.
+     */
+    async createMonthlyTabsForAllClients(clients) {
+        const targetName = this.getCurrentMonthSheetName();
+        const results = [];
+
+        for (const client of clients) {
+            if (!client.spreadsheet_id) {
+                logger.warn(`Cliente "${client.name}" sem spreadsheet_id, pulando`);
+                results.push({ client: client.name, status: 'skipped', reason: 'sem spreadsheet_id' });
+                continue;
+            }
+
+            try {
+                const spreadsheet = await this.sheets.spreadsheets.get({
+                    spreadsheetId: client.spreadsheet_id,
+                    fields: 'sheets.properties.title',
+                });
+                const existingSheets = spreadsheet.data.sheets.map(s => s.properties.title);
+
+                // Verificar se aba do mes ja existe (match flexivel)
+                const brDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+                const mes = MESES_BR[brDate.getMonth()];
+                const ano = String(brDate.getFullYear()).slice(-2);
+                const existingMatch = existingSheets.find(name => {
+                    const normalized = name.replace(/\s+/g, '').toLowerCase();
+                    return normalized.includes(mes.toLowerCase()) && normalized.includes(ano);
+                });
+
+                if (existingMatch) {
+                    logger.info(`Cliente "${client.name}": aba "${existingMatch}" ja existe`);
+                    results.push({ client: client.name, status: 'exists', sheet: existingMatch });
+                    continue;
+                }
+
+                // Encontrar aba do mes anterior
+                const previousSheet = this.findPreviousMonthSheet(existingSheets);
+
+                if (previousSheet) {
+                    const result = await this.duplicateSheetForNewMonth(
+                        client.spreadsheet_id, previousSheet, targetName, null
+                    );
+                    logger.info(`Cliente "${client.name}": aba "${targetName}" criada por duplicacao de "${previousSheet}" (${result.copied} leads, ${result.excluded} excluidos)`);
+                    results.push({
+                        client: client.name,
+                        status: 'created',
+                        sourceSheet: previousSheet,
+                        targetSheet: targetName,
+                        ...result,
+                    });
+                } else {
+                    await this.ensureSheet(client.spreadsheet_id, targetName, existingSheets, null);
+                    logger.info(`Cliente "${client.name}": aba "${targetName}" criada do zero (sem mes anterior)`);
+                    results.push({
+                        client: client.name,
+                        status: 'created_blank',
+                        targetSheet: targetName,
+                    });
+                }
+
+                // Rate limiting entre clientes (evitar quota do Google Sheets API)
+                await this.sleep(2000);
+
+            } catch (error) {
+                logger.error(`Erro ao criar aba para "${client.name}"`, { error: error.message });
+                results.push({ client: client.name, status: 'error', error: error.message });
+            }
+        }
+
+        return results;
     }
 
     /**

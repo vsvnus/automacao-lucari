@@ -1194,6 +1194,50 @@ async function startServer() {
 
         // Auto-reload config every 5 min
         setInterval(() => clientManager.reloadClients(), 5 * 60 * 1000);
+
+        // ====================================================
+        // Monthly tab scheduler (node-cron)
+        // Dia 1 de cada mes as 07:00 BRT (10:00 UTC)
+        // ====================================================
+        const cron = require('node-cron');
+        cron.schedule('0 10 1 * *', async () => {
+            logger.info('Scheduler mensal: Criando abas do novo mes para todos os clientes');
+            try {
+                const clients = clientManager.getAllClients();
+                if (!clients || clients.length === 0) {
+                    logger.warn('Scheduler mensal: Nenhum cliente cadastrado');
+                    return;
+                }
+
+                const results = await sheetsService.createMonthlyTabsForAllClients(clients);
+
+                const summary = {
+                    total: results.length,
+                    created: results.filter(r => r.status === 'created').length,
+                    createdBlank: results.filter(r => r.status === 'created_blank').length,
+                    existing: results.filter(r => r.status === 'exists').length,
+                    errors: results.filter(r => r.status === 'error').length,
+                    skipped: results.filter(r => r.status === 'skipped').length,
+                };
+
+                logger.info('Scheduler mensal concluido', { summary, details: results });
+
+                // Log individual de cada cliente
+                for (const r of results) {
+                    if (r.status === 'created') {
+                        logger.info(`  ${r.client}: ${r.sourceSheet} -> ${r.targetSheet} (${r.copied} leads, ${r.excluded} excluidos)`);
+                    } else if (r.status === 'error') {
+                        logger.error(`  ${r.client}: ERRO - ${r.error}`);
+                    }
+                }
+            } catch (error) {
+                logger.error('Scheduler mensal falhou', { error: error.message });
+            }
+        }, {
+            timezone: 'America/Sao_Paulo',
+        });
+        logger.info('Scheduler mensal configurado: dia 1 de cada mes as 07:00 BRT');
+
     } catch (error) {
         logger.error('Erro ao iniciar servidor', { error: error.message });
         process.exit(1);

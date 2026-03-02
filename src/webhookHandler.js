@@ -50,6 +50,29 @@ function isSaleStatus(statusName) {
 }
 
 function detectOrigin(payload) {
+    // 1. ctwa_clid — Click-to-WhatsApp Ad ID do Meta (prioridade máxima)
+    if (payload.ctwa_clid && payload.ctwa_clid.length > 4) {
+        return { channel: "Meta Ads", comment: "Lead chegou via Click-to-WhatsApp Ad (Meta)" };
+    }
+
+    // 2. Objeto nested payload.ad (Tintim envia ad_name, campaign_name dentro de ad{})
+    if (payload.ad && typeof payload.ad === "object") {
+        const adFields = [
+            payload.ad.ad_name, payload.ad.adName,
+            payload.ad.campaign_name, payload.ad.campaignName,
+            payload.ad.adset_name, payload.ad.adSetName,
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        if (adFields.length > 0) {
+            if (adFields.match(/google|gclid|search|pmax/)) {
+                return { channel: "Google Ads", comment: "Lead chegou pelo Google Ads (ad nested)" };
+            }
+            // Se tem dados de ad mas não é Google, é Meta
+            return { channel: "Meta Ads", comment: "Lead chegou no Wpp pelo Meta (ad nested)" };
+        }
+    }
+
+    // 3. Campos source/channel/medium (top-level)
     const source = (payload.source || "").toLowerCase();
     const channel = (payload.channel || "").toLowerCase();
     const medium = (payload.medium || "").toLowerCase();
@@ -67,6 +90,7 @@ function detectOrigin(payload) {
         return { channel: "Tráfego Pago", comment: "Lead chegou via tráfego pago" };
     }
 
+    // 4. Campos de campanha (top-level)
     const campaignFields = [
         payload.utmCampaign, payload.utm_campaign, payload.campaign,
         payload.adName, payload.ad_name, payload.adSetName, payload.adset_name,
