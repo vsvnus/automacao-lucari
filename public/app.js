@@ -5227,16 +5227,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================
 
 async function loadAgendamentosSection() {
+    const list = document.getElementById('schedules-list');
     try {
+        if (list) list.innerHTML = '<p style="color:var(--text-secondary);padding:12px;">Carregando agendamentos...</p>';
         const res = await fetch('/api/dashboard/schedules');
-        if (!res.ok) throw new Error('Falha ao carregar agendamentos');
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error('HTTP ' + res.status + ': ' + errText);
+        }
         const data = await res.json();
         renderAgendamentosStats(data.stats);
         renderAgendamentos(data.schedules);
     } catch (err) {
         console.error('Erro ao carregar agendamentos:', err);
-        const list = document.getElementById('schedules-list');
-        if (list) list.innerHTML = '<p class="empty-state">Erro ao carregar agendamentos</p>';
+        if (list) list.innerHTML = '<div class="card" style="padding:20px;text-align:center;"><p style="color:var(--accent-red);margin-bottom:8px;">Erro ao carregar agendamentos</p><p style="color:var(--text-tertiary);font-size:0.85rem;">' + escapeHtml(String(err.message)) + '</p></div>';
     }
 
     // Bind refresh button
