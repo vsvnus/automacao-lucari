@@ -5272,6 +5272,28 @@ function renderAgendamentos(schedules) {
             ? formatScheduleDate(s.next_run_at)
             : (s.enabled ? 'Calculando...' : '—');
 
+        // Parse cron for editable fields
+        const cronParts = s.cron_expression.split(' ');
+        const cronMinute = parseInt(cronParts[0], 10);
+        const cronHour = parseInt(cronParts[1], 10);
+        const cronDay = cronParts[2];
+        // Convert UTC hour to BRT
+        let displayHour = cronHour - 3;
+        if (displayHour < 0) displayHour += 24;
+
+        // Build day options (1-28)
+        let dayOptions = '';
+        for (let d = 1; d <= 28; d++) {
+            dayOptions += `<option value="${d}" ${cronDay == d ? 'selected' : ''}>Dia ${d}</option>`;
+        }
+
+        // Build hour options (00-23)
+        let hourOptions = '';
+        for (let h = 0; h < 24; h++) {
+            const label = String(h).padStart(2, '0') + ':00';
+            hourOptions += `<option value="${h}" ${displayHour === h ? 'selected' : ''}>${label}</option>`;
+        }
+
         return `
         <div class="card schedule-card ${statusClass}" data-slug="${escapeHtml(s.slug)}">
             <div class="schedule-card-header">
@@ -5291,8 +5313,17 @@ function renderAgendamentos(schedules) {
             </div>
             <div class="schedule-card-body">
                 <div class="schedule-info-row">
-                    <span class="schedule-label">Frequ\u00eancia</span>
-                    <span>${describeCron(s.cron_expression, s.timezone)}</span>
+                    <span class="schedule-label">Executa em</span>
+                    <div class="schedule-edit-row">
+                        <select class="schedule-select" id="sched-day-${escapeHtml(s.slug)}" onchange="saveScheduleCron('${escapeHtml(s.slug)}')">
+                            ${dayOptions}
+                        </select>
+                        <span style="color:var(--text-tertiary)">de cada m\u00eas \u00e0s</span>
+                        <select class="schedule-select" id="sched-hour-${escapeHtml(s.slug)}" onchange="saveScheduleCron('${escapeHtml(s.slug)}')">
+                            ${hourOptions}
+                        </select>
+                        <span style="color:var(--text-tertiary)">(hor\u00e1rio de Bras\u00edlia)</span>
+                    </div>
                 </div>
                 ${s.description ? `<div class="schedule-info-row"><span class="schedule-label">Descri\u00e7\u00e3o</span><span>${escapeHtml(s.description)}</span></div>` : ''}
                 <div class="schedule-info-row">
@@ -5306,6 +5337,38 @@ function renderAgendamentos(schedules) {
             </div>
         </div>`;
     }).join('');
+}
+
+async function saveScheduleCron(slug) {
+    const dayEl = document.getElementById('sched-day-' + slug);
+    const hourEl = document.getElementById('sched-hour-' + slug);
+    if (!dayEl || !hourEl) return;
+
+    const day = dayEl.value;
+    // Convert BRT hour to UTC (+3)
+    let utcHour = parseInt(hourEl.value, 10) + 3;
+    if (utcHour >= 24) utcHour -= 24;
+
+    const cronExpression = '0 ' + utcHour + ' ' + day + ' * *';
+
+    try {
+        const res = await fetch('/api/dashboard/schedules/' + slug, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cron_expression: cronExpression }),
+        });
+        if (!res.ok) throw new Error('Falha ao salvar');
+        // Brief visual feedback
+        const card = document.querySelector('.schedule-card[data-slug="' + slug + '"]');
+        if (card) {
+            card.style.borderColor = 'var(--accent-green)';
+            setTimeout(() => { card.style.borderColor = ''; loadAgendamentosSection(); }, 1000);
+        }
+    } catch (err) {
+        console.error('Erro ao salvar cron:', err);
+        alert('Erro ao salvar hor\u00e1rio');
+        loadAgendamentosSection();
+    }
 }
 
 async function toggleSchedule(slug, enabled) {

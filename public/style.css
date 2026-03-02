@@ -4521,3 +4521,33 @@ kbd {
         min-width: auto;
     }
 }
+
+/* Schedule editable fields */
+.schedule-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.schedule-select {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: border-color var(--transition-fast);
+    appearance: auto;
+}
+
+.schedule-select:hover {
+    border-color: var(--accent-primary);
+}
+
+.schedule-select:focus {
+    outline: none;
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 2px var(--accent-primary-subtle);
+}
