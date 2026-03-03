@@ -257,7 +257,7 @@ class WebhookHandler {
         await trail.step("origin_detected", "ok", `Origem: ${origin.channel}`, { channel: origin.channel, source: payload.source, utmSource: payload.utm_source || payload.utmSource });
 
         // organic_filtered
-        const PAID_CHANNELS = ["Meta Ads", "Google Ads"];
+        const PAID_CHANNELS = ["Meta Ads", "Google Ads", "Tráfego Pago"];
         if (!PAID_CHANNELS.includes(origin.channel)) {
             logger.info(`🚫 Lead orgânico ignorado: ${payload.chatName || phone} — origem: ${origin.channel}`);
             await trail.step("organic_filtered", "skipped", `Lead orgânico filtrado (${origin.channel})`, { phone, channel: origin.channel, client: client.name });
@@ -398,21 +398,16 @@ class WebhookHandler {
         const isNotFound = result.error && (result.error.includes("Lead não encontrado") || result.error.includes("não encontrado na planilha"));
 
         if (!result.success && isNotFound && (isSaleStatus(statusName) || saleAmount)) {
-            const recoveryOrigin = detectOrigin(payload);
-            const PAID_CHANNELS = ["Meta Ads", "Google Ads"];
-            if (!PAID_CHANNELS.includes(recoveryOrigin.channel)) {
-                logger.info(`🚫 Recuperação de venda ignorada (lead orgânico): ${payload.chatName || payload.phone}`);
-                await trail.step("organic_filtered", "skipped", "Venda orgânica ignorada (sem campanha)", { phone: payload.phone, channel: recoveryOrigin.channel });
-                return { success: true, message: "Venda orgânica ignorada (sem campanha)", type: "filtered" };
-            }
-
+            // Não re-filtrar por canal aqui — o payload de update geralmente não traz dados de anúncio
+            // (ctwa_clid, ad{}, utm_*), então detectOrigin classificaria erroneamente como orgânico.
+            // A filtragem já aconteceu na inserção original do lead.
             logger.warn("⚠️ Lead não encontrado para atualização de venda. Tentando inserir como novo...", { phone: payload.phone });
-            await trail.step("sale_recovered", "ok", "Tentando recuperar venda (lead não encontrado na planilha)", { phone: payload.phone });
+            await trail.step("sale_recovered", "ok", "Tentando recuperar venda (lead não encontrado na planilha)", { phone: payload.phone, channel: origin.channel });
 
             const recoveryLeadData = {
                 name: (payload.chatName || formatPhoneBR(payload.phone)) + " (Recuperado)",
                 phone: formatPhoneBR(payload.phone),
-                origin: recoveryOrigin.channel,
+                origin: origin.channel,
                 date: formatDateBR(new Date().toISOString()),
                 product: detectProduct(payload) || "Indefinido",
                 status: "Venda (Cliente não encontrado)",
