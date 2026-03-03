@@ -882,9 +882,12 @@ class SheetsService {
      */
     async findLeadRowByPhone(spreadsheetId, sheetName, phone) {
         try {
+            const colMap = await this.getColumnMapping(spreadsheetId, sheetName);
+            const phoneCol = colMap.telefone ? colMap.telefone.letter : 'B';
+
             const response = await this.sheets.spreadsheets.values.get({
                 spreadsheetId,
-                range: `'${sheetName}'!B:B`,
+                range: `'${sheetName}'!${phoneCol}:${phoneCol}`,
             });
 
             const values = response.data.values || [];
