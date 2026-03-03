@@ -46,6 +46,8 @@ const SALE_STATUS_KEYWORDS = [
 function isSaleStatus(statusName) {
     if (!statusName) return false;
     const normalized = statusName.toLowerCase().trim();
+    // Exclui "pré-venda", "pré-vendido" etc. que contêm keywords de venda mas não são vendas
+    if (normalized.startsWith('pré') || normalized.startsWith('pre')) return false;
     return SALE_STATUS_KEYWORDS.some(kw => normalized.includes(kw));
 }
 

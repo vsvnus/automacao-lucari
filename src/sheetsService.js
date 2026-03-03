@@ -25,7 +25,9 @@ const MESES_BR = [
 const TERMINAL_STATUSES = [
     'contato finalizado',
     'venda',
+    'vendido',
     'comprou',
+    'comprado',
     'desqualificado',
 ];
 
@@ -443,7 +445,7 @@ class SheetsService {
             const statusIdx = colMap.status ? colMap.status.index : 7;
             const activeRows = allRows.filter(row => {
                 const status = (row[statusIdx] || '').toLowerCase().trim();
-                const isTerminal = TERMINAL_STATUSES.some(ts => status.includes(ts));
+                const isTerminal = TERMINAL_STATUSES.some(ts => status === ts || status.startsWith(ts + ' '));
                 return !isTerminal;
             });
 
@@ -565,7 +567,7 @@ class SheetsService {
             if (statusIdx !== null) {
                 for (let i = 0; i < allRows.length; i++) {
                     const status = (allRows[i][statusIdx] || '').toLowerCase().trim();
-                    if (TERMINAL_STATUSES.some(ts => status.includes(ts))) {
+                    if (TERMINAL_STATUSES.some(ts => status === ts || status.startsWith(ts + ' '))) {
                         terminalRowIndices.push(i);
                     }
                 }
