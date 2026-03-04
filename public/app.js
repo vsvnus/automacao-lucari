@@ -1018,16 +1018,10 @@ async function fetchOrigins() {
 
 async function fetchClientOrigins() {
     try {
-        const qs = buildDateQS();
-        const sep = qs ? '&' : '?';
-        const url = `/api/dashboard/client-origins${qs}${sep}_t=${Date.now()}`;
-        console.log('[ClientPerf] Fetching:', url);
-        const res = await fetch(url);
-        if (!res.ok) { console.error('[ClientPerf] HTTP error:', res.status); return []; }
-        const data = await res.json();
-        console.log('[ClientPerf] Got', data.length, 'rows');
-        return data;
-    } catch (e) { console.error('[ClientPerf] Fetch error:', e); return []; }
+        const res = await fetch(`/api/dashboard/client-origins${buildDateQS()}`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch { return []; }
 }
 
 function renderAutomacaoOrigins(origins) {
@@ -1470,7 +1464,7 @@ function formatPhoneDisplay(phone) {
 // ============================================
 // Client Management
 // ============================================
-async function fetchClientOrigins() {
+async function fetchClientOriginsForClients() {
     try {
         const res = await fetch(`/api/dashboard/client-origins${buildClientsDateQS()}`);
         const data = await res.json();
@@ -1499,7 +1493,7 @@ function getOriginDisplayLabel(origin) {
 async function loadClients() {
     const [clients, clientOrigins] = await Promise.all([
         fetchClients(),
-        fetchClientOrigins(),
+        fetchClientOriginsForClients(),
     ]);
     state.clients = clients;
 
@@ -2488,7 +2482,7 @@ async function loadClientDetailOrigins(clientSlug) {
     if (!card || !container) return;
 
     try {
-        const allOrigins = await fetchClientOrigins();
+        const allOrigins = await fetchClientOriginsForClients();
         const clientData = allOrigins.filter(r => r.slug === clientSlug);
 
         if (clientData.length === 0) {
