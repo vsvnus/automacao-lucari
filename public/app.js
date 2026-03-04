@@ -1018,10 +1018,16 @@ async function fetchOrigins() {
 
 async function fetchClientOrigins() {
     try {
-        const res = await fetch(`/api/dashboard/client-origins${buildDateQS()}`);
-        if (!res.ok) return [];
-        return await res.json();
-    } catch { return []; }
+        const qs = buildDateQS();
+        const sep = qs ? '&' : '?';
+        const url = `/api/dashboard/client-origins${qs}${sep}_t=${Date.now()}`;
+        console.log('[ClientPerf] Fetching:', url);
+        const res = await fetch(url);
+        if (!res.ok) { console.error('[ClientPerf] HTTP error:', res.status); return []; }
+        const data = await res.json();
+        console.log('[ClientPerf] Got', data.length, 'rows');
+        return data;
+    } catch (e) { console.error('[ClientPerf] Fetch error:', e); return []; }
 }
 
 function renderAutomacaoOrigins(origins) {
