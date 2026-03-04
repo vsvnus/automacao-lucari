@@ -410,6 +410,10 @@ function setupPeriodSelector() {
             } else {
                 if (customRange) customRange.style.display = 'none';
                 updatePeriodLabels();
+                // Refresh automacao data immediately (without waiting for fetchHealth)
+                if (state.currentSection === 'automacao') {
+                    loadAutomacaoOverview();
+                }
                 updateDashboard();
             }
         });
@@ -422,6 +426,9 @@ function setupPeriodSelector() {
             state.dateFrom = fromInput ? fromInput.value : null;
             state.dateTo = toInput ? toInput.value : null;
             updatePeriodLabels();
+            if (state.currentSection === 'automacao') {
+                loadAutomacaoOverview();
+            }
             updateDashboard();
         });
     }
@@ -1071,6 +1078,10 @@ function renderAutomacaoOrigins(origins) {
 function renderClientPerformanceTable(clientOrigins, overallOrigins) {
     const tbody = document.getElementById('automacao-clients-tbody');
     if (!tbody) return;
+
+    // Update period label on card header
+    const periodLabel = document.getElementById('client-perf-period-label');
+    if (periodLabel) periodLabel.textContent = getPeriodLabel();
 
     if (!clientOrigins || clientOrigins.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="automacao-table-empty">Nenhum cliente com leads no período</td></tr>';
