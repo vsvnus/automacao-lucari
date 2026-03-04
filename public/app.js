@@ -1087,10 +1087,6 @@ function renderClientPerformanceTable(clientOrigins, overallOrigins) {
     const periodLabel = document.getElementById('client-perf-period-label');
     if (periodLabel) periodLabel.textContent = getPeriodLabel();
 
-    // Update period label on card header
-    const periodLabel = document.getElementById('client-perf-period-label');
-    if (periodLabel) periodLabel.textContent = getPeriodLabel();
-
     if (!clientOrigins || clientOrigins.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="automacao-table-empty">Nenhum cliente com leads no período</td></tr>';
         return;
