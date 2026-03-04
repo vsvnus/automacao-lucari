@@ -285,7 +285,7 @@ class WebhookHandler {
         // keyword_extracted - save Google Ads keyword data
         if (origin.channel === "Google Ads") {
             const keywordData = {
-                clientId: client.id,
+                clientId: client._db_id || client.id,
                 keyword: payload.utm_term || (payload.visit && payload.visit.params && payload.visit.params.utm_term) || null,
                 campaign: payload.utm_campaign || (payload.visit && payload.visit.params && payload.visit.params.utm_campaign) || null,
                 utmSource: payload.utm_source || "google",
