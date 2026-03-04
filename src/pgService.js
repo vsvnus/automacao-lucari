@@ -231,46 +231,44 @@ class PgService {
     // ============================================================
 
     async logLead(clientId, leadInfo) {
-        if (!this.isAvailable()) return;
-
-        try {
-            let clientUuid = null;
-            if (clientId) {
-                // Resolver clientId: pode ser UUID direto ou slug
-                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId);
-                if (isUuid) {
-                    clientUuid = clientId;
-                } else {
-                    const { rows } = await this.query(
-                        'SELECT id FROM clients WHERE slug = $1',
-                        [clientId]
-                    );
-                    clientUuid = rows[0]?.id || null;
-                }
-            }
-
-            await this.query(
-                `INSERT INTO leads_log (client_id, event_type, phone, lead_name, status, product, sale_amount, origin, sheet_name, sheet_row, processing_result, error_message, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))`,
-                [
-                    clientUuid,
-                    leadInfo.eventType || 'new_lead',
-                    leadInfo.phone,
-                    leadInfo.name,
-                    leadInfo.status,
-                    leadInfo.product,
-                    leadInfo.saleAmount || null,
-                    leadInfo.origin || 'WhatsApp',
-                    leadInfo.sheetName,
-                    leadInfo.sheetRow || null,
-                    leadInfo.result || 'success',
-                    leadInfo.error || null,
-                    leadInfo.leadDate || null,
-                ]
-            );
-        } catch (error) {
-            logger.warn('Erro ao registrar lead no PostgreSQL', { error: error.message });
+        if (!this.isAvailable()) {
+            throw new Error('PostgreSQL indisponível para logLead');
         }
+
+        let clientUuid = null;
+        if (clientId) {
+            // Resolver clientId: pode ser UUID direto ou slug
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId);
+            if (isUuid) {
+                clientUuid = clientId;
+            } else {
+                const { rows } = await this.query(
+                    'SELECT id FROM clients WHERE slug = $1',
+                    [clientId]
+                );
+                clientUuid = rows[0]?.id || null;
+            }
+        }
+
+        await this.query(
+            `INSERT INTO leads_log (client_id, event_type, phone, lead_name, status, product, sale_amount, origin, sheet_name, sheet_row, processing_result, error_message, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, NOW()))`,
+            [
+                clientUuid,
+                leadInfo.eventType || 'new_lead',
+                leadInfo.phone,
+                leadInfo.name,
+                leadInfo.status,
+                leadInfo.product,
+                leadInfo.saleAmount || null,
+                leadInfo.origin || 'WhatsApp',
+                leadInfo.sheetName,
+                leadInfo.sheetRow || null,
+                leadInfo.result || 'success',
+                leadInfo.error || null,
+                leadInfo.leadDate || null,
+            ]
+        );
     }
 
     async getRecentLeads(limit = 20) {
@@ -619,39 +617,37 @@ class PgService {
     // ============================================================
 
     async logWebhookEvent(payload, clientSlug, processingResult) {
-        if (!this.isAvailable()) return;
-
-        try {
-            let clientUuid = null;
-            if (clientSlug) {
-                // Resolver clientSlug: pode ser UUID direto ou slug
-                const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientSlug);
-                if (isUuid) {
-                    clientUuid = clientSlug;
-                } else {
-                    const { rows } = await this.query(
-                        'SELECT id FROM clients WHERE slug = $1',
-                        [clientSlug]
-                    );
-                    clientUuid = rows[0]?.id || null;
-                }
-            }
-
-            await this.query(
-                `INSERT INTO webhook_events (client_id, event_type, instance_id, phone, payload, processing_result)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [
-                    clientUuid,
-                    payload.event_type || null,
-                    payload.instanceId || null,
-                    payload.phone || null,
-                    JSON.stringify(payload),
-                    processingResult || 'success',
-                ]
-            );
-        } catch (error) {
-            logger.warn('Erro ao salvar evento webhook no PostgreSQL', { error: error.message });
+        if (!this.isAvailable()) {
+            throw new Error('PostgreSQL indisponível para logWebhookEvent');
         }
+
+        let clientUuid = null;
+        if (clientSlug) {
+            // Resolver clientSlug: pode ser UUID direto ou slug
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientSlug);
+            if (isUuid) {
+                clientUuid = clientSlug;
+            } else {
+                const { rows } = await this.query(
+                    'SELECT id FROM clients WHERE slug = $1',
+                    [clientSlug]
+                );
+                clientUuid = rows[0]?.id || null;
+            }
+        }
+
+        await this.query(
+            `INSERT INTO webhook_events (client_id, event_type, instance_id, phone, payload, processing_result)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+                clientUuid,
+                payload.event_type || null,
+                payload.instanceId || null,
+                payload.phone || null,
+                JSON.stringify(payload),
+                processingResult || 'success',
+            ]
+        );
     }
 
     // ============================================================
