@@ -410,10 +410,7 @@ function setupPeriodSelector() {
             } else {
                 if (customRange) customRange.style.display = 'none';
                 updatePeriodLabels();
-                // Refresh automacao data immediately (without waiting for fetchHealth)
-                if (state.currentSection === 'automacao') {
-                    loadAutomacaoOverview();
-                }
+                refreshAutomacaoIfActive();
                 updateDashboard();
             }
         });
@@ -426,9 +423,7 @@ function setupPeriodSelector() {
             state.dateFrom = fromInput ? fromInput.value : null;
             state.dateTo = toInput ? toInput.value : null;
             updatePeriodLabels();
-            if (state.currentSection === 'automacao') {
-                loadAutomacaoOverview();
-            }
+            refreshAutomacaoIfActive();
             updateDashboard();
         });
     }
@@ -978,6 +973,15 @@ function getOriginLabel(origin) {
     return origin || 'Outro';
 }
 
+function refreshAutomacaoIfActive() {
+    if (state.currentSection === 'automacao') {
+        // Show loading state immediately
+        const tbody = document.getElementById('automacao-clients-tbody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="automacao-table-empty" style="opacity:0.5">Atualizando...</td></tr>';
+        loadAutomacaoOverview();
+    }
+}
+
 async function loadAutomacaoOverview() {
     const [dashboardStats, origins, clientOrigins] = await Promise.all([
         fetchDashboardStats(),
@@ -1078,6 +1082,10 @@ function renderAutomacaoOrigins(origins) {
 function renderClientPerformanceTable(clientOrigins, overallOrigins) {
     const tbody = document.getElementById('automacao-clients-tbody');
     if (!tbody) return;
+
+    // Update period label on card header
+    const periodLabel = document.getElementById('client-perf-period-label');
+    if (periodLabel) periodLabel.textContent = getPeriodLabel();
 
     // Update period label on card header
     const periodLabel = document.getElementById('client-perf-period-label');
