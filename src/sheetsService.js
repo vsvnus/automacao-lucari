@@ -53,7 +53,7 @@ const HEADERS = [
 const HEADER_ALIASES = {
     nome:           ['nome do lead', 'nome'],
     telefone:       ['telefone'],
-    origem:         ['meio de contato'],
+    origem:         ['meio de contato', 'contato', 'fonte'],
     data:           ['data 1º contato', 'data 1', 'data 1o contato'],
     dataFechamento: ['data fechamento', 'data de fechamento'],
     valor:          ['valor de fechamento', 'valor'],
