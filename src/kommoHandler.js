@@ -32,14 +32,15 @@ const KOMMO_STAGE = {
 };
 
 // Valores do campo "Fonte de prospeccao" que sao trafego pago
-const PAID_SOURCES = ['google ads', 'google', 'meta', 'facebook', 'instagram', 'meta ads', 'facebook ads', 'instagram ads', 'trafego pago', 'cpc', 'ppc'];
+// IMPORTANTE: "instagram", "facebook", "google" (sem "ads") sao organicos — nao incluir
+const PAID_SOURCES = ['google ads', 'meta ads', 'facebook ads', 'instagram ads', 'trafego pago', 'cpc', 'ppc'];
 
 // Mapeamento de fonte para canal (para exibir no dashboard/planilha)
 function mapSourceToChannel(sourceValue) {
     if (!sourceValue) return 'Desconhecido';
     var val = sourceValue.toLowerCase().trim();
-    if (val.match(/google/)) return 'Google Ads';
-    if (val.match(/meta|facebook|instagram|fb|ig/)) return 'Meta Ads';
+    if (val.match(/google\s*ads/)) return 'Google Ads';
+    if (val.match(/meta\s*ads|facebook\s*ads|instagram\s*ads/)) return 'Meta Ads';
     if (val.match(/trafego|cpc|ppc|paid/)) return 'Trafego Pago';
     return sourceValue; // retorna original se nao mapeou
 }
