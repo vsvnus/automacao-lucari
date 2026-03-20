@@ -161,6 +161,19 @@ class ClientManager {
         return await this.loadClients();
     }
 
+    async getActiveClients() {
+        // Tentar PostgreSQL primeiro
+        if (pgService.isAvailable()) {
+            const dbClients = await pgService.getActiveClients();
+            if (dbClients) return dbClients;
+        }
+
+        // Fallback
+        const configRaw = fs.readFileSync(CONFIG_PATH, 'utf-8');
+        const config = JSON.parse(configRaw);
+        return (config.clients || []).filter(c => c.active !== false);
+    }
+
     async getAllClients() {
         // Tentar PostgreSQL primeiro
         if (pgService.isAvailable()) {

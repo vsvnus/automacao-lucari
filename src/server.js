@@ -500,7 +500,7 @@ app.get('/api/auth/me', (req, res) => {
 
 // 1. Clientes
 app.get('/admin/clients', requireAuth, async (_req, res) => {
-    const clients = await clientManager.getAllClients(); // Usa pgService internamente
+    const clients = await clientManager.getActiveClients();
     res.json(clients);
 });
 
