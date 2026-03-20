@@ -129,22 +129,32 @@ function findClientByAccount(accountId) {
 // ---- Kommo API helpers ----
 
 /**
+ * Resolve credenciais Kommo para um cliente.
+ * Prioridade: credenciais do cliente > env vars (fallback global).
+ */
+function getClientKommoCredentials(client) {
+    var subdomain = (client && client.kommo_subdomain) || process.env.KOMMO_SUBDOMAIN || '';
+    var token = (client && client.kommo_access_token) || process.env.KOMMO_ACCESS_TOKEN || '';
+    var secret = (client && client.kommo_client_secret) || process.env.KOMMO_CLIENT_SECRET || '';
+    return { subdomain: subdomain, token: token, secret: secret };
+}
+
+/**
  * Busca detalhes de um lead via API Kommo, incluindo contatos vinculados.
  * GET https://{subdomain}.kommo.com/api/v4/leads/{id}?with=contacts
  */
-async function fetchLeadFromAPI(leadId) {
-    var subdomain = process.env.KOMMO_SUBDOMAIN;
-    var token = process.env.KOMMO_ACCESS_TOKEN;
-    if (!subdomain || !token) {
-        logger.warn('[Kommo API] KOMMO_SUBDOMAIN ou KOMMO_ACCESS_TOKEN nao configurado');
+async function fetchLeadFromAPI(leadId, client) {
+    var creds = getClientKommoCredentials(client);
+    if (!creds.subdomain || !creds.token) {
+        logger.warn('[Kommo API] Subdomain ou access_token nao configurado para cliente ' + (client ? client.name : 'global'));
         return null;
     }
-    var url = 'https://' + subdomain + '.kommo.com/api/v4/leads/' + leadId + '?with=contacts';
+    var url = 'https://' + creds.subdomain + '.kommo.com/api/v4/leads/' + leadId + '?with=contacts';
     try {
         var res = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': 'Bearer ' + token,
+                'Authorization': 'Bearer ' + creds.token,
                 'Content-Type': 'application/json',
             },
         });
@@ -163,16 +173,15 @@ async function fetchLeadFromAPI(leadId) {
  * Busca detalhes de um contato via API Kommo.
  * GET https://{subdomain}.kommo.com/api/v4/contacts/{id}
  */
-async function fetchContactFromAPI(contactId) {
-    var subdomain = process.env.KOMMO_SUBDOMAIN;
-    var token = process.env.KOMMO_ACCESS_TOKEN;
-    if (!subdomain || !token) return null;
-    var url = 'https://' + subdomain + '.kommo.com/api/v4/contacts/' + contactId;
+async function fetchContactFromAPI(contactId, client) {
+    var creds = getClientKommoCredentials(client);
+    if (!creds.subdomain || !creds.token) return null;
+    var url = 'https://' + creds.subdomain + '.kommo.com/api/v4/contacts/' + contactId;
     try {
         var res = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': 'Bearer ' + token,
+                'Authorization': 'Bearer ' + creds.token,
                 'Content-Type': 'application/json',
             },
         });
@@ -217,8 +226,8 @@ function extractNameFromContact(contact) {
  * Fluxo: lead (with=contacts) -> contact IDs -> fetch contact -> PHONE
  * Retorna { phone, contactName } ou { phone: null, contactName: null }
  */
-async function fetchPhoneViaAPI(leadId) {
-    var lead = await fetchLeadFromAPI(leadId);
+async function fetchPhoneViaAPI(leadId, client) {
+    var lead = await fetchLeadFromAPI(leadId, client);
     if (!lead) return { phone: null, contactName: null };
 
     // Lead retorna _embedded.contacts com array de { id, is_main }
@@ -230,7 +239,7 @@ async function fetchPhoneViaAPI(leadId) {
 
     // Priorizar contato principal (is_main = true)
     var mainContact = contacts.find(function(c) { return c.is_main; }) || contacts[0];
-    var contactData = await fetchContactFromAPI(mainContact.id);
+    var contactData = await fetchContactFromAPI(mainContact.id, client);
     if (!contactData) return { phone: null, contactName: null };
 
     var phone = extractPhoneFromContact(contactData);
@@ -246,13 +255,6 @@ class KommoHandler {
      * Chamado APOS responder 200 (processamento assincrono).
      */
     async processWebhook(body, rawBody, signature) {
-        var secret = process.env.KOMMO_CLIENT_SECRET;
-
-        if (secret && !verifySignature(rawBody || '', signature || '', secret)) {
-            logger.warn('[Kommo] Assinatura invalida no webhook');
-            return { success: false, error: 'Invalid signature' };
-        }
-
         var account = body.account || {};
         var accountId = account.id || 'unknown';
         var subdomain = account.subdomain || 'unknown';
@@ -261,6 +263,13 @@ class KommoHandler {
 
         // Encontrar cliente pela conta
         var client = findClientByAccount(accountId);
+
+        // Verificar assinatura usando secret do cliente (com fallback para env var global)
+        var creds = getClientKommoCredentials(client);
+        if (creds.secret && !verifySignature(rawBody || '', signature || '', creds.secret)) {
+            logger.warn('[Kommo] Assinatura invalida no webhook para account ' + accountId);
+            return { success: false, error: 'Invalid signature' };
+        }
 
         var results = [];
 
@@ -329,12 +338,12 @@ class KommoHandler {
      */
     async insertLeadToSheet(leadId, leadName, lead, client, channel, sourceValue) {
         var sheetName = await sheetsService.resolveSheetName(client);
-        var createdAt = lead.date_create
-            ? new Date(parseInt(lead.date_create, 10) * 1000)
-            : new Date();
+        // Fase 5: usar data atual (NOW) em vez de date_create do Kommo
+        // A data original do Kommo continua salva no kommo_events.payload (JSONB)
+        var now = new Date();
 
-        // Buscar telefone via API Kommo (contato vinculado ao lead)
-        var apiResult = await fetchPhoneViaAPI(leadId);
+        // Buscar telefone via API Kommo (contato vinculado ao lead) — com credenciais do cliente
+        var apiResult = await fetchPhoneViaAPI(leadId, client);
         var phone = apiResult.phone;
         var contactName = apiResult.contactName;
 
@@ -350,7 +359,7 @@ class KommoHandler {
             name: displayName + ' (Kommo)',
             phone: phone ? formatPhoneBR(phone) : '',
             origin: channel,
-            date: formatDateBR(createdAt.toISOString()),
+            date: formatDateBR(now.toISOString()),
             product: '',
             status: 'Lead Gerado',
             phoneRaw: phone || '',
@@ -369,7 +378,7 @@ class KommoHandler {
                 sheetName: result.sheetName,
                 result: 'success',
                 error: null,
-                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
+                leadDate: now.toISOString(),
             });
         } else {
             logger.error('[Kommo] Falha ao inserir lead na planilha: ' + (result.error || 'erro desconhecido'));
@@ -381,7 +390,7 @@ class KommoHandler {
                 origin: channel,
                 result: 'failed',
                 error: 'Falha Planilha: ' + (result.error || 'erro desconhecido'),
-                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
+                leadDate: now.toISOString(),
             });
         }
 
@@ -431,7 +440,7 @@ class KommoHandler {
                 origin: channel,
                 result: 'filtered',
                 error: null,
-                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
+                leadDate: new Date().toISOString(),
             });
             return { type: 'lead.add', leadId: leadId, status: 'filtered_organic', source: sourceValue };
         }
@@ -532,7 +541,7 @@ class KommoHandler {
                     origin: channel,
                     result: 'filtered',
                     error: null,
-                    leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
+                    leadDate: new Date().toISOString(),
                 });
                 return { type: 'lead.first_status', leadId: leadId, status: 'filtered_organic', source: sourceValue };
             }
@@ -574,8 +583,8 @@ class KommoHandler {
             }
 
             try {
-                // Buscar telefone via API Kommo
-                var apiResult = await fetchPhoneViaAPI(leadId);
+                // Buscar telefone via API Kommo (com credenciais do cliente)
+                var apiResult = await fetchPhoneViaAPI(leadId, client);
                 var phone = apiResult.phone;
 
                 // Fallback: buscar nos eventos anteriores
@@ -609,7 +618,7 @@ class KommoHandler {
                     origin: channel || 'Kommo CRM',
                     result: 'success',
                     error: null,
-                    leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
+                    leadDate: new Date().toISOString(),
                 });
             } catch (err) {
                 logger.error('[Kommo] Erro ao processar venda: ' + err.message);
@@ -629,7 +638,7 @@ class KommoHandler {
                 origin: channel || 'Kommo CRM',
                 result: 'success',
                 error: null,
-                leadDate: typeof createdAt !== 'undefined' && createdAt ? createdAt.toISOString() : (lead && lead.date_create ? new Date(parseInt(lead.date_create, 10) * 1000).toISOString() : null),
+                leadDate: new Date().toISOString(),
             });
 
             return { type: 'lead.lost', leadId: leadId, client: client.name };
@@ -714,4 +723,6 @@ class KommoHandler {
     }
 }
 
-module.exports = new KommoHandler();
+const kommoHandler = new KommoHandler();
+kommoHandler.getClientKommoCredentials = getClientKommoCredentials;
+module.exports = kommoHandler;

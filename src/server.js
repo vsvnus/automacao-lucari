@@ -556,6 +556,36 @@ app.get('/admin/status', requireAuth, (_req, res) => {
     });
 });
 
+// 2. Kommo Webhook Registration (per-client)
+const { registerWebhooks, listWebhooks } = require('./kommoWebhookRegistration');
+
+app.post('/admin/clients/:slug/register-kommo-webhooks', requireAuth, async (req, res) => {
+    try {
+        const clients = await clientManager.getAllClients();
+        const client = clients.find(c => c.slug === req.params.slug);
+        if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+
+        const callbackUrl = req.body.callback_url || (req.protocol + '://' + req.get('host') + '/webhook/kommo');
+        const result = await registerWebhooks(client, callbackUrl);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/admin/clients/:slug/kommo-webhooks', requireAuth, async (req, res) => {
+    try {
+        const clients = await clientManager.getAllClients();
+        const client = clients.find(c => c.slug === req.params.slug);
+        if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' });
+
+        const result = await listWebhooks(client);
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // ====================================================
 // Dashboard & Investigação API (protegido por auth)
 // Phase 2: All dashboard endpoints cached via Redis
@@ -1351,6 +1381,18 @@ async function startServer() {
         // Wrapped: verifica enabled no banco antes de executar
         // ====================================================
         const cron = require('node-cron');
+
+        // Kommo Poller: a cada 5 minutos busca leads novos via API
+        const { pollAllClients } = require('./workers/kommoPoller');
+        cron.schedule('*/5 * * * *', async () => {
+            try {
+                await pollAllClients();
+            } catch (err) {
+                logger.error('[Kommo Poller] Erro no polling agendado: ' + err.message);
+            }
+        }, { timezone: 'America/Sao_Paulo' });
+        logger.info('Kommo Poller configurado: a cada 5 minutos');
+
         cron.schedule('0 10 1 * *', async () => {
             logger.info('Scheduler mensal: Verificando se automação está habilitada...');
 

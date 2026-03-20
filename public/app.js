@@ -1714,6 +1714,9 @@ refs.clientForm?.addEventListener('submit', async (e) => {
         webhook_source: $('#client-webhook-source').value,
         kommo_pipeline_id: null,
         kommo_account_id: $('#client-kommo-account') ? $('#client-kommo-account').value.trim() || null : null,
+        kommo_subdomain: $('#client-kommo-subdomain') ? $('#client-kommo-subdomain').value.trim() || null : null,
+        kommo_access_token: $('#client-kommo-token') ? $('#client-kommo-token').value.trim() || null : null,
+        kommo_client_secret: $('#client-kommo-secret') ? $('#client-kommo-secret').value.trim() || null : null,
     };
 
     try {
@@ -1743,7 +1746,12 @@ function toggleKommoPipelineField() {
     const instanceGroup = document.getElementById('client-instance');
     if (!source || !group) return;
     const val = source.value;
-    group.style.display = (val === 'kommo' || val === 'both') ? '' : 'none';
+    const isKommo = (val === 'kommo' || val === 'both');
+    group.style.display = isKommo ? '' : 'none';
+    // Mostrar/esconder campos Kommo extras
+    document.querySelectorAll('.kommo-field').forEach(el => {
+        el.style.display = isKommo ? '' : 'none';
+    });
     // Tintim instance is optional when source is kommo-only
     if (instanceGroup) {
         instanceGroup.required = (val !== 'kommo');
@@ -2569,6 +2577,9 @@ function openModalForEdit(client) {
     $('#client-sheet').value = client.spreadsheet_id;
     $('#client-webhook-source').value = client.webhook_source || 'tintim';
     if ($('#client-kommo-account')) $('#client-kommo-account').value = client.kommo_account_id || '';
+    if ($('#client-kommo-subdomain')) $('#client-kommo-subdomain').value = client.kommo_subdomain || '';
+    if ($('#client-kommo-token')) $('#client-kommo-token').value = client.kommo_access_token || '';
+    if ($('#client-kommo-secret')) $('#client-kommo-secret').value = client.kommo_client_secret || '';
     toggleKommoPipelineField();
 
     // Change UI to "Edit" mode
@@ -2593,6 +2604,11 @@ openModal = function () {
         $('#client-name').value = '';
         $('#client-instance').value = '';
         $('#client-sheet').value = '';
+        if ($('#client-kommo-subdomain')) $('#client-kommo-subdomain').value = '';
+        if ($('#client-kommo-token')) $('#client-kommo-token').value = '';
+        if ($('#client-kommo-secret')) $('#client-kommo-secret').value = '';
+        if ($('#client-kommo-account')) $('#client-kommo-account').value = '';
+        toggleKommoPipelineField();
 
         const title = refs.modal.querySelector('h3');
         if (title) title.textContent = 'Novo Cliente';

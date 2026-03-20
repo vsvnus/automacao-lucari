@@ -100,6 +100,9 @@ class PgService {
                 webhook_source: c.webhook_source || 'tintim',
                 kommo_pipeline_id: c.kommo_pipeline_id || '',
                 kommo_account_id: c.kommo_account_id || '',
+                kommo_subdomain: c.kommo_subdomain || '',
+                kommo_access_token: c.kommo_access_token || '',
+                kommo_client_secret: c.kommo_client_secret || '',
             }));
         } catch (error) {
             logger.error('Erro ao carregar clientes do PostgreSQL', { error: error.message });
@@ -127,6 +130,9 @@ class PgService {
                 webhook_source: c.webhook_source || 'tintim',
                 kommo_pipeline_id: c.kommo_pipeline_id || '',
                 kommo_account_id: c.kommo_account_id || '',
+                kommo_subdomain: c.kommo_subdomain || '',
+                kommo_access_token: c.kommo_access_token || '',
+                kommo_client_secret: c.kommo_client_secret || '',
                 created_at: c.created_at,
                 updated_at: c.updated_at,
             }));
@@ -141,8 +147,8 @@ class PgService {
 
         try {
             const { rows } = await this.query(
-                `INSERT INTO clients (slug, name, tintim_instance_id, tintim_account_code, tintim_account_token, spreadsheet_id, sheet_name, active, webhook_source, kommo_pipeline_id, kommo_account_id)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                `INSERT INTO clients (slug, name, tintim_instance_id, tintim_account_code, tintim_account_token, spreadsheet_id, sheet_name, active, webhook_source, kommo_pipeline_id, kommo_account_id, kommo_subdomain, kommo_access_token, kommo_client_secret)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                  RETURNING *`,
                 [
                     clientData.id,
@@ -156,6 +162,9 @@ class PgService {
                     clientData.webhook_source || 'tintim',
                     clientData.kommo_pipeline_id || null,
                     clientData.kommo_account_id || null,
+                    clientData.kommo_subdomain || null,
+                    clientData.kommo_access_token || null,
+                    clientData.kommo_client_secret || null,
                 ]
             );
 
@@ -183,8 +192,11 @@ class PgService {
                     webhook_source = $8,
                     kommo_pipeline_id = $9,
                     kommo_account_id = $10,
+                    kommo_subdomain = $11,
+                    kommo_access_token = $12,
+                    kommo_client_secret = $13,
                     updated_at = NOW()
-                 WHERE slug = $11
+                 WHERE slug = $14
                  RETURNING *`,
                 [
                     updates.name,
@@ -197,6 +209,9 @@ class PgService {
                     updates.webhook_source || 'tintim',
                     updates.kommo_pipeline_id || null,
                     updates.kommo_account_id || null,
+                    updates.kommo_subdomain || null,
+                    updates.kommo_access_token || null,
+                    updates.kommo_client_secret || null,
                     slug,
                 ]
             );

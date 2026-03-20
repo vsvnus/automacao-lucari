@@ -129,6 +129,18 @@ class ClientManager {
     }
 
     /**
+     * Atualiza um cliente existente.
+     */
+    async updateClient(slug, updates) {
+        if (pgService.isAvailable()) {
+            const result = await pgService.updateClient(slug, updates);
+            await this.loadClients();
+            return result;
+        }
+        return null;
+    }
+
+    /**
      * Remove (desativa) um cliente.
      */
     async deleteClient(clientId) {

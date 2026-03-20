@@ -2168,6 +2168,21 @@
                     <input type="text" id="client-kommo-account" placeholder="ID da conta Kommo (ex: 35268356)">
                     <small class="form-hint">Aparece na URL: seudominio.kommo.com (veja em Settings)</small>
                 </div>
+                <div class="form-group kommo-field" style="display:none">
+                    <label for="client-kommo-subdomain">Kommo Subdomain</label>
+                    <input type="text" id="client-kommo-subdomain" placeholder="ex: almeidaegoularte">
+                    <small class="form-hint">Parte antes de .kommo.com na URL da conta</small>
+                </div>
+                <div class="form-group kommo-field" style="display:none">
+                    <label for="client-kommo-token">Kommo Access Token</label>
+                    <input type="text" id="client-kommo-token" placeholder="Token de acesso da API Kommo">
+                    <small class="form-hint">Token longo de API gerado em Settings > Integrations</small>
+                </div>
+                <div class="form-group kommo-field" style="display:none">
+                    <label for="client-kommo-secret">Kommo Client Secret</label>
+                    <input type="text" id="client-kommo-secret" placeholder="Secret para validar webhooks">
+                    <small class="form-hint">Secret da integração (opcional, usado para verificar assinatura)</small>
+                </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
                     <button type="submit" class="btn-primary">
