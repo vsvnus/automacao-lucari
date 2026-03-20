@@ -820,16 +820,20 @@ class PgService {
                         COALESCE(origin, 'WhatsApp') AS true_origin
                     FROM leads_log
                     WHERE event_type = 'new_lead' AND processing_result = 'success'
+                        AND phone IS NOT NULL AND phone != ''
                     ORDER BY phone, created_at ASC
                 )
                 SELECT
-                    COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp')) AS origin,
+                    CASE
+                        WHEN l.phone IS NOT NULL AND l.phone != '' THEN COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp'))
+                        ELSE COALESCE(l.origin, 'WhatsApp')
+                    END AS origin,
                     COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') AS leads,
                     COUNT(*) FILTER (WHERE l.sale_amount > 0
                         OR (l.processing_result = 'success' AND l.status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']))) AS sales,
                     COALESCE(SUM(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
                 FROM leads_log l
-                LEFT JOIN lead_first_origin lfo ON lfo.phone = l.phone
+                LEFT JOIN lead_first_origin lfo ON lfo.phone = l.phone AND l.phone IS NOT NULL AND l.phone != ''
                 WHERE l.created_at >= $1`;
             const params = [from];
             let idx = 2;
@@ -838,7 +842,7 @@ class PgService {
                 params.push(endDate);
                 idx++;
             }
-            sql += ` GROUP BY COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp')) ORDER BY leads DESC`;
+            sql += ` GROUP BY CASE WHEN l.phone IS NOT NULL AND l.phone != '' THEN COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp')) ELSE COALESCE(l.origin, 'WhatsApp') END ORDER BY leads DESC`;
 
             const { rows } = await this.query(sql, params);
             return rows.map(r => ({
@@ -874,19 +878,27 @@ class PgService {
                         COALESCE(origin, 'WhatsApp') AS true_origin
                     FROM leads_log
                     WHERE event_type = 'new_lead' AND processing_result = 'success'
+                        AND phone IS NOT NULL AND phone != ''
                     ORDER BY phone, created_at ASC
                 )
                 SELECT c.slug, c.name,
-                    COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp')) AS origin,
+                    CASE
+                        WHEN l.phone IS NOT NULL AND l.phone != '' THEN COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp'))
+                        ELSE COALESCE(l.origin, 'WhatsApp')
+                    END AS origin,
                     COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') AS leads,
                     COUNT(*) FILTER (WHERE l.sale_amount > 0
                         OR (l.processing_result = 'success' AND l.status ILIKE ANY(ARRAY['%comprou%','%fechou%','%vendido%','%ganhou%','%contrato%']))) AS sales,
                     COALESCE(SUM(l.sale_amount) FILTER (WHERE l.sale_amount > 0), 0) AS revenue
                 FROM clients c
                 LEFT JOIN leads_log l ON l.client_id = c.id AND l.created_at >= $1${dateFilter}
-                LEFT JOIN lead_first_origin lfo ON lfo.phone = l.phone
+                LEFT JOIN lead_first_origin lfo ON lfo.phone = l.phone AND l.phone IS NOT NULL AND l.phone != ''
                 WHERE c.active = true
-                GROUP BY c.id, c.slug, c.name, COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp'))
+                GROUP BY c.id, c.slug, c.name,
+                    CASE
+                        WHEN l.phone IS NOT NULL AND l.phone != '' THEN COALESCE(lfo.true_origin, COALESCE(l.origin, 'WhatsApp'))
+                        ELSE COALESCE(l.origin, 'WhatsApp')
+                    END
                 HAVING COUNT(*) FILTER (WHERE l.event_type = 'new_lead' AND l.processing_result = 'success') > 0
                 ORDER BY c.name, leads DESC`;
 
