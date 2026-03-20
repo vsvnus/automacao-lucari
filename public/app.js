@@ -394,7 +394,29 @@ function updatePeriodLabels() {
     });
 }
 
+
+/**
+ * Vincula dois inputs de data para que "de" nunca ultrapasse "até" e vice-versa.
+ * Também limita ambos à data de hoje.
+ */
+function linkDateInputs(fromId, toId) {
+    const fromEl = document.getElementById(fromId);
+    const toEl   = document.getElementById(toId);
+    if (!fromEl || !toEl) return;
+    const today = new Date().toISOString().slice(0, 10);
+    fromEl.max = today;
+    toEl.max   = today;
+    fromEl.addEventListener('change', () => {
+        if (fromEl.value) toEl.min = fromEl.value;
+        if (toEl.value && toEl.value < fromEl.value) toEl.value = fromEl.value;
+    });
+    toEl.addEventListener('change', () => {
+        if (toEl.value) fromEl.max = toEl.value;
+        if (fromEl.value && fromEl.value > toEl.value) fromEl.value = toEl.value;
+    });
+}
 function setupPeriodSelector() {
+    linkDateInputs('period-from', 'period-to');
     const pills = document.querySelectorAll('.period-pill');
     const customRange = document.getElementById('period-custom-range');
     const btnApply = document.getElementById('btn-period-apply');
@@ -515,6 +537,7 @@ function getClientsPeriodLabel() {
 }
 
 function setupClientsPeriodSelector() {
+    linkDateInputs('clients-period-from', 'clients-period-to');
     const pills = document.querySelectorAll('.clients-period-pill');
     const customRange = document.getElementById('clients-period-custom-range');
     const btnApply = document.getElementById('btn-clients-period-apply');
@@ -730,6 +753,7 @@ function buildDashboardQS() {
 }
 
 function setupDashboardPeriodSelector() {
+    linkDateInputs('dashboard-period-from', 'dashboard-period-to');
     const pills = document.querySelectorAll('.dashboard-period-pill');
     const customRange = document.getElementById('dashboard-period-custom-range');
     const btnApply = document.getElementById('btn-dashboard-period-apply');
