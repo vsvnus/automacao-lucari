@@ -607,6 +607,9 @@ async function updateDashboard() {
             evoDot.classList.toggle('offline', !evoConnected);
         }
 
+        // Sync Sheets ↔ PG status
+        updateSyncStatus();
+
         // Env badge
         const badge = $('#env-badge');
         if (badge) {
@@ -640,6 +643,107 @@ async function updateDashboard() {
         loadAutomacaoOverview();
     }
 }
+
+// ============================================
+// Sync Status (Sheets ↔ PG)
+// ============================================
+async function updateSyncStatus() {
+    try {
+        const res = await fetch('/api/sync/status');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const syncDot = document.getElementById('sync-dot');
+        const syncCard = document.getElementById('sync-health-card');
+        const syncBadge = document.getElementById('sync-health-badge');
+        const syncLastRecon = document.getElementById('sync-last-reconciliation');
+        const syncDiscrep = document.getElementById('sync-discrepancies');
+        const syncPending = document.getElementById('sync-pending-compensations');
+
+        const statuses = data.statuses || [];
+        const totalDiscrepancies = statuses.reduce((sum, s) => sum + (s.discrepancy || 0), 0);
+        const hasIssues = totalDiscrepancies > 0 || data.pendingCompensations > 0;
+        const hasErrors = statuses.some(s => s.status === 'error');
+
+        // Sidebar dot
+        if (syncDot) {
+            syncDot.classList.remove('online', 'warning', 'offline');
+            if (hasErrors) syncDot.classList.add('warning');
+            else if (hasIssues) syncDot.classList.add('warning');
+            else syncDot.classList.add('online');
+        }
+
+        // Sync health card (visible only in automacao section)
+        if (syncCard) {
+            syncCard.style.display = state.currentSection === 'automacao' ? 'block' : 'none';
+        }
+
+        if (syncBadge) {
+            if (totalDiscrepancies === 0 && data.pendingCompensations === 0) {
+                syncBadge.textContent = 'Sincronizado';
+                syncBadge.className = 'sync-health-badge ok';
+            } else if (hasErrors) {
+                syncBadge.textContent = `${totalDiscrepancies} discrepância(s)`;
+                syncBadge.className = 'sync-health-badge error';
+            } else {
+                syncBadge.textContent = `${totalDiscrepancies} pendente(s)`;
+                syncBadge.className = 'sync-health-badge warning';
+            }
+        }
+
+        // Last reconciliation time
+        if (syncLastRecon && statuses.length > 0) {
+            const lastRecon = statuses
+                .map(s => s.last_reconciliation)
+                .filter(Boolean)
+                .sort()
+                .pop();
+            syncLastRecon.textContent = lastRecon
+                ? new Date(lastRecon).toLocaleString('pt-BR')
+                : 'Nunca';
+        }
+
+        if (syncDiscrep) {
+            syncDiscrep.textContent = totalDiscrepancies.toString();
+        }
+
+        if (syncPending) {
+            syncPending.textContent = (data.pendingCompensations || 0).toString();
+        }
+    } catch {
+        // Best-effort — não bloqueia o dashboard
+    }
+}
+
+// Botão "Reconciliar Agora"
+document.addEventListener('click', async (e) => {
+    if (e.target.id === 'btn-reconcile-now' || e.target.closest('#btn-reconcile-now')) {
+        const btn = document.getElementById('btn-reconcile-now');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Reconciliando...';
+        }
+        try {
+            const res = await fetch('/api/sync/reconcile', { method: 'POST' });
+            const data = await res.json();
+            if (btn) {
+                btn.textContent = data.jobId ? 'Disparado!' : 'Erro';
+                setTimeout(() => {
+                    btn.textContent = 'Reconciliar Agora';
+                    btn.disabled = false;
+                }, 3000);
+            }
+        } catch {
+            if (btn) {
+                btn.textContent = 'Erro';
+                setTimeout(() => {
+                    btn.textContent = 'Reconciliar Agora';
+                    btn.disabled = false;
+                }, 3000);
+            }
+        }
+    }
+});
 
 // ============================================
 // Dashboard Overview (4 App Cards)

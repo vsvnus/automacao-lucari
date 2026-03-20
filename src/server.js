@@ -57,6 +57,10 @@ const { startBusinessAlerts, stopBusinessAlerts } = require('./infra/businessAle
 const clientConfig = require('./infra/clientConfig');
 const dlqHandler = require('./workers/dlqHandler');
 
+// Phase 5: Sync & Reconciliation
+const { startCompensationWorker, closeCompensationWorker } = require('./workers/compensationWorker');
+const { startReconciliationWorker, closeReconciliationWorker, triggerReconciliation } = require('./workers/reconciliationWorker');
+
 // Inicializar PostgreSQL ANTES de tudo
 pgService.initialize();
 
@@ -671,6 +675,31 @@ app.get('/api/dashboard/client/:slug/logs', requireAuth, async (req, res) => {
     res.json(logs);
 });
 
+// ====================================================
+// Phase 5: Sync & Reconciliation endpoints
+// ====================================================
+
+app.get('/api/sync/status', requireAuth, async (_req, res) => {
+    try {
+        const statuses = await pgService.getSyncStatuses();
+        const pendingCompensations = await pgService.getPendingCompensations();
+        res.json({ statuses, pendingCompensations });
+    } catch (error) {
+        logger.error('Erro ao buscar sync status', { error: error.message });
+        res.status(500).json({ error: 'Erro ao carregar status de sincronização' });
+    }
+});
+
+app.post('/api/sync/reconcile', requireAuth, async (_req, res) => {
+    try {
+        const result = await triggerReconciliation();
+        res.json({ message: 'Reconciliação disparada', jobId: result.jobId });
+    } catch (error) {
+        logger.error('Erro ao disparar reconciliação', { error: error.message });
+        res.status(500).json({ error: 'Erro ao disparar reconciliação' });
+    }
+});
+
 // Logs Genéricos
 app.get('/admin/logs', requireAuth, async (req, res) => {
     const { limit, search } = req.query;
@@ -1192,7 +1221,9 @@ async function startServer() {
         const redisReady = await waitForConnection(5000);
         if (redisReady) {
             startWorkers();
-            logger.info('BullMQ workers started');
+            startCompensationWorker();
+            startReconciliationWorker();
+            logger.info('BullMQ workers started (webhook + compensation + reconciliation)');
         } else {
             logger.warn('Redis not connected — running in synchronous mode (no queues)');
         }
@@ -1492,6 +1523,8 @@ async function gracefulShutdown(signal) {
 
         // 3. Close BullMQ workers (drain current jobs)
         await closeWorkers();
+        await closeCompensationWorker();
+        await closeReconciliationWorker();
 
         // 4. Close queues
         await closeQueues();

@@ -850,7 +850,7 @@ class SheetsService {
                     columns: updates.map(u => u.range.split('!')[1]),
                 });
 
-                return { success: true, attempt, sheetName };
+                return { success: true, attempt, sheetName, row: nextRow };
             } catch (error) {
                 lastError = error;
                 logger.warn(`Tentativa ${attempt}/${MAX_RETRIES} falhou`, {
@@ -914,6 +914,34 @@ class SheetsService {
             return null; // Não encontrado
         } catch (error) {
             logger.warn(`Erro ao buscar lead por telefone em "${sheetName}"`, { error: error.message });
+            return null;
+        }
+    }
+
+    /**
+     * Retorna todos os telefones da planilha para reconciliação.
+     * Lê a coluna de telefone inteira e retorna array normalizado.
+     * Usado pelo reconciliationWorker para comparar Sheets vs PG.
+     */
+    async getSheetLeadPhones(spreadsheetId, sheetName) {
+        try {
+            const colMap = await this.getColumnMapping(spreadsheetId, sheetName);
+            const phoneCol = colMap.telefone ? colMap.telefone.letter : 'B';
+
+            const response = await this.sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `'${sheetName}'!${phoneCol}:${phoneCol}`,
+            });
+
+            const values = response.data.values || [];
+
+            // Pular cabeçalho (i=0), normalizar telefones
+            return values.slice(1).map((v, i) => ({
+                row: i + 2, // 1-indexed, +1 por pular header
+                phone: (v[0] || '').replace(/\D/g, ''),
+            })).filter(r => r.phone.length >= 8);
+        } catch (error) {
+            logger.warn(`Erro ao ler telefones para reconciliação em "${sheetName}"`, { error: error.message });
             return null;
         }
     }

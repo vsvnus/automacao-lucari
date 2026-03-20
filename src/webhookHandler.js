@@ -26,6 +26,7 @@ const { formatPhoneBR, formatDateBR } = require("./utils/formatter");
 const clientManager = require("./clientManager");
 const sheetsService = require("./sheetsService");
 const pgService = require("./pgService");
+const { getCompensationQueue } = require("./infra/queues");
 
 /**
  * Regras de detecção de produto.
@@ -335,6 +336,22 @@ class WebhookHandler {
             leadId,
         };
 
+        // Idempotência: verificar duplicata (mesmo telefone + cliente nos últimos 5 min)
+        try {
+            const existingLead = await pgService.findSuccessLeadByPhone(phone, client.id);
+            if (existingLead) {
+                const ageMs = Date.now() - new Date(existingLead.created_at).getTime();
+                if (ageMs < 5 * 60 * 1000) {
+                    logger.warn("Lead duplicado ignorado (idempotência)", { phone, client: client.name, existingId: existingLead.id, ageMs });
+                    await trail.step("dedup_check", "skipped", "Lead já inserido recentemente (idempotência)", { phone, existingId: existingLead.id, ageMs });
+                    return { success: true, message: "Lead duplicado ignorado", type: "dedup", client: client.name };
+                }
+            }
+        } catch (dedupErr) {
+            // Se falhar a verificação de dedup, prossegue normalmente (não bloqueia)
+            logger.warn("Falha no dedup check — prosseguindo", { error: dedupErr.message, phone });
+        }
+
         let result = { success: false, error: "Iniciado" };
         try {
             result = await sheetsService.insertLead(client, leadData);
@@ -343,16 +360,35 @@ class WebhookHandler {
         }
 
         if (result.success) {
-            await trail.step("lead_inserted", "ok", `Lead inserido na linha da aba ${result.sheetName}`, { leadName: leadData.name, phone: leadData.phone, sheetName: result.sheetName });
+            await trail.step("lead_inserted", "ok", `Lead inserido na linha ${result.row} da aba ${result.sheetName}`, { leadName: leadData.name, phone: leadData.phone, sheetName: result.sheetName, row: result.row });
             logLead(leadData, "SUCCESS", { client: client.name, sheet: result.sheetName });
-            logger.info(`✅ Lead inserido: ${leadData.name} → ${client.name} (${result.sheetName})${product ? ` [${product}]` : ""}`);
-            await pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Lead Gerado", product, origin: origin.channel, sheetName: result.sheetName, result: "success", error: null, leadDate: payload.moment || null });
+            logger.info(`✅ Lead inserido: ${leadData.name} → ${client.name} (${result.sheetName}) [linha ${result.row}]${product ? ` [${product}]` : ""}`);
+            try {
+                await pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Lead Gerado", product, origin: origin.channel, sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null, leadDate: payload.moment || null });
+                await trail.step("pg_logged", "ok", "Lead registrado no PostgreSQL", { phone: payload.phone, sheetRow: result.row });
+            } catch (pgErr) {
+                logger.error("Falha ao registrar lead no PG — enfileirando compensação", { error: pgErr.message, phone: payload.phone, sheetRow: result.row });
+                await trail.step("pg_logged", "error", `Falha ao registrar no PG: ${pgErr.message}`, { error: pgErr.message, phone: payload.phone });
+                try {
+                    await getCompensationQueue().add('pg-log-retry', {
+                        clientId: client.id,
+                        leadInfo: { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Lead Gerado", product, origin: origin.channel, sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null, leadDate: payload.moment || null },
+                        source: 'new_lead',
+                    }, { delay: 5000 });
+                } catch (qErr) {
+                    logger.error("Falha ao enfileirar compensação", { error: qErr.message });
+                }
+            }
         } else {
             const errorMsg = result.error || "Erro desconhecido na inserção";
             await trail.step("lead_inserted", "error", `Falha ao inserir lead: ${errorMsg}`, { error: errorMsg, client: client.name });
             logLead(leadData, "FAILED", { client: client.name, error: errorMsg });
             logger.error("❌ Falha ao inserir lead", { error: errorMsg });
-            await pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Erro", product, origin: origin.channel, result: "failed", error: `Falha Planilha: ${errorMsg}`, leadDate: payload.moment || null });
+            try {
+                await pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: leadData.name, status: "Erro", product, origin: origin.channel, result: "failed", error: `Falha Planilha: ${errorMsg}`, leadDate: payload.moment || null });
+            } catch (pgErr) {
+                logger.error("Falha ao registrar erro no PG", { error: pgErr.message, phone: payload.phone });
+            }
         }
 
         return { success: result.success, leadId, client: client.name, type: "new_lead" };
@@ -481,8 +517,24 @@ class WebhookHandler {
             }
 
             if (insertResult.success) {
-                logger.info(`✅ Venda recuperada! Lead inserido: ${recoveryLeadData.name}`);
-                await trail.step("lead_inserted", "ok", `Venda recuperada e inserida em ${insertResult.sheetName}`, { leadName: recoveryLeadData.name, recovered: true });
+                logger.info(`✅ Venda recuperada! Lead inserido: ${recoveryLeadData.name} [linha ${insertResult.row}]`);
+                await trail.step("lead_inserted", "ok", `Venda recuperada e inserida em ${insertResult.sheetName}`, { leadName: recoveryLeadData.name, recovered: true, row: insertResult.row });
+                try {
+                    await pgService.logLead(client.id, { eventType: "new_lead", phone: payload.phone, name: recoveryLeadData.name, status: "Venda (Recuperado)", product: recoveryLeadData.product, saleAmount: recoveryLeadData.saleAmount, origin: origin.channel, sheetName: insertResult.sheetName, sheetRow: insertResult.row, result: "success", error: null, leadDate: payload.moment || null });
+                    await trail.step("pg_logged", "ok", "Venda recuperada registrada no PostgreSQL", { phone: payload.phone, recovered: true });
+                } catch (pgErr) {
+                    logger.error("Falha ao registrar venda recuperada no PG — enfileirando compensação", { error: pgErr.message, phone: payload.phone });
+                    await trail.step("pg_logged", "error", `Falha ao registrar venda recuperada no PG: ${pgErr.message}`, { error: pgErr.message });
+                    try {
+                        await getCompensationQueue().add('pg-log-retry', {
+                            clientId: client.id,
+                            leadInfo: { eventType: "new_lead", phone: payload.phone, name: recoveryLeadData.name, status: "Venda (Recuperado)", product: recoveryLeadData.product, saleAmount: recoveryLeadData.saleAmount, origin: origin.channel, sheetName: insertResult.sheetName, sheetRow: insertResult.row, result: "success", error: null, leadDate: payload.moment || null },
+                            source: 'sale_recovered',
+                        }, { delay: 5000 });
+                    } catch (qErr) {
+                        logger.error("Falha ao enfileirar compensação (sale recovery)", { error: qErr.message });
+                    }
+                }
                 result = { success: true, sheetName: insertResult.sheetName, row: insertResult.row, recovered: true };
             } else {
                 logger.error("❌ Falha ao tentar recuperar venda", { error: insertResult.error });
@@ -494,13 +546,32 @@ class WebhookHandler {
             logger.info(`✅ Status atualizado: ${payload.chatName || payload.phone} → "${statusName}"${saleAmount ? ` (R$ ${saleAmount})` : ""} [linha ${result.row}]`);
             await trail.step("status_updated", "ok", `Status "${statusName}" atualizado com sucesso${result.recovered ? " (venda recuperada)" : ""}`, { status: statusName, row: result.row, sheetName: result.sheetName, recovered: result.recovered || false });
 
-            await pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null, leadDate: payload.moment || null });
+            try {
+                await pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null, leadDate: payload.moment || null });
+                await trail.step("pg_logged", "ok", "Status update registrado no PostgreSQL", { phone: payload.phone, status: statusName });
+            } catch (pgErr) {
+                logger.error("Falha ao registrar status update no PG — enfileirando compensação", { error: pgErr.message, phone: payload.phone, status: statusName });
+                await trail.step("pg_logged", "error", `Falha ao registrar status update no PG: ${pgErr.message}`, { error: pgErr.message });
+                try {
+                    await getCompensationQueue().add('pg-log-retry', {
+                        clientId: client.id,
+                        leadInfo: { eventType: "status_update", phone: payload.phone, name: leadName, status: statusName, saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), sheetName: result.sheetName, sheetRow: result.row, result: "success", error: null, leadDate: payload.moment || null },
+                        source: 'status_update',
+                    }, { delay: 5000 });
+                } catch (qErr) {
+                    logger.error("Falha ao enfileirar compensação (status update)", { error: qErr.message });
+                }
+            }
         } else {
             const errorMsg = result.error || "Erro desconhecido na atualização";
             logger.warn("⚠️ Não foi possível atualizar status", { error: errorMsg, phone: payload.phone });
             await trail.step("status_updated", "error", `Falha ao atualizar status: ${errorMsg}`, { error: errorMsg, phone: payload.phone, status: statusName });
 
-            await pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: "Erro Update", saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), result: "failed", error: `Falha Planilha: ${errorMsg}`, leadDate: payload.moment || null });
+            try {
+                await pgService.logLead(client.id, { eventType: "status_update", phone: payload.phone, name: leadName, status: "Erro Update", saleAmount: saleAmount ? parseFloat(saleAmount) : (isSaleStatus(statusName) ? 0 : null), result: "failed", error: `Falha Planilha: ${errorMsg}`, leadDate: payload.moment || null });
+            } catch (pgErr) {
+                logger.error("Falha ao registrar erro de status no PG", { error: pgErr.message, phone: payload.phone });
+            }
         }
 
         return { success: result.success, client: client.name, type: "status_update", status: statusName, saleAmount, recovered: result.recovered };

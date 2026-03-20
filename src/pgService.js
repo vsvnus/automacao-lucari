@@ -2057,6 +2057,106 @@ class PgService {
             return null;
         }
     }
+
+    // ============================================================
+    // SYNC & RECONCILIATION
+    // ============================================================
+
+    /**
+     * Retorna telefones com processing_result='success' para um cliente e aba.
+     * Usado pelo reconciliationWorker para comparar com Sheets.
+     */
+    async getSuccessLeadPhonesByClient(clientId, sheetName) {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const clientUuid = await this._resolveClientUuid(clientId);
+            if (!clientUuid) return [];
+
+            const { rows } = await this.query(
+                `SELECT DISTINCT phone, sheet_row FROM leads_log
+                 WHERE client_id = $1 AND sheet_name = $2
+                   AND processing_result = 'success' AND event_type = 'new_lead'
+                 ORDER BY phone`,
+                [clientUuid, sheetName]
+            );
+            return rows.map(r => ({
+                phone: (r.phone || '').replace(/\D/g, ''),
+                sheetRow: r.sheet_row,
+            }));
+        } catch (error) {
+            logger.error('Erro ao buscar phones para reconciliação', { error: error.message, clientId });
+            return [];
+        }
+    }
+
+    /**
+     * Atualiza (ou insere) status de sincronização de um cliente.
+     */
+    async upsertSyncStatus(clientId, data) {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const clientUuid = await this._resolveClientUuid(clientId);
+            if (!clientUuid) return null;
+
+            const { rows } = await this.query(
+                `INSERT INTO sync_status (client_id, last_reconciliation, sheets_count, pg_count, discrepancy, status, details, updated_at)
+                 VALUES ($1, NOW(), $2, $3, $4, $5, $6, NOW())
+                 ON CONFLICT (client_id) DO UPDATE SET
+                    last_reconciliation = NOW(),
+                    sheets_count = $2,
+                    pg_count = $3,
+                    discrepancy = $4,
+                    status = $5,
+                    details = $6,
+                    updated_at = NOW()
+                 RETURNING *`,
+                [clientUuid, data.sheetsCount, data.pgCount, data.discrepancy, data.status, JSON.stringify(data.details || {})]
+            );
+            return rows[0];
+        } catch (error) {
+            logger.error('Erro ao atualizar sync_status', { error: error.message, clientId });
+            return null;
+        }
+    }
+
+    /**
+     * Retorna status de sincronização de todos os clientes.
+     */
+    async getSyncStatuses() {
+        if (!this.isAvailable()) return [];
+
+        try {
+            const { rows } = await this.query(
+                `SELECT s.*, c.name as client_name, c.slug as client_slug
+                 FROM sync_status s
+                 JOIN clients c ON s.client_id = c.id
+                 ORDER BY s.discrepancy DESC, s.updated_at DESC`
+            );
+            return rows;
+        } catch (error) {
+            logger.error('Erro ao buscar sync statuses', { error: error.message });
+            return [];
+        }
+    }
+
+    /**
+     * Conta itens pendentes na fila de compensação.
+     */
+    async getPendingCompensations() {
+        if (!this.isAvailable()) return 0;
+
+        try {
+            const { rows } = await this.query(
+                `SELECT COUNT(*) as count FROM sync_compensation_queue WHERE status = 'pending'`
+            );
+            return parseInt(rows[0].count, 10);
+        } catch (error) {
+            logger.error('Erro ao contar compensações pendentes', { error: error.message });
+            return 0;
+        }
+    }
 }
 
 const pgService = new PgService();
