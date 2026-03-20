@@ -363,6 +363,56 @@ class PgService {
         }
     }
 
+    async _resolveClientUuid(clientId) {
+        if (!clientId) return null;
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId);
+        if (isUuid) return clientId;
+        const { rows } = await this.query('SELECT id FROM clients WHERE slug = $1', [clientId]);
+        return rows[0]?.id || null;
+    }
+
+    async findFilteredLeadByPhone(phone, clientId) {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const clientUuid = await this._resolveClientUuid(clientId);
+            if (!clientUuid) return null;
+            const phoneSuffix = phone.replace(/\D/g, '').slice(-11);
+            const { rows } = await this.query(
+                `SELECT * FROM leads_log
+                 WHERE phone ILIKE $1 AND client_id = $2
+                   AND processing_result = 'filtered' AND event_type = 'new_lead'
+                 ORDER BY created_at DESC LIMIT 1`,
+                [`%${phoneSuffix}`, clientUuid]
+            );
+            return rows[0] || null;
+        } catch (error) {
+            logger.warn('Erro ao buscar lead filtrado por telefone', { error: error.message, phone });
+            return null;
+        }
+    }
+
+    async findSuccessLeadByPhone(phone, clientId) {
+        if (!this.isAvailable()) return null;
+
+        try {
+            const clientUuid = await this._resolveClientUuid(clientId);
+            if (!clientUuid) return null;
+            const phoneSuffix = phone.replace(/\D/g, '').slice(-11);
+            const { rows } = await this.query(
+                `SELECT * FROM leads_log
+                 WHERE phone ILIKE $1 AND client_id = $2
+                   AND processing_result = 'success' AND event_type = 'new_lead'
+                 ORDER BY created_at DESC LIMIT 1`,
+                [`%${phoneSuffix}`, clientUuid]
+            );
+            return rows[0] || null;
+        } catch (error) {
+            logger.warn('Erro ao buscar lead success por telefone', { error: error.message, phone });
+            return null;
+        }
+    }
+
     async checkDuplicateWebhook(phone, eventType, windowSeconds = 30) {
         if (!this.isAvailable()) return false;
 

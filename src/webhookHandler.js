@@ -1,9 +1,10 @@
 /**
  * WebhookHandler — Processa webhooks do Tintim
  * 
- * Suporta dois tipos de evento:
- *   1. CONVERSA CRIADA → Insere lead novo na planilha
- *   2. CONVERSA ALTERADA → Atualiza status do lead existente
+ * Suporta três tipos de evento:
+ *   1. CONVERSA CRIADA (lead.create) → Insere lead novo na planilha
+ *   2. CONVERSA ALTERADA (lead.update) → Atualiza status do lead existente
+ *   3. SOURCE UPDATE (lead_source.update) → Reprocessa lead filtrado se origem mudou para paga
  * 
  * Mapeamento para colunas da planilha:
  *   A: Nome do Lead     ← chatName
@@ -214,7 +215,7 @@ class WebhookHandler {
         });
 
         // Filter unknown event types
-        const KNOWN_EVENTS = ["lead.create", "lead.update"];
+        const KNOWN_EVENTS = ["lead.create", "lead.update", "lead_source.update"];
         if (payload.event_type && !KNOWN_EVENTS.includes(payload.event_type)) {
             logger.warn(`Evento ignorado pelo sistema: ${payload.event_type}`);
             await trail.step("payload_validated", "skipped", `Evento desconhecido ignorado: ${payload.event_type}`, { eventType: payload.event_type });
@@ -235,7 +236,9 @@ class WebhookHandler {
 
         // Step 5+: processar
         let result;
-        if (isStatusUpdate(payload)) {
+        if (payload.event_type === "lead_source.update") {
+            result = await this.processSourceUpdate(payload, client, trail);
+        } else if (isStatusUpdate(payload)) {
             result = await this.processStatusUpdate(payload, client, trail);
         } else {
             result = await this.processNewLead(payload, client, trail);
@@ -353,6 +356,57 @@ class WebhookHandler {
         }
 
         return { success: result.success, leadId, client: client.name, type: "new_lead" };
+    }
+
+    async processSourceUpdate(payload, client, trail) {
+        const phone = payload.phone || payload.phone_e164?.replace("+", "") || "";
+        const leadName = payload.name || payload.chatName || "Desconhecido";
+
+        logger.info(`🔄 Source update recebido para: ${client.name}`, { phone, leadName });
+
+        // Detectar origem com os novos dados de source
+        const origin = detectOrigin(payload);
+        await trail.step("source_update_evaluated", "ok", `Nova origem detectada: ${origin.channel}`, { channel: origin.channel, phone });
+
+        const PAID_CHANNELS = ["Meta Ads", "Google Ads", "Tráfego Pago"];
+        if (!PAID_CHANNELS.includes(origin.channel)) {
+            logger.info(`🔄 Source update ignorado — origem continua orgânica: ${origin.channel}`);
+            await trail.step("source_update_evaluated", "skipped", `Origem não é paga (${origin.channel}), ignorando`, { channel: origin.channel });
+            await pgService.logLead(client.id, { eventType: "source_update", phone, name: leadName, status: "Ignorado (Orgânico)", origin: origin.channel, result: "filtered", error: null, leadDate: payload.moment || null });
+            await pgService.logWebhookEvent(payload, client.id, "source_update_organic");
+            return { success: true, message: "Source update ignorado (origem não paga)", type: "source_update" };
+        }
+
+        // Verificar se o lead já está na planilha (success)
+        const successLead = await pgService.findSuccessLeadByPhone(phone, client.id);
+        if (successLead) {
+            logger.info(`🔄 Source update ignorado — lead já inserido na planilha`);
+            await trail.step("source_update_evaluated", "skipped", "Lead já processado com sucesso, sem duplicação", { phone, existingId: successLead.id });
+            await pgService.logLead(client.id, { eventType: "source_update", phone, name: leadName, status: "Já na planilha", origin: origin.channel, result: "filtered", error: null, leadDate: payload.moment || null });
+            await pgService.logWebhookEvent(payload, client.id, "source_update_already_success");
+            return { success: true, message: "Lead já na planilha, source update ignorado", type: "source_update" };
+        }
+
+        // Verificar se o lead foi filtrado como orgânico
+        const filteredLead = await pgService.findFilteredLeadByPhone(phone, client.id);
+        if (!filteredLead) {
+            logger.info(`🔄 Source update ignorado — lead não encontrado no banco`);
+            await trail.step("source_update_evaluated", "skipped", "Lead não encontrado no banco", { phone });
+            await pgService.logLead(client.id, { eventType: "source_update", phone, name: leadName, status: "Lead não encontrado", origin: origin.channel, result: "filtered", error: null, leadDate: payload.moment || null });
+            await pgService.logWebhookEvent(payload, client.id, "source_update_not_found");
+            return { success: true, message: "Lead não encontrado no banco", type: "source_update" };
+        }
+
+        // Lead foi filtrado como orgânico mas agora tem origem paga → reprocessar
+        logger.info(`✅ Source update: lead ${leadName} era orgânico, agora é ${origin.channel}. Reprocessando...`);
+        await trail.step("source_update_evaluated", "ok", `Lead filtrado será reprocessado com origem ${origin.channel}`, { phone, originalOrigin: filteredLead.origin, newOrigin: origin.channel });
+
+        // Reprocessar via processNewLead — injetar dados de source no payload
+        const result = await this.processNewLead(payload, client, trail);
+
+        await pgService.logWebhookEvent(payload, client.id, result.success ? "source_update_reprocessed" : "source_update_failed");
+
+        return { ...result, type: "source_update", reprocessed: true };
     }
 
     async processStatusUpdate(payload, client, trail) {
