@@ -2072,7 +2072,7 @@ function renderUsersList() {
                     <button class="btn-icon" title="Editar" onclick="handleEditUser('${user.id}')">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     </button>
-                    ${!isMe ? `<button class="btn-icon" title="Remover" onclick="handleDeleteUser('${user.id}', '${escapeHtml(user.name || user.email)}')">
+                    ${!isMe ? `<button class="btn-icon" title="Remover" onclick="handleDeleteUser('${user.id}', '${escapeJsString(user.name || user.email)}')">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>` : ''}
                 </div>
@@ -2883,7 +2883,7 @@ async function loadSdrDashboard() {
                     </div>
                 </div>
                 <div class="client-card-footer">
-                    <button class="btn-text" onclick="event.stopPropagation();handleDeleteSdrTenant('${tenant.id}', '${escapeHtml(tenant.name).replace(/'/g, "\\'")}')" style="color:var(--accent-red, #ef4444);">
+                    <button class="btn-text" onclick="event.stopPropagation();handleDeleteSdrTenant('${tenant.id}', '${escapeJsString(tenant.name)}')" style="color:var(--accent-red, #ef4444);">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         Excluir
                     </button>
@@ -3552,7 +3552,7 @@ async function loadSdrKnowledge(tenantId) {
                     </div>
                 </div>
                 <div class="sdr-kb-doc-actions">
-                    <button class="btn-client-delete" onclick="handleDeleteSdrKnowledge('${escapeHtml(filename)}')">
+                    <button class="btn-client-delete" onclick="handleDeleteSdrKnowledge('${escapeJsString(filename)}')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                         Remover
                     </button>
@@ -5544,7 +5544,7 @@ function renderAgendamentos(schedules) {
                         <span class="badge ${statusBadgeClass}">${statusText}</span>
                     </div>
                 </div>
-                <button class="btn btn-primary btn-sm schedule-run-btn" onclick="runScheduleNow('${escapeHtml(s.slug)}')" ${!s.enabled ? 'disabled' : ''}>
+                <button class="btn btn-primary btn-sm schedule-run-btn" onclick="runScheduleNow('${escapeJsString(s.slug)}')" ${!s.enabled ? 'disabled' : ''}>
                     Executar Agora
                 </button>
             </div>
