@@ -8,7 +8,7 @@
 const { Queue } = require('bullmq');
 const { getRedis } = require('./redis');
 
-const ENV_PREFIX = process.env.NODE_ENV === 'production' ? '' : `${process.env.NODE_ENV || 'dev'}:`;
+const ENV_PREFIX = process.env.NODE_ENV === 'production' ? '' : `${process.env.NODE_ENV || 'dev'}-`;
 
 const QUEUE_NAMES = {
     tintim:         `${ENV_PREFIX}webhook-tintim`,
