@@ -42,7 +42,7 @@ const pgService = require('./pgService');
 
 // Phase 1: Queue infrastructure
 const { isRedisConnected, waitForConnection } = require('./infra/redis');
-const { getTintimQueue, getKommoQueue, closeQueues } = require('./infra/queues');
+const { getTintimQueue, getKommoQueue, closeQueues, QUEUE_NAMES } = require('./infra/queues');
 const { startWorkers, closeWorkers } = require('./workers/webhookWorker');
 const { setupBullBoard } = require('./infra/bullBoard');
 
@@ -991,8 +991,8 @@ app.get("/api/alerts/error-count", requireAuth, async (_req, res) => {
 app.get('/api/admin/dlq/:queue', requireAuth, async (req, res) => {
     const queueName = req.params.queue;
     let queue;
-    if (queueName === 'webhook-tintim') queue = getTintimQueue();
-    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    if (queueName === 'webhook-tintim' || queueName === QUEUE_NAMES.tintim) queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo' || queueName === QUEUE_NAMES.kommo) queue = getKommoQueue();
     else return res.status(400).json({ error: 'Queue not found. Use: webhook-tintim or webhook-kommo' });
 
     const jobs = await dlqHandler.getFailedJobs(queue);
@@ -1002,8 +1002,8 @@ app.get('/api/admin/dlq/:queue', requireAuth, async (req, res) => {
 app.post('/api/admin/dlq/:queue/retry/:jobId', requireAuth, async (req, res) => {
     const queueName = req.params.queue;
     let queue;
-    if (queueName === 'webhook-tintim') queue = getTintimQueue();
-    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    if (queueName === 'webhook-tintim' || queueName === QUEUE_NAMES.tintim) queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo' || queueName === QUEUE_NAMES.kommo) queue = getKommoQueue();
     else return res.status(400).json({ error: 'Queue not found' });
 
     const result = await dlqHandler.retryJob(queue, req.params.jobId);
@@ -1013,8 +1013,8 @@ app.post('/api/admin/dlq/:queue/retry/:jobId', requireAuth, async (req, res) => 
 app.post('/api/admin/dlq/:queue/retry-all', requireAuth, async (req, res) => {
     const queueName = req.params.queue;
     let queue;
-    if (queueName === 'webhook-tintim') queue = getTintimQueue();
-    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    if (queueName === 'webhook-tintim' || queueName === QUEUE_NAMES.tintim) queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo' || queueName === QUEUE_NAMES.kommo) queue = getKommoQueue();
     else return res.status(400).json({ error: 'Queue not found' });
 
     const result = await dlqHandler.retryAll(queue);
@@ -1024,8 +1024,8 @@ app.post('/api/admin/dlq/:queue/retry-all', requireAuth, async (req, res) => {
 app.delete('/api/admin/dlq/:queue/:jobId', requireAuth, async (req, res) => {
     const queueName = req.params.queue;
     let queue;
-    if (queueName === 'webhook-tintim') queue = getTintimQueue();
-    else if (queueName === 'webhook-kommo') queue = getKommoQueue();
+    if (queueName === 'webhook-tintim' || queueName === QUEUE_NAMES.tintim) queue = getTintimQueue();
+    else if (queueName === 'webhook-kommo' || queueName === QUEUE_NAMES.kommo) queue = getKommoQueue();
     else return res.status(400).json({ error: 'Queue not found' });
 
     const result = await dlqHandler.removeJob(queue, req.params.jobId);
@@ -1278,12 +1278,12 @@ async function startServer() {
                         tq.getWaitingCount(), tq.getActiveCount(), tq.getFailedCount(),
                         kq.getWaitingCount(), kq.getActiveCount(), kq.getFailedCount(),
                     ]);
-                    metrics.queueWaiting.set({ queue: 'webhook-tintim' }, tw);
-                    metrics.queueActive.set({ queue: 'webhook-tintim' }, ta);
-                    metrics.queueFailed.set({ queue: 'webhook-tintim' }, tf);
-                    metrics.queueWaiting.set({ queue: 'webhook-kommo' }, kw);
-                    metrics.queueActive.set({ queue: 'webhook-kommo' }, ka);
-                    metrics.queueFailed.set({ queue: 'webhook-kommo' }, kf);
+                    metrics.queueWaiting.set({ queue: QUEUE_NAMES.tintim }, tw);
+                    metrics.queueActive.set({ queue: QUEUE_NAMES.tintim }, ta);
+                    metrics.queueFailed.set({ queue: QUEUE_NAMES.tintim }, tf);
+                    metrics.queueWaiting.set({ queue: QUEUE_NAMES.kommo }, kw);
+                    metrics.queueActive.set({ queue: QUEUE_NAMES.kommo }, ka);
+                    metrics.queueFailed.set({ queue: QUEUE_NAMES.kommo }, kf);
                 } catch (err) {
                     // Queue monitoring is best-effort
                 }

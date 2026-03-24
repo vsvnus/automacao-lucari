@@ -6,10 +6,14 @@
  *   - Rate limit: 10 jobs/sec
  *   - 3 retries with exponential backoff
  *   - Cache invalidation after successful processing
+ *
+ * Queue names are environment-prefixed (see infra/queues.js) to prevent
+ * production and staging workers from competing for the same jobs.
  */
 
 const { Worker } = require('bullmq');
 const { getRedis } = require('../infra/redis');
+const { QUEUE_NAMES } = require('../infra/queues');
 const { logger } = require('../utils/logger');
 
 let tintimWorker = null;
@@ -20,7 +24,7 @@ function startWorkers() {
     const kommoHandler = require('../kommoHandler');
 
     // Tintim webhook worker
-    tintimWorker = new Worker('webhook-tintim', async (job) => {
+    tintimWorker = new Worker(QUEUE_NAMES.tintim, async (job) => {
         const { payload } = job.data;
         logger.info(`[Worker] Processing tintim job ${job.id}`, { attemptsMade: job.attemptsMade });
 
@@ -76,12 +80,12 @@ function startWorkers() {
         // Increment metrics if available
         try {
             const metrics = require('../infra/metrics');
-            metrics.queueErrors.inc({ queue: 'webhook-tintim' });
+            metrics.queueErrors.inc({ queue: QUEUE_NAMES.tintim });
         } catch (e) { /* metrics not loaded yet */ }
     });
 
     // Kommo webhook worker
-    kommoWorker = new Worker('webhook-kommo', async (job) => {
+    kommoWorker = new Worker(QUEUE_NAMES.kommo, async (job) => {
         const { body, rawBody, signature } = job.data;
         logger.info(`[Worker] Processing kommo job ${job.id}`, { attemptsMade: job.attemptsMade });
 

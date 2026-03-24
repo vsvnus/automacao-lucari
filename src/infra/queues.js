@@ -1,9 +1,21 @@
 /**
  * Queues — BullMQ queue definitions for async webhook processing
+ *
+ * Queue names are prefixed by NODE_ENV so that production and staging
+ * workers never compete for the same jobs when sharing a Redis instance.
  */
 
 const { Queue } = require('bullmq');
 const { getRedis } = require('./redis');
+
+const ENV_PREFIX = process.env.NODE_ENV === 'production' ? '' : `${process.env.NODE_ENV || 'dev'}:`;
+
+const QUEUE_NAMES = {
+    tintim:         `${ENV_PREFIX}webhook-tintim`,
+    kommo:          `${ENV_PREFIX}webhook-kommo`,
+    compensation:   `${ENV_PREFIX}sync-compensation`,
+    reconciliation: `${ENV_PREFIX}reconciliation`,
+};
 
 const DEFAULT_JOB_OPTIONS = {
     attempts: 3,
@@ -22,7 +34,7 @@ let reconciliationQueue = null;
 
 function getTintimQueue() {
     if (!tintimQueue) {
-        tintimQueue = new Queue('webhook-tintim', {
+        tintimQueue = new Queue(QUEUE_NAMES.tintim, {
             connection: getRedis(),
             defaultJobOptions: DEFAULT_JOB_OPTIONS,
         });
@@ -32,7 +44,7 @@ function getTintimQueue() {
 
 function getKommoQueue() {
     if (!kommoQueue) {
-        kommoQueue = new Queue('webhook-kommo', {
+        kommoQueue = new Queue(QUEUE_NAMES.kommo, {
             connection: getRedis(),
             defaultJobOptions: DEFAULT_JOB_OPTIONS,
         });
@@ -42,7 +54,7 @@ function getKommoQueue() {
 
 function getCompensationQueue() {
     if (!compensationQueue) {
-        compensationQueue = new Queue('sync-compensation', {
+        compensationQueue = new Queue(QUEUE_NAMES.compensation, {
             connection: getRedis(),
             defaultJobOptions: {
                 attempts: 5,
@@ -57,7 +69,7 @@ function getCompensationQueue() {
 
 function getReconciliationQueue() {
     if (!reconciliationQueue) {
-        reconciliationQueue = new Queue('reconciliation', {
+        reconciliationQueue = new Queue(QUEUE_NAMES.reconciliation, {
             connection: getRedis(),
             defaultJobOptions: {
                 attempts: 2,
@@ -79,4 +91,4 @@ async function closeQueues() {
     reconciliationQueue = null;
 }
 
-module.exports = { getTintimQueue, getKommoQueue, getCompensationQueue, getReconciliationQueue, closeQueues };
+module.exports = { getTintimQueue, getKommoQueue, getCompensationQueue, getReconciliationQueue, closeQueues, QUEUE_NAMES };

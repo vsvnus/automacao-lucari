@@ -6,6 +6,7 @@
  */
 
 const { Worker } = require('bullmq');
+const { QUEUE_NAMES } = require('../infra/queues');
 const { getRedis } = require('../infra/redis');
 const { logger } = require('../utils/logger');
 
@@ -14,7 +15,7 @@ let compensationWorker = null;
 function startCompensationWorker() {
     const pgService = require('../pgService');
 
-    compensationWorker = new Worker('sync-compensation', async (job) => {
+    compensationWorker = new Worker(QUEUE_NAMES.compensation, async (job) => {
         const { clientId, leadInfo, source } = job.data;
         logger.info(`[Compensation] Processando retry PG log — job ${job.id}`, {
             phone: leadInfo.phone,

@@ -13,7 +13,7 @@
 
 const { Worker } = require('bullmq');
 const { getRedis } = require('../infra/redis');
-const { getReconciliationQueue } = require('../infra/queues');
+const { getReconciliationQueue, QUEUE_NAMES } = require('../infra/queues');
 const { logger } = require('../utils/logger');
 
 let reconciliationWorker = null;
@@ -136,7 +136,7 @@ function startReconciliationWorker() {
     const pgService = require('../pgService');
     const clientManager = require('../clientManager');
 
-    reconciliationWorker = new Worker('reconciliation', async (job) => {
+    reconciliationWorker = new Worker(QUEUE_NAMES.reconciliation, async (job) => {
         logger.info('[Reconciliation] Iniciando reconciliação periódica');
 
         const clients = clientManager.clients.filter(c => c.active);
