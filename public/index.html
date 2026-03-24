@@ -429,6 +429,7 @@
                 <button class="automacao-tab" data-autotab="logs">Leads</button>
                 <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge" style="display:none;">0</span></button>
                 <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
+                <button class="automacao-tab" data-autotab="sync">Sincronização</button>
             </div>
 
             <div class="page-header">
@@ -664,6 +665,7 @@
                 <button class="automacao-tab" data-autotab="logs">Leads</button>
                 <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-c" style="display:none;">0</span></button>
                 <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
+                <button class="automacao-tab" data-autotab="sync">Sincronização</button>
             </div>
             <div class="page-header">
                 <div>
@@ -766,6 +768,7 @@
                 <button class="automacao-tab active" data-autotab="logs">Leads</button>
                 <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-l" style="display:none;">0</span></button>
                 <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
+                <button class="automacao-tab" data-autotab="sync">Sincronização</button>
             </div>
             <div class="page-header">
                 <div>
@@ -838,6 +841,7 @@
                 <button class="automacao-tab" data-autotab="logs">Leads</button>
                 <button class="automacao-tab active" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-a" style="display:none;">0</span></button>
                 <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
+                <button class="automacao-tab" data-autotab="sync">Sincronização</button>
             </div>
             <div class="page-header">
                 <div>
@@ -883,7 +887,8 @@
                 <button class="automacao-tab" data-autotab="clients">Clientes</button>
                 <button class="automacao-tab" data-autotab="logs">Leads</button>
                 <button class="automacao-tab" data-autotab="alerts">Erros</button>
-                <button class="automacao-tab active" data-autotab="agendamentos">Agendamentos</button>
+                <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
+                <button class="automacao-tab" data-autotab="sync">Sincronização</button>
             </div>
             <div class="page-header">
                 <div>
@@ -942,6 +947,82 @@
                 </div>
             </div>
         </div>
+
+
+        <section class="page-section" id="section-sync">
+            <div class="automacao-tabs">
+                <button class="automacao-tab" data-autotab="automacao">Visão Geral</button>
+                <button class="automacao-tab" data-autotab="clients">Clientes</button>
+                <button class="automacao-tab" data-autotab="logs">Leads</button>
+                <button class="automacao-tab" data-autotab="alerts">Erros <span class="tab-badge" id="tab-alerts-badge-sync" style="display:none;">0</span></button>
+                <button class="automacao-tab" data-autotab="agendamentos">Agendamentos</button>
+                <button class="automacao-tab active" data-autotab="sync">Sincronização</button>
+            </div>
+            <div class="page-header">
+                <div>
+                    <h2 class="page-title">Sincronização Sheets ↔ BD</h2>
+                    <p class="page-subtitle">Status detalhado por cliente</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn-icon" id="btn-refresh-sync" title="Atualizar">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                    </button>
+                    <button class="btn btn-primary btn-sm" id="btn-reconcile-all">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                        Reconciliar Agora
+                    </button>
+                </div>
+            </div>
+
+            <div id="sync-overview-stats" style="margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Status Geral</div>
+                        <div class="stat-value" id="sync-general-status">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Discrepâncias</div>
+                        <div class="stat-value" id="sync-total-discrepancies">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Compensações Pendentes</div>
+                        <div class="stat-value" id="sync-total-pending">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Última Reconciliação</div>
+                        <div class="stat-value" id="sync-last-recon-global" style="font-size: 0.9rem;">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sync-table-wrap" id="sync-clients-table">
+                <table class="sync-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Status</th>
+                            <th>Sheets</th>
+                            <th>BD</th>
+                            <th>Discrepância</th>
+                            <th>Só Sheets</th>
+                            <th>Só BD</th>
+                            <th>Última Reconciliação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sync-table-body">
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-tertiary);">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
 
         <section class="page-section" id="section-settings">
             <div class="page-header">

@@ -38,14 +38,14 @@ const refs = {
 // ============================================
 
 // Sections that belong to Automação Leads app
-const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'agendamentos'];
-const TINTIM_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'agendamentos', 'keywords'];
+const AUTOMACAO_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'agendamentos', 'sync'];
+const TINTIM_SECTIONS = ['automacao', 'clients', 'logs', 'alerts', 'agendamentos', 'sync', 'keywords'];
 
 function navigateTo(section, replace = false) {
     if (!section) section = 'dashboard';
 
     // Normalize section names
-    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'agendamentos', 'keywords', 'sdr', 'calculadora', 'relatorio'];
+    const validSections = ['dashboard', 'automacao', 'clients', 'settings', 'client-details', 'logs', 'alerts', 'agendamentos', 'sync', 'keywords', 'sdr', 'calculadora', 'relatorio'];
     if (!validSections.includes(section)) section = 'dashboard';
 
     state.currentSection = section;
@@ -88,6 +88,7 @@ function navigateTo(section, replace = false) {
         logs: 'Automação de Leads',
         alerts: 'Automação de Leads',
         agendamentos: 'Automação de Leads',
+        sync: 'Automação de Leads',
         keywords: 'Palavras-Chave',
         sdr: 'SDR de IA',
         calculadora: 'Calculadora',
@@ -127,6 +128,7 @@ function navigateTo(section, replace = false) {
     if (section === 'calculadora') loadCalcSection();
     if (section === 'alerts') loadAlertsSection();
     if (section === 'agendamentos') loadAgendamentosSection();
+    if (section === 'sync') loadSyncPage();
     if (section === 'relatorio') loadRelatorioSection();
     if (section === 'dashboard') loadDashboardOverview();
 }
@@ -742,6 +744,105 @@ document.addEventListener('click', async (e) => {
                 }, 3000);
             }
         }
+    }
+});
+
+
+// ============================================
+// Sync Page — Tabela detalhada por cliente
+// ============================================
+async function loadSyncPage() {
+    try {
+        const res = await fetch("/api/sync/status");
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const statuses = data.statuses || [];
+        const totalDiscrepancies = statuses.reduce((sum, s) => sum + (s.discrepancy || 0), 0);
+        const pendingCompensations = data.pendingCompensations || 0;
+        const hasErrors = statuses.some(s => s.status === "error");
+
+        // Stats cards
+        const generalEl = document.getElementById("sync-general-status");
+        if (generalEl) {
+            if (totalDiscrepancies === 0 && pendingCompensations === 0) {
+                generalEl.textContent = "Sincronizado";
+                generalEl.style.color = "var(--accent-green)";
+            } else if (hasErrors) {
+                generalEl.textContent = "Com erros";
+                generalEl.style.color = "var(--accent-red)";
+            } else {
+                generalEl.textContent = "Pendente";
+                generalEl.style.color = "#F59E0B";
+            }
+        }
+        const discEl = document.getElementById("sync-total-discrepancies");
+        if (discEl) discEl.textContent = totalDiscrepancies.toLocaleString("pt-BR");
+        const pendEl = document.getElementById("sync-total-pending");
+        if (pendEl) pendEl.textContent = pendingCompensations.toLocaleString("pt-BR");
+
+        const lastReconGlobal = statuses
+            .map(s => s.last_reconciliation)
+            .filter(Boolean)
+            .sort()
+            .pop();
+        const reconGlobalEl = document.getElementById("sync-last-recon-global");
+        if (reconGlobalEl) {
+            reconGlobalEl.textContent = lastReconGlobal
+                ? new Date(lastReconGlobal).toLocaleString("pt-BR")
+                : "Nunca";
+        }
+
+        // Table
+        const tbody = document.getElementById("sync-table-body");
+        if (!tbody) return;
+
+        if (statuses.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);">Nenhum dado de sincronização</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = statuses.map(s => {
+            const details = typeof s.details === "string" ? JSON.parse(s.details) : (s.details || {});
+            const sheetsOnly = details.sheetsOnly || 0;
+            const pgOnly = details.pgOnly || 0;
+            const statusClass = s.status === "error" ? "sync-badge-error" : s.status === "warning" ? "sync-badge-warning" : "sync-badge-ok";
+            const statusLabel = s.status === "error" ? "Erro" : s.status === "warning" ? "Aviso" : "OK";
+            const lastRecon = s.last_reconciliation ? new Date(s.last_reconciliation).toLocaleString("pt-BR") : "—";
+            return '<tr>' +
+                '<td class="sync-cell-client">' + (s.client_name || "—") + '</td>' +
+                '<td><span class="sync-badge ' + statusClass + '">' + statusLabel + '</span></td>' +
+                '<td class="sync-cell-num">' + (s.sheets_count || 0).toLocaleString("pt-BR") + '</td>' +
+                '<td class="sync-cell-num">' + (s.pg_count || 0).toLocaleString("pt-BR") + '</td>' +
+                '<td class="sync-cell-num sync-cell-disc">' + (s.discrepancy > 0 ? s.discrepancy.toLocaleString("pt-BR") : "0") + '</td>' +
+                '<td class="sync-cell-num">' + sheetsOnly.toLocaleString("pt-BR") + '</td>' +
+                '<td class="sync-cell-num">' + pgOnly.toLocaleString("pt-BR") + '</td>' +
+                '<td class="sync-cell-date">' + lastRecon + '</td>' +
+                '</tr>';
+        }).join("");
+    } catch (err) {
+        console.error("Erro ao carregar sync page", err);
+    }
+}
+
+// Reconciliar (sync page)
+document.addEventListener("click", async (e) => {
+    if (e.target.id === "btn-reconcile-all" || e.target.closest("#btn-reconcile-all")) {
+        const btn = document.getElementById("btn-reconcile-all");
+        if (btn) { btn.disabled = true; btn.textContent = "Reconciliando..."; }
+        try {
+            const res = await fetch("/api/sync/reconcile", { method: "POST" });
+            const data = await res.json();
+            if (btn) {
+                btn.innerHTML = data.jobId ? "Disparado!" : "Erro";
+                setTimeout(() => { btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg> Reconciliar Agora'; btn.disabled = false; loadSyncPage(); }, 3000);
+            }
+        } catch {
+            if (btn) { btn.textContent = "Erro"; setTimeout(() => { btn.textContent = "Reconciliar Agora"; btn.disabled = false; }, 3000); }
+        }
+    }
+    if (e.target.id === "btn-refresh-sync" || e.target.closest("#btn-refresh-sync")) {
+        loadSyncPage();
     }
 });
 
@@ -2293,6 +2394,11 @@ async function init() {
 
     // Reload button for automacao section
     $('#btn-reload-automacao')?.addEventListener('click', () => loadAutomacaoOverview());
+
+    // Click sync dot → navigate to sync page
+    const syncDotWrap = document.getElementById('sync-dot-wrap');
+    if (syncDotWrap) syncDotWrap.style.cursor = 'pointer';
+    syncDotWrap?.addEventListener('click', () => navigateTo('sync'));
 
     // Auto-refresh every 30s
     setInterval(updateDashboard, 30000);

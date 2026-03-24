@@ -4655,3 +4655,98 @@ kbd {
     color: var(--accent-primary);
     background: var(--accent-primary-subtle);
 }
+
+/* ============================================
+   Sync Page — Tabela detalhada
+   ============================================ */
+.sync-table-wrap {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.sync-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.sync-table thead th {
+    background: var(--bg-tertiary);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    white-space: nowrap;
+}
+
+.sync-table tbody td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-subtle, var(--border-primary));
+    color: var(--text-primary);
+}
+
+.sync-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.sync-table tbody tr:hover {
+    background: var(--bg-hover, rgba(255,255,255,0.02));
+}
+
+.sync-cell-client {
+    font-weight: 600;
+}
+
+.sync-cell-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.sync-cell-disc {
+    font-weight: 700;
+    color: var(--accent-red) !important;
+}
+
+.sync-cell-date {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.sync-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 10px;
+}
+
+.sync-badge-ok {
+    background: rgba(52, 211, 153, 0.15);
+    color: var(--accent-green);
+}
+
+.sync-badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: #F59E0B;
+}
+
+.sync-badge-error {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--accent-red);
+}
+
+@media (max-width: 768px) {
+    #sync-overview-stats > div {
+        grid-template-columns: 1fr 1fr !important;
+    }
+    .sync-table-wrap {
+        overflow-x: auto;
+    }
+}
