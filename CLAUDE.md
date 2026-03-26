@@ -1,6 +1,6 @@
 # Dashboard + Automação Planilhas — Lucari (automacao-lucari)
 
-> **Atualizado**: 2026-02-24 | **Versão**: 1.2 (configurações avançadas SDR)
+> **Atualizado**: 2026-03-26 | **Versão**: 1.3 (upgrade completo frontend SDR)
 
 ## Princípios de Operação
 
@@ -133,6 +133,64 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 Necessárias para o CRUD de usuários funcionar corretamente.
 
 ## Alterações Recentes
+
+### Upgrade completo do Frontend SDR (v1.3, 2026-03-26)
+Commit `ef2156c` — +987 linhas em 3 arquivos (app.js, index.html, style.css).
+
+**STAGE_CONFIG atualizado para PT-BR:**
+- Stages: `novo`, `em_conversa`, `qualificado`, `agendado`, `convertido`, `perdido`
+- Cores: indigo, zinc, amber, violet, green, red
+
+**Config Tab — Seção "SDR de IA" (nova):**
+- 8 toggles: sdr_enabled, sdr_auto_capture, sdr_scoring_enabled, auto_introduce, typing_simulation, restaurant_enabled, scheduling_enabled
+- Textarea: auto_introduce_instruction
+- Follow-up rules: tabela editável (delay_hours + message_template), max follow-ups, horário de envio
+- Scoring weights: tabela editável (response_time, engagement, interest_level, qualification, recency)
+- Escalation: keywords (lista), WhatsApp + email de notificação
+- Pipeline stages: display-only (pills coloridos)
+- Load via `GET /api/bot-config/{tenant_id}`, save via `PUT /api/bot-config/{tenant_id}`
+- Funções: `loadSdrBotConfig()`, `renderSdrBotConfig()`, `renderFollowUpRules()`, `renderScoringWeights()`
+
+**Leads Tab — Kanban robusto:**
+- Kanban com colunas por pipeline_stage (6 stages PT-BR)
+- Badges de temperatura: hot (#ef4444), warm (#f59e0b), cold (#3b82f6)
+- Tags como badges nos cards (max 3 visíveis + "+N")
+- Score bar visual em cada card
+- Stats no topo: total, novos hoje, taxa conversão, por temperatura
+- Filtros: busca por nome/telefone, dropdown temperatura
+- CSV Export button (`exportLeadsCsv()`)
+- Lead detail modal ao clicar: info completa, notas editáveis, mover stage (dropdown), adicionar tag
+- Funções: `renderLeadsKanban()`, `applyLeadFilters()`, `openLeadDetailModal()`, `handleMoveLeadStage()`, `handleAddLeadTag()`, `handleSaveLeadNotes()`
+
+**Conversations Tab — Melhorias:**
+- Badge de intent (greeting, question, complaint, interest, scheduling, order, farewell, other)
+- Dot de sentiment (positive=verde, neutral=cinza, negative=vermelho)
+- Score numérico na linha da conversa
+
+**Tab Cardápio (nova, condicional: restaurant_enabled):**
+- CRUD de categorias e itens
+- Tabela de itens por categoria com preço, status, botão remover
+- Botão "Sincronizar KB" (POST /api/menu/{tenant_id}/sync-kb)
+- Funções: `loadSdrMenu()`, `handleAddMenuCategory()`, `handleDeleteMenuCategory()`, `openAddItemModal()`, `handleDeleteMenuItem()`, `handleSyncMenuKB()`
+
+**Tab Pedidos (nova, condicional: restaurant_enabled):**
+- Tabela de pedidos: #, cliente, itens, total, status, data
+- Update de status inline via dropdown
+- Funções: `loadSdrOrders()`, `handleUpdateOrderStatus()`
+
+**Tab Agendamentos (nova, condicional: scheduling_enabled):**
+- Tabela: cliente, data/hora, tipo, status, notas
+- Update de status inline via dropdown
+- Funções: `loadSdrAppointments()`, `handleUpdateAppointmentStatus()`
+
+**Visibilidade condicional de tabs:**
+- `updateSdrTabVisibility()` — mostra/esconde tabs Menu, Pedidos, Agendamentos baseado em tenant.restaurant_enabled e tenant.scheduling_enabled
+
+**CSS adicionado:**
+- `.sdr-toggle-row` — layout para toggles checkbox
+- `.sdr-mini-stat` — mini cards de stats no kanban
+- `.sdr-table` — tabela estilizada para menu, pedidos, agendamentos
+- `.badge-status` — badge reutilizável colorido
 
 ### Configurações avançadas do SDR (v1.2, 2026-02-24)
 Novos campos na aba Configuração do tenant SDR:
