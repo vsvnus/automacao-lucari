@@ -147,8 +147,9 @@ function getSectionFromUrl() {
 // Sidebar navigation clicks
 $$('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
-        e.preventDefault();
         const section = item.dataset.section;
+        if (!section) return; // External links (e.g. SDR panel)
+        e.preventDefault();
         if (section !== state.currentSection) {
             navigateTo(section);
         }
