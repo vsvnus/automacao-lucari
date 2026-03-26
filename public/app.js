@@ -3249,8 +3249,14 @@ window.openSdrDetail = async function (tenantId) {
     // Update toggle button state
     updateToggleActiveBtn(tenant);
 
+    // Update tab visibility based on features
+    updateSdrTabVisibility();
+
     // Load stats
     loadSdrStats(tenantId);
+
+    // Load bot config
+    loadSdrBotConfig(tenantId);
 
     // Setup tabs
     switchSdrTab('config');
@@ -3297,6 +3303,19 @@ function switchSdrTab(tabName) {
     if (tabName === 'knowledge') loadSdrKnowledge(tenantId);
     if (tabName === 'conversations') loadSdrConversations(tenantId);
     if (tabName === 'leads') loadSdrLeads(tenantId);
+    if (tabName === 'menu') loadSdrMenu(tenantId);
+    if (tabName === 'orders') loadSdrOrders(tenantId);
+    if (tabName === 'appointments') loadSdrAppointments(tenantId);
+}
+
+function updateSdrTabVisibility() {
+    const tenant = sdrState.selectedTenant;
+    const menuTab = document.querySelector('.sdr-tab[data-tab="menu"]');
+    const ordersTab = document.querySelector('.sdr-tab[data-tab="orders"]');
+    const appointmentsTab = document.querySelector('.sdr-tab[data-tab="appointments"]');
+    if (menuTab) menuTab.style.display = tenant?.restaurant_enabled ? '' : 'none';
+    if (ordersTab) ordersTab.style.display = tenant?.restaurant_enabled ? '' : 'none';
+    if (appointmentsTab) appointmentsTab.style.display = tenant?.scheduling_enabled ? '' : 'none';
 }
 
 // --- SDR: Stats ---
@@ -3316,12 +3335,35 @@ async function loadSdrStats(tenantId) {
 }
 
 const STAGE_CONFIG = {
-    new: { label: 'Novo', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
-    interested: { label: 'Interessado', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)' },
-    qualified: { label: 'Qualificado', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
-    proposal: { label: 'Proposta', color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
-    won: { label: 'Ganho', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
-    lost: { label: 'Perdido', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+    novo: { label: 'Novo', color: '#6366f1', bg: 'rgba(99,102,241,0.15)' },
+    em_conversa: { label: 'Em Conversa', color: '#71717a', bg: 'rgba(113,113,122,0.15)' },
+    qualificado: { label: 'Qualificado', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+    agendado: { label: 'Agendado', color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
+    convertido: { label: 'Convertido', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+    perdido: { label: 'Perdido', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+};
+
+const TEMP_CONFIG = {
+    hot: { label: 'Quente', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+    warm: { label: 'Morno', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+    cold: { label: 'Frio', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
+};
+
+const INTENT_CONFIG = {
+    greeting: { label: 'Saudação', color: '#6366f1' },
+    question: { label: 'Pergunta', color: '#3b82f6' },
+    complaint: { label: 'Reclamação', color: '#ef4444' },
+    interest: { label: 'Interesse', color: '#22c55e' },
+    scheduling: { label: 'Agendamento', color: '#8b5cf6' },
+    order: { label: 'Pedido', color: '#f59e0b' },
+    farewell: { label: 'Despedida', color: '#71717a' },
+    other: { label: 'Outro', color: '#94a3b8' },
+};
+
+const SENTIMENT_CONFIG = {
+    positive: { label: 'Positivo', color: '#22c55e' },
+    neutral: { label: 'Neutro', color: '#71717a' },
+    negative: { label: 'Negativo', color: '#ef4444' },
 };
 
 async function loadSdrPipeline(tenantId) {
@@ -3755,19 +3797,28 @@ async function loadSdrConversations(tenantId) {
             const name = conv.contact_name || formatPhoneDisplay(phone) || 'Sem identificação';
 
             const ctx = conv.context || {};
-            const stage = ctx.stage || '';
+            const stage = ctx.stage || conv.pipeline_stage || '';
             const stageCfg = STAGE_CONFIG[stage];
             const stageBadge = stageCfg ? `<span class="badge-status badge-stage" style="background:${stageCfg.bg};color:${stageCfg.color};border:1px solid ${stageCfg.color}30;">${stageCfg.label}</span>` : '';
             const score = conv.lead_score || 0;
             const scoreBar = score > 0 ? `<div class="score-bar-mini"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div>` : '';
+
+            // Intent & Sentiment badges
+            const intent = ctx.intent || conv.last_intent || '';
+            const intentCfg = INTENT_CONFIG[intent];
+            const intentBadge = intentCfg ? `<span class="badge-status" style="background:${intentCfg.color}18;color:${intentCfg.color};font-size:0.65rem;padding:1px 6px;">${intentCfg.label}</span>` : '';
+
+            const sentiment = ctx.sentiment || conv.last_sentiment || '';
+            const sentimentCfg = SENTIMENT_CONFIG[sentiment];
+            const sentimentDot = sentimentCfg ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${sentimentCfg.color};margin-left:4px;" title="${sentimentCfg.label}"></span>` : '';
 
             div.innerHTML = `
                 <div class="activity-icon-wrapper" style="background:var(--accent-cyan-subtle);color:var(--accent-cyan);">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                 </div>
                 <div class="activity-content">
-                    <div class="activity-title">${escapeHtml(name)} ${stageBadge}</div>
-                    <div class="activity-subtitle">${escapeHtml(phone)} · ${conv.message_count || 0} msgs ${scoreBar}</div>
+                    <div class="activity-title">${escapeHtml(name)} ${stageBadge} ${intentBadge} ${sentimentDot}</div>
+                    <div class="activity-subtitle">${escapeHtml(phone)} · ${conv.message_count || 0} msgs ${score > 0 ? `· Score: ${score}` : ''} ${scoreBar}</div>
                 </div>
                 <div class="activity-meta">
                     <span class="activity-time">${escapeHtml(time)}</span>
@@ -3841,53 +3892,709 @@ async function loadSdrLeads(tenantId) {
         const leads = await res.json();
         sdrState.leads = leads || [];
 
-        if (sdrState.leads.length === 0) {
-            container.innerHTML = '<div class="activity-empty"><p>Nenhum lead encontrado</p><small>Leads são criados automaticamente a partir das conversas</small></div>';
-            return;
-        }
-
-        // Group leads by stage
-        const grouped = {};
-        for (const key of Object.keys(STAGE_CONFIG)) grouped[key] = [];
-        sdrState.leads.forEach(lead => {
-            const stage = lead.stage || 'new';
-            if (!grouped[stage]) grouped[stage] = [];
-            grouped[stage].push(lead);
-        });
-
-        container.innerHTML = `<div class="kanban-board">${Object.entries(STAGE_CONFIG).map(([key, cfg]) => {
-            const items = grouped[key] || [];
-            return `<div class="kanban-column">
-                    <div class="kanban-column-header" style="border-top:3px solid ${cfg.color};">
-                        <span class="kanban-column-title">${cfg.label}</span>
-                        <span class="kanban-column-count" style="background:${cfg.bg};color:${cfg.color}">${items.length}</span>
-                    </div>
-                    <div class="kanban-column-body">
-                        ${items.length === 0 ? '<div class="kanban-empty">—</div>' : items.map(lead => {
-                const phone = lead.phone || '';
-                const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
-                const interest = lead.interest || '';
-                const score = lead.lead_score || 0;
-                const date = lead.updated_at || lead.created_at;
-                const dateStr = date ? new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
-                return `<div class="kanban-card">
-                                <div class="kanban-card-name">${escapeHtml(name)}</div>
-                                <div class="kanban-card-phone">${escapeHtml(formatPhoneDisplay(phone))}</div>
-                                ${interest ? `<div class="kanban-card-interest">${escapeHtml(interest)}</div>` : ''}
-                                <div class="kanban-card-footer">
-                                    <div class="score-bar-mini"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div>
-                                    <span class="kanban-card-date">${escapeHtml(dateStr)}</span>
-                                </div>
-                            </div>`;
-            }).join('')}
-                    </div>
-                </div>`;
-        }).join('')
-            }</div>`;
+        renderLeadsKanban();
     } catch (err) {
         container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar leads</p><small>${escapeHtml(err.message)}</small></div>`;
     }
 }
+
+function renderLeadsKanban(filterStage, filterTemp, filterSearch) {
+    const container = $('#sdr-leads-list');
+    if (!container) return;
+
+    let leads = sdrState.leads || [];
+
+    // Apply filters
+    if (filterStage) leads = leads.filter(l => (l.pipeline_stage || l.stage) === filterStage);
+    if (filterTemp) leads = leads.filter(l => l.temperature === filterTemp);
+    if (filterSearch) {
+        const q = filterSearch.toLowerCase();
+        leads = leads.filter(l => {
+            const name = (l.name || l.contact_name || '').toLowerCase();
+            const phone = (l.phone || l.contact_phone || '').toLowerCase();
+            return name.includes(q) || phone.includes(q);
+        });
+    }
+
+    // Stats
+    const total = sdrState.leads.length;
+    const today = new Date().toISOString().split('T')[0];
+    const newToday = sdrState.leads.filter(l => l.created_at && l.created_at.startsWith(today)).length;
+    const converted = sdrState.leads.filter(l => (l.pipeline_stage || l.stage) === 'convertido').length;
+    const convRate = total > 0 ? ((converted / total) * 100).toFixed(1) : '0';
+    const hotCount = sdrState.leads.filter(l => l.temperature === 'hot').length;
+    const warmCount = sdrState.leads.filter(l => l.temperature === 'warm').length;
+    const coldCount = sdrState.leads.filter(l => l.temperature === 'cold').length;
+
+    // Group by stage
+    const grouped = {};
+    for (const key of Object.keys(STAGE_CONFIG)) grouped[key] = [];
+    leads.forEach(lead => {
+        const stage = lead.pipeline_stage || lead.stage || 'novo';
+        if (!grouped[stage]) grouped[stage] = [];
+        grouped[stage].push(lead);
+    });
+
+    const statsHtml = `
+        <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+            <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;">${total}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Total</span></div>
+                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;">${newToday}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Novos Hoje</span></div>
+                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;">${convRate}%</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Conversão</span></div>
+                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;color:#ef4444;">${hotCount}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Quentes</span></div>
+                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;color:#f59e0b;">${warmCount}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Mornos</span></div>
+                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;color:#3b82f6;">${coldCount}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Frios</span></div>
+            </div>
+            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+                <input type="text" id="sdr-lead-search" placeholder="Buscar nome/telefone..." class="setting-input" style="width:180px;height:32px;font-size:0.8rem;" value="${escapeHtml(filterSearch || '')}">
+                <select id="sdr-lead-filter-temp" class="setting-input" style="height:32px;font-size:0.8rem;padding:4px 8px;">
+                    <option value="">Temperatura</option>
+                    <option value="hot" ${filterTemp === 'hot' ? 'selected' : ''}>Quente</option>
+                    <option value="warm" ${filterTemp === 'warm' ? 'selected' : ''}>Morno</option>
+                    <option value="cold" ${filterTemp === 'cold' ? 'selected' : ''}>Frio</option>
+                </select>
+                <button class="btn-secondary btn-sm" onclick="exportLeadsCsv()" title="Exportar CSV">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    <span>CSV</span>
+                </button>
+            </div>
+        </div>`;
+
+    const kanbanHtml = `<div class="kanban-board">${Object.entries(STAGE_CONFIG).map(([key, cfg]) => {
+        const items = grouped[key] || [];
+        return `<div class="kanban-column">
+                <div class="kanban-column-header" style="border-top:3px solid ${cfg.color};">
+                    <span class="kanban-column-title">${cfg.label}</span>
+                    <span class="kanban-column-count" style="background:${cfg.bg};color:${cfg.color}">${items.length}</span>
+                </div>
+                <div class="kanban-column-body">
+                    ${items.length === 0 ? '<div class="kanban-empty">—</div>' : items.map(lead => {
+            const phone = lead.phone || lead.contact_phone || '';
+            const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
+            const interest = lead.interest || lead.interest_text || '';
+            const score = lead.lead_score || lead.score || 0;
+            const temp = lead.temperature || 'cold';
+            const tempCfg = TEMP_CONFIG[temp] || TEMP_CONFIG.cold;
+            const tags = Array.isArray(lead.tags) ? lead.tags : [];
+            const date = lead.updated_at || lead.created_at;
+            const dateStr = date ? new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+            return `<div class="kanban-card" onclick="openLeadDetailModal(${lead.id})" style="cursor:pointer;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                                <div class="kanban-card-name">${escapeHtml(name)}</div>
+                                <span class="badge-status" style="background:${tempCfg.bg};color:${tempCfg.color};font-size:0.65rem;padding:2px 6px;">${tempCfg.label}</span>
+                            </div>
+                            <div class="kanban-card-phone">${escapeHtml(formatPhoneDisplay(phone))}</div>
+                            ${interest ? `<div class="kanban-card-interest">${escapeHtml(interest)}</div>` : ''}
+                            ${tags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${tags.slice(0, 3).map(t => `<span style="font-size:0.6rem;padding:1px 5px;border-radius:8px;background:rgba(99,102,241,0.12);color:#6366f1;">${escapeHtml(t)}</span>`).join('')}${tags.length > 3 ? `<span style="font-size:0.6rem;color:var(--text-tertiary);">+${tags.length - 3}</span>` : ''}</div>` : ''}
+                            <div class="kanban-card-footer">
+                                <div class="score-bar-mini"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div>
+                                <span class="kanban-card-date">${escapeHtml(dateStr)}</span>
+                            </div>
+                        </div>`;
+        }).join('')}
+                </div>
+            </div>`;
+    }).join('')}</div>`;
+
+    if (leads.length === 0 && !filterStage && !filterTemp && !filterSearch) {
+        container.innerHTML = '<div class="activity-empty"><p>Nenhum lead encontrado</p><small>Leads são criados automaticamente a partir das conversas</small></div>';
+        return;
+    }
+
+    container.innerHTML = statsHtml + kanbanHtml;
+
+    // Attach filter event listeners
+    $('#sdr-lead-search')?.addEventListener('input', debounceLeadFilter);
+    $('#sdr-lead-filter-temp')?.addEventListener('change', () => applyLeadFilters());
+}
+
+let leadFilterTimer = null;
+function debounceLeadFilter() {
+    clearTimeout(leadFilterTimer);
+    leadFilterTimer = setTimeout(() => applyLeadFilters(), 300);
+}
+
+function applyLeadFilters() {
+    const search = $('#sdr-lead-search')?.value || '';
+    const temp = $('#sdr-lead-filter-temp')?.value || '';
+    renderLeadsKanban(null, temp, search);
+}
+
+// ============================================
+// SDR: Bot Config (SDR de IA settings)
+// ============================================
+
+let sdrBotConfig = {};
+
+async function loadSdrBotConfig(tenantId) {
+    try {
+        const res = await fetch(`${SDR_API_BASE}/bot-config/${tenantId}`);
+        if (!res.ok) return;
+        sdrBotConfig = await res.json();
+        renderSdrBotConfig(sdrBotConfig);
+    } catch { /* silent */ }
+}
+
+function renderSdrBotConfig(cfg) {
+    const f = id => $(`#${id}`);
+
+    // Toggles
+    if (f('cfg-sdr-enabled')) f('cfg-sdr-enabled').checked = cfg.sdr_enabled !== false;
+    if (f('cfg-sdr-auto-capture')) f('cfg-sdr-auto-capture').checked = cfg.sdr_auto_capture !== false;
+    if (f('cfg-sdr-scoring-enabled')) f('cfg-sdr-scoring-enabled').checked = cfg.sdr_scoring_enabled !== false;
+    if (f('cfg-auto-introduce')) f('cfg-auto-introduce').checked = !!cfg.auto_introduce;
+    if (f('cfg-auto-introduce-instruction')) f('cfg-auto-introduce-instruction').value = cfg.auto_introduce_instruction || '';
+    if (f('cfg-typing-simulation')) f('cfg-typing-simulation').checked = cfg.typing_simulation !== false;
+    if (f('cfg-restaurant-enabled')) f('cfg-restaurant-enabled').checked = !!cfg.restaurant_enabled;
+    if (f('cfg-scheduling-enabled')) f('cfg-scheduling-enabled').checked = !!cfg.scheduling_enabled;
+
+    // Pipeline stages display
+    const stagesContainer = f('cfg-pipeline-stages');
+    if (stagesContainer) {
+        stagesContainer.innerHTML = Object.entries(STAGE_CONFIG).map(([key, s]) =>
+            `<span class="badge-status" style="background:${s.bg};color:${s.color};border:1px solid ${s.color}30;margin:2px 4px 2px 0;padding:4px 10px;border-radius:12px;font-size:0.75rem;">${s.label}</span>`
+        ).join('');
+    }
+
+    // Follow-up rules
+    const rulesContainer = f('cfg-followup-rules-body');
+    if (rulesContainer) {
+        const rules = Array.isArray(cfg.sdr_follow_up_rules) ? cfg.sdr_follow_up_rules : [];
+        renderFollowUpRules(rules);
+    }
+    if (f('cfg-followup-max-sdr')) f('cfg-followup-max-sdr').value = cfg.sdr_follow_up_max ?? 3;
+    if (f('cfg-followup-hour-start')) f('cfg-followup-hour-start').value = cfg.sdr_follow_up_hours?.start || '08:00';
+    if (f('cfg-followup-hour-end')) f('cfg-followup-hour-end').value = cfg.sdr_follow_up_hours?.end || '20:00';
+
+    // Scoring weights
+    const weightsContainer = f('cfg-scoring-weights-body');
+    if (weightsContainer) {
+        const weights = cfg.sdr_scoring_weights || {};
+        renderScoringWeights(weights);
+    }
+
+    // Escalation
+    if (f('cfg-escalation-keywords')) {
+        const kw = Array.isArray(cfg.escalation_keywords) ? cfg.escalation_keywords.join(', ') : (cfg.escalation_keywords || '');
+        f('cfg-escalation-keywords').value = kw;
+    }
+    if (f('cfg-escalation-phone')) f('cfg-escalation-phone').value = cfg.escalation_notify_whatsapp || '';
+    if (f('cfg-escalation-email')) f('cfg-escalation-email').value = cfg.escalation_notify_email || '';
+}
+
+function renderFollowUpRules(rules) {
+    const body = $('#cfg-followup-rules-body');
+    if (!body) return;
+    body.innerHTML = '';
+    rules.forEach((rule, i) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="number" class="setting-input followup-delay" value="${rule.delay_hours || 24}" min="1" style="width:80px;"></td>
+            <td><input type="text" class="setting-input followup-template" value="${escapeHtml(rule.message_template || '')}" style="width:100%;"></td>
+            <td><button type="button" class="btn-icon" onclick="this.closest('tr').remove()" title="Remover"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></td>`;
+        body.appendChild(row);
+    });
+}
+
+function renderScoringWeights(weights) {
+    const body = $('#cfg-scoring-weights-body');
+    if (!body) return;
+    const defaultWeights = { response_time: 20, engagement: 20, interest_level: 20, qualification: 20, recency: 20 };
+    const merged = { ...defaultWeights, ...weights };
+    const labels = { response_time: 'Tempo de Resposta', engagement: 'Engajamento', interest_level: 'Nível de Interesse', qualification: 'Qualificação', recency: 'Recência' };
+    body.innerHTML = '';
+    Object.entries(merged).forEach(([key, val]) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td style="font-size:0.8rem;">${labels[key] || key}</td>
+            <td><input type="number" class="setting-input scoring-weight" data-key="${key}" value="${val}" min="0" max="100" style="width:80px;"></td>`;
+        body.appendChild(row);
+    });
+}
+
+window.addFollowUpRule = function() {
+    const body = $('#cfg-followup-rules-body');
+    if (!body) return;
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td><input type="number" class="setting-input followup-delay" value="24" min="1" style="width:80px;"></td>
+        <td><input type="text" class="setting-input followup-template" value="" placeholder="Olá! Vi que conversamos recentemente..." style="width:100%;"></td>
+        <td><button type="button" class="btn-icon" onclick="this.closest('tr').remove()" title="Remover"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></td>`;
+    body.appendChild(row);
+};
+
+$('#btn-save-sdr-bot-config')?.addEventListener('click', async () => {
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    const btn = $('#btn-save-sdr-bot-config');
+    if (btn) { btn.disabled = true; btn.querySelector('span').textContent = 'Salvando...'; }
+
+    try {
+        // Collect follow-up rules
+        const rules = [];
+        $$('#cfg-followup-rules-body tr').forEach(row => {
+            const delay = parseInt(row.querySelector('.followup-delay')?.value) || 24;
+            const template = row.querySelector('.followup-template')?.value || '';
+            if (template) rules.push({ delay_hours: delay, message_template: template });
+        });
+
+        // Collect scoring weights
+        const weights = {};
+        $$('#cfg-scoring-weights-body .scoring-weight').forEach(inp => {
+            weights[inp.dataset.key] = parseInt(inp.value) || 0;
+        });
+
+        // Collect escalation keywords
+        const kwRaw = $('#cfg-escalation-keywords')?.value || '';
+        const keywords = kwRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+        const data = {
+            sdr_enabled: $('#cfg-sdr-enabled')?.checked ?? true,
+            sdr_auto_capture: $('#cfg-sdr-auto-capture')?.checked ?? true,
+            sdr_scoring_enabled: $('#cfg-sdr-scoring-enabled')?.checked ?? true,
+            auto_introduce: $('#cfg-auto-introduce')?.checked ?? false,
+            auto_introduce_instruction: $('#cfg-auto-introduce-instruction')?.value?.trim() || '',
+            typing_simulation: $('#cfg-typing-simulation')?.checked ?? true,
+            restaurant_enabled: $('#cfg-restaurant-enabled')?.checked ?? false,
+            scheduling_enabled: $('#cfg-scheduling-enabled')?.checked ?? false,
+            sdr_follow_up_rules: rules,
+            sdr_follow_up_max: parseInt($('#cfg-followup-max-sdr')?.value) || 3,
+            sdr_follow_up_hours: {
+                start: $('#cfg-followup-hour-start')?.value || '08:00',
+                end: $('#cfg-followup-hour-end')?.value || '20:00',
+            },
+            sdr_scoring_weights: weights,
+            escalation_keywords: keywords,
+            escalation_notify_whatsapp: $('#cfg-escalation-phone')?.value?.trim() || '',
+            escalation_notify_email: $('#cfg-escalation-email')?.value?.trim() || '',
+        };
+
+        const res = await fetch(`${SDR_API_BASE}/bot-config/${tenantId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Erro ao salvar');
+        }
+
+        sdrBotConfig = await res.json();
+        showToast('Configurações SDR salvas!', 'success');
+
+        // Update tenant feature flags locally
+        if (sdrState.selectedTenant) {
+            sdrState.selectedTenant.restaurant_enabled = data.restaurant_enabled;
+            sdrState.selectedTenant.scheduling_enabled = data.scheduling_enabled;
+        }
+        updateSdrTabVisibility();
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.querySelector('span').textContent = 'Salvar Config SDR'; }
+    }
+});
+
+// ============================================
+// SDR: Menu Tab (Restaurant)
+// ============================================
+
+async function loadSdrMenu(tenantId) {
+    const container = $('#sdr-menu-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/menu/${tenantId}/categories`);
+        if (!res.ok) throw new Error('Erro ao carregar');
+        const categories = await res.json();
+
+        if (!categories || categories.length === 0) {
+            container.innerHTML = '<div class="activity-empty"><p>Nenhuma categoria cadastrada</p><small>Adicione categorias para montar o cardápio</small></div>';
+            return;
+        }
+
+        container.innerHTML = categories.map(cat => `
+            <div class="card" style="margin-bottom:12px;">
+                <div class="card-header">
+                    <h3 style="font-size:0.9rem;">${escapeHtml(cat.name)}</h3>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn-icon" onclick="handleDeleteMenuCategory(${cat.id})" title="Remover categoria">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                    </div>
+                </div>
+                <div style="padding:12px;">
+                    ${cat.description ? `<p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:8px;">${escapeHtml(cat.description)}</p>` : ''}
+                    ${(cat.items && cat.items.length > 0) ? `
+                        <table class="sdr-table" style="width:100%;">
+                            <thead><tr><th>Item</th><th>Preço</th><th>Status</th><th></th></tr></thead>
+                            <tbody>${cat.items.map(item => `
+                                <tr>
+                                    <td style="font-size:0.8rem;">${escapeHtml(item.name)}${item.description ? `<br><small style="color:var(--text-tertiary);">${escapeHtml(item.description)}</small>` : ''}</td>
+                                    <td style="font-size:0.8rem;">R$ ${(item.price || 0).toFixed(2)}</td>
+                                    <td><span class="badge-status" style="background:${item.available !== false ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'};color:${item.available !== false ? '#22c55e' : '#ef4444'};">${item.available !== false ? 'Disponível' : 'Indisponível'}</span></td>
+                                    <td><button class="btn-icon" onclick="handleDeleteMenuItem(${item.id})" title="Remover"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button></td>
+                                </tr>
+                            `).join('')}</tbody>
+                        </table>
+                    ` : '<p style="font-size:0.8rem;color:var(--text-tertiary);">Nenhum item nesta categoria</p>'}
+                    <button class="btn-secondary btn-sm" onclick="openAddItemModal(${cat.id}, '${escapeJsString(cat.name)}')" style="margin-top:8px;">+ Adicionar Item</button>
+                </div>
+            </div>
+        `).join('');
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar menu</p><small>${escapeHtml(err.message)}</small></div>`;
+    }
+}
+
+window.handleAddMenuCategory = async function() {
+    const name = prompt('Nome da categoria:');
+    if (!name) return;
+    const description = prompt('Descrição (opcional):') || '';
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/menu/${tenantId}/categories`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, description }),
+        });
+        if (!res.ok) throw new Error('Erro ao criar categoria');
+        showToast('Categoria criada!', 'success');
+        loadSdrMenu(tenantId);
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+window.handleDeleteMenuCategory = async function(categoryId) {
+    if (!confirm('Remover esta categoria e todos os itens?')) return;
+    try {
+        const res = await fetch(`${SDR_API_BASE}/menu/categories/${categoryId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Erro ao remover');
+        showToast('Categoria removida!', 'success');
+        loadSdrMenu(sdrState.selectedTenantId);
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+window.openAddItemModal = async function(categoryId, categoryName) {
+    const name = prompt(`Novo item em "${categoryName}":\nNome:`);
+    if (!name) return;
+    const price = parseFloat(prompt('Preço (ex: 29.90):') || '0');
+    const description = prompt('Descrição (opcional):') || '';
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/menu/${tenantId}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category_id: categoryId, name, price, description }),
+        });
+        if (!res.ok) throw new Error('Erro ao criar item');
+        showToast('Item adicionado!', 'success');
+        loadSdrMenu(tenantId);
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+window.handleDeleteMenuItem = async function(itemId) {
+    if (!confirm('Remover este item?')) return;
+    try {
+        const res = await fetch(`${SDR_API_BASE}/menu/items/${itemId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Erro ao remover');
+        showToast('Item removido!', 'success');
+        loadSdrMenu(sdrState.selectedTenantId);
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+window.handleSyncMenuKB = async function() {
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+    try {
+        showToast('Sincronizando cardápio com Knowledge Base...', 'info');
+        const res = await fetch(`${SDR_API_BASE}/menu/${tenantId}/sync-kb`, { method: 'POST' });
+        if (!res.ok) throw new Error('Erro na sincronização');
+        showToast('Cardápio sincronizado com KB!', 'success');
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+// ============================================
+// SDR: Orders Tab
+// ============================================
+
+async function loadSdrOrders(tenantId) {
+    const container = $('#sdr-orders-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/orders/?tenant_id=${tenantId}`);
+        if (!res.ok) throw new Error('Erro ao carregar');
+        const orders = await res.json();
+
+        if (!orders || orders.length === 0) {
+            container.innerHTML = '<div class="activity-empty"><p>Nenhum pedido encontrado</p></div>';
+            return;
+        }
+
+        const statusColors = {
+            pending: { label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+            confirmed: { label: 'Confirmado', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+            preparing: { label: 'Preparando', color: '#8b5cf6', bg: 'rgba(139,92,246,0.15)' },
+            ready: { label: 'Pronto', color: '#06b6d4', bg: 'rgba(6,182,212,0.15)' },
+            delivered: { label: 'Entregue', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+            cancelled: { label: 'Cancelado', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+        };
+
+        container.innerHTML = `
+            <table class="sdr-table" style="width:100%;">
+                <thead><tr><th>#</th><th>Cliente</th><th>Itens</th><th>Total</th><th>Status</th><th>Data</th><th></th></tr></thead>
+                <tbody>${orders.map(order => {
+                    const st = statusColors[order.status] || statusColors.pending;
+                    const itemsStr = Array.isArray(order.items) ? order.items.map(i => `${i.quantity || 1}x ${i.name || 'Item'}`).join(', ') : '-';
+                    const date = order.created_at ? new Date(order.created_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+                    return `<tr>
+                        <td style="font-size:0.8rem;font-weight:600;">${order.id}</td>
+                        <td style="font-size:0.8rem;">${escapeHtml(order.customer_name || order.contact_phone || '-')}</td>
+                        <td style="font-size:0.8rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(itemsStr)}</td>
+                        <td style="font-size:0.8rem;font-weight:600;">R$ ${(order.total || 0).toFixed(2)}</td>
+                        <td><span class="badge-status" style="background:${st.bg};color:${st.color};">${st.label}</span></td>
+                        <td style="font-size:0.75rem;color:var(--text-tertiary);">${date}</td>
+                        <td>
+                            <select class="setting-input" style="font-size:0.75rem;padding:4px 8px;" onchange="handleUpdateOrderStatus(${order.id}, this.value)">
+                                ${Object.entries(statusColors).map(([k,v]) => `<option value="${k}" ${order.status === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                            </select>
+                        </td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`;
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar pedidos</p><small>${escapeHtml(err.message)}</small></div>`;
+    }
+}
+
+window.handleUpdateOrderStatus = async function(orderId, newStatus) {
+    try {
+        const res = await fetch(`${SDR_API_BASE}/orders/${orderId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) throw new Error('Erro ao atualizar');
+        showToast('Status atualizado!', 'success');
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+// ============================================
+// SDR: Appointments Tab
+// ============================================
+
+async function loadSdrAppointments(tenantId) {
+    const container = $('#sdr-appointments-list');
+    if (!container) return;
+
+    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/appointments/?tenant_id=${tenantId}`);
+        if (!res.ok) throw new Error('Erro ao carregar');
+        const appointments = await res.json();
+
+        if (!appointments || appointments.length === 0) {
+            container.innerHTML = '<div class="activity-empty"><p>Nenhum agendamento encontrado</p></div>';
+            return;
+        }
+
+        const statusColors = {
+            scheduled: { label: 'Agendado', color: '#3b82f6', bg: 'rgba(59,130,246,0.15)' },
+            confirmed: { label: 'Confirmado', color: '#22c55e', bg: 'rgba(34,197,94,0.15)' },
+            completed: { label: 'Realizado', color: '#71717a', bg: 'rgba(113,113,122,0.15)' },
+            cancelled: { label: 'Cancelado', color: '#ef4444', bg: 'rgba(239,68,68,0.15)' },
+            no_show: { label: 'Não Compareceu', color: '#f59e0b', bg: 'rgba(245,158,11,0.15)' },
+        };
+
+        container.innerHTML = `
+            <table class="sdr-table" style="width:100%;">
+                <thead><tr><th>Cliente</th><th>Data/Hora</th><th>Tipo</th><th>Status</th><th>Notas</th><th></th></tr></thead>
+                <tbody>${appointments.map(apt => {
+                    const st = statusColors[apt.status] || statusColors.scheduled;
+                    const dateStr = apt.scheduled_at ? new Date(apt.scheduled_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '-';
+                    return `<tr>
+                        <td style="font-size:0.8rem;">${escapeHtml(apt.customer_name || apt.contact_phone || '-')}</td>
+                        <td style="font-size:0.8rem;font-weight:600;">${dateStr}</td>
+                        <td style="font-size:0.8rem;">${escapeHtml(apt.appointment_type || apt.type || '-')}</td>
+                        <td><span class="badge-status" style="background:${st.bg};color:${st.color};">${st.label}</span></td>
+                        <td style="font-size:0.75rem;color:var(--text-tertiary);max-width:200px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(apt.notes || '-')}</td>
+                        <td>
+                            <select class="setting-input" style="font-size:0.75rem;padding:4px 8px;" onchange="handleUpdateAppointmentStatus(${apt.id}, this.value)">
+                                ${Object.entries(statusColors).map(([k,v]) => `<option value="${k}" ${apt.status === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                            </select>
+                        </td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`;
+    } catch (err) {
+        container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar agendamentos</p><small>${escapeHtml(err.message)}</small></div>`;
+    }
+}
+
+window.handleUpdateAppointmentStatus = async function(appointmentId, newStatus) {
+    try {
+        const res = await fetch(`${SDR_API_BASE}/appointments/${appointmentId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) throw new Error('Erro ao atualizar');
+        showToast('Status atualizado!', 'success');
+    } catch (err) { showToast(err.message, 'error'); }
+};
+
+// ============================================
+// SDR: Leads Detail Modal
+// ============================================
+
+window.openLeadDetailModal = function(leadId) {
+    const lead = sdrState.leads.find(l => l.id === leadId || String(l.id) === String(leadId));
+    if (!lead) return;
+
+    const modal = $('#modal-lead-detail');
+    if (!modal) return;
+
+    const tempCfg = TEMP_CONFIG[lead.temperature] || TEMP_CONFIG.cold;
+    const stageCfg = STAGE_CONFIG[lead.pipeline_stage || lead.stage || 'novo'] || STAGE_CONFIG.novo;
+    const score = lead.lead_score || lead.score || 0;
+    const tags = Array.isArray(lead.tags) ? lead.tags : [];
+
+    const body = $('#lead-detail-body');
+    if (body) {
+        body.innerHTML = `
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Nome</label><div style="font-weight:600;">${escapeHtml(lead.name || lead.contact_name || 'Sem nome')}</div></div>
+                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Telefone</label><div>${escapeHtml(lead.phone || lead.contact_phone || '-')}</div></div>
+                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Email</label><div>${escapeHtml(lead.email || '-')}</div></div>
+                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Score</label><div style="display:flex;align-items:center;gap:8px;"><div class="score-bar-mini" style="width:60px;"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div><span style="font-weight:600;">${score}</span></div></div>
+                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Temperatura</label><div><span class="badge-status" style="background:${tempCfg.bg};color:${tempCfg.color};">${tempCfg.label}</span></div></div>
+                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Stage</label><div>
+                    <select id="lead-detail-stage" class="setting-input" style="font-size:0.8rem;padding:4px 8px;" onchange="handleMoveLeadStage(${lead.id}, this.value)">
+                        ${Object.entries(STAGE_CONFIG).map(([k,v]) => `<option value="${k}" ${(lead.pipeline_stage || lead.stage) === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                    </select>
+                </div></div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Tags</label>
+                <div id="lead-detail-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+                    ${tags.map(t => `<span class="badge-status" style="background:rgba(99,102,241,0.15);color:#6366f1;font-size:0.7rem;">${escapeHtml(t)}</span>`).join('')}
+                    <button class="btn-icon" onclick="handleAddLeadTag(${lead.id})" title="Adicionar tag" style="width:24px;height:24px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                </div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Notas</label>
+                <textarea id="lead-detail-notes" class="setting-input" rows="3" style="margin-top:4px;width:100%;">${escapeHtml(lead.notes || '')}</textarea>
+                <button class="btn-secondary btn-sm" onclick="handleSaveLeadNotes(${lead.id})" style="margin-top:4px;">Salvar Notas</button>
+            </div>
+            <div>
+                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Interesse</label>
+                <div style="font-size:0.85rem;margin-top:4px;">${escapeHtml(lead.interest || lead.interest_text || '-')}</div>
+            </div>
+            <div style="margin-top:12px;">
+                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Criado em</label>
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${lead.created_at ? new Date(lead.created_at).toLocaleString('pt-BR') : '-'}</div>
+            </div>`;
+    }
+
+    modal.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+};
+
+window.closeLeadDetailModal = function() {
+    const modal = $('#modal-lead-detail');
+    if (modal) modal.classList.remove('visible');
+    document.body.style.overflow = '';
+};
+
+window.handleMoveLeadStage = async function(leadId, newStage) {
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads/${leadId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pipeline_stage: newStage }),
+        });
+        if (res.ok) {
+            showToast('Stage atualizado!', 'success');
+            const lead = sdrState.leads.find(l => String(l.id) === String(leadId));
+            if (lead) { lead.pipeline_stage = newStage; lead.stage = newStage; }
+        }
+    } catch { /* silent */ }
+};
+
+window.handleAddLeadTag = async function(leadId) {
+    const tag = prompt('Nova tag:');
+    if (!tag) return;
+    const lead = sdrState.leads.find(l => String(l.id) === String(leadId));
+    if (!lead) return;
+    const tags = Array.isArray(lead.tags) ? [...lead.tags, tag.trim()] : [tag.trim()];
+    const tenantId = sdrState.selectedTenantId;
+    try {
+        await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads/${leadId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tags }),
+        });
+        lead.tags = tags;
+        openLeadDetailModal(leadId);
+        showToast('Tag adicionada!', 'success');
+    } catch { showToast('Erro ao adicionar tag', 'error'); }
+};
+
+window.handleSaveLeadNotes = async function(leadId) {
+    const notes = $('#lead-detail-notes')?.value || '';
+    const tenantId = sdrState.selectedTenantId;
+    try {
+        await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads/${leadId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes }),
+        });
+        const lead = sdrState.leads.find(l => String(l.id) === String(leadId));
+        if (lead) lead.notes = notes;
+        showToast('Notas salvas!', 'success');
+    } catch { showToast('Erro ao salvar notas', 'error'); }
+};
+
+window.exportLeadsCsv = function() {
+    if (!sdrState.leads || sdrState.leads.length === 0) {
+        showToast('Nenhum lead para exportar', 'error');
+        return;
+    }
+    const headers = ['Nome', 'Telefone', 'Email', 'Score', 'Temperatura', 'Stage', 'Tags', 'Interesse', 'Criado em'];
+    const rows = sdrState.leads.map(l => [
+        l.name || l.contact_name || '',
+        l.phone || l.contact_phone || '',
+        l.email || '',
+        l.lead_score || l.score || 0,
+        l.temperature || '',
+        l.pipeline_stage || l.stage || '',
+        Array.isArray(l.tags) ? l.tags.join(';') : '',
+        l.interest || '',
+        l.created_at || '',
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `leads_${sdrState.selectedTenantId}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exportado!', 'success');
+};
 
 // ============================================
 // SDR: OpenAI API Key Management

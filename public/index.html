@@ -1424,6 +1424,9 @@
                     <button class="sdr-tab" data-tab="knowledge">Knowledge Base</button>
                     <button class="sdr-tab" data-tab="conversations">Conversas</button>
                     <button class="sdr-tab" data-tab="leads">Leads</button>
+                    <button class="sdr-tab" data-tab="menu" style="display:none;">Cardápio</button>
+                    <button class="sdr-tab" data-tab="orders" style="display:none;">Pedidos</button>
+                    <button class="sdr-tab" data-tab="appointments" style="display:none;">Agendamentos</button>
                 </div>
 
                 <!-- Tab: Config (editable) -->
@@ -1618,6 +1621,107 @@
                             </button>
                         </div>
                     </form>
+
+                    <!-- SDR de IA Config (bot-config endpoint) -->
+                    <div style="border-top:2px solid var(--border-subtle);margin-top:8px;padding-top:16px;">
+                        <h3 style="font-size:1rem;font-weight:700;margin-bottom:16px;color:var(--text-primary);">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px;margin-right:6px;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                            SDR de IA
+                        </h3>
+
+                        <!-- Toggles -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header"><h3>Funcionalidades</h3></div>
+                            <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                <label class="sdr-toggle-row"><input type="checkbox" id="cfg-sdr-enabled" checked><span>SDR Habilitado</span></label>
+                                <label class="sdr-toggle-row"><input type="checkbox" id="cfg-sdr-auto-capture" checked><span>Auto-captura de Leads</span></label>
+                                <label class="sdr-toggle-row"><input type="checkbox" id="cfg-sdr-scoring-enabled" checked><span>Scoring Automático</span></label>
+                                <label class="sdr-toggle-row"><input type="checkbox" id="cfg-auto-introduce"><span>Auto-introdução IA</span></label>
+                                <label class="sdr-toggle-row"><input type="checkbox" id="cfg-typing-simulation" checked><span>Simulação de Digitação</span></label>
+                                <label class="sdr-toggle-row"><input type="checkbox" id="cfg-restaurant-enabled"><span>Restaurante Habilitado</span></label>
+                                <label class="sdr-toggle-row"><input type="checkbox" id="cfg-scheduling-enabled"><span>Agendamento Habilitado</span></label>
+                                <div class="form-group" style="grid-column:1/-1;">
+                                    <label for="cfg-auto-introduce-instruction">Instrução de Auto-introdução</label>
+                                    <textarea id="cfg-auto-introduce-instruction" class="setting-input" rows="2" placeholder="Apresente-se como assistente virtual da empresa..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pipeline Stages (display only) -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header"><h3>Estágios do Pipeline</h3></div>
+                            <div style="padding:16px;" id="cfg-pipeline-stages"></div>
+                        </div>
+
+                        <!-- Follow-up Rules -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header">
+                                <h3>Regras de Follow-up</h3>
+                                <button type="button" class="btn-secondary btn-sm" onclick="addFollowUpRule()">+ Regra</button>
+                            </div>
+                            <div style="padding:16px;">
+                                <table class="sdr-table" style="width:100%;margin-bottom:12px;">
+                                    <thead><tr><th>Delay (horas)</th><th>Mensagem Template</th><th></th></tr></thead>
+                                    <tbody id="cfg-followup-rules-body"></tbody>
+                                </table>
+                                <div class="sdr-form-grid">
+                                    <div class="form-group">
+                                        <label for="cfg-followup-max-sdr">Máx. Follow-ups</label>
+                                        <input type="number" id="cfg-followup-max-sdr" placeholder="3" min="0" max="20">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Horário de Envio</label>
+                                        <div style="display:flex;gap:8px;align-items:center;">
+                                            <input type="time" id="cfg-followup-hour-start" class="setting-input" value="08:00">
+                                            <span style="color:var(--text-tertiary);font-size:0.8rem;">até</span>
+                                            <input type="time" id="cfg-followup-hour-end" class="setting-input" value="20:00">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Scoring Weights -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header"><h3>Pesos de Scoring</h3></div>
+                            <div style="padding:16px;">
+                                <table class="sdr-table" style="width:100%;">
+                                    <thead><tr><th>Critério</th><th>Peso</th></tr></thead>
+                                    <tbody id="cfg-scoring-weights-body"></tbody>
+                                </table>
+                                <small class="form-hint" style="margin-top:8px;display:block;">Total deve somar 100</small>
+                            </div>
+                        </div>
+
+                        <!-- Escalation -->
+                        <div class="card" style="margin-bottom:16px;">
+                            <div class="card-header"><h3>Escalação</h3></div>
+                            <div class="sdr-form-grid" style="padding:16px;">
+                                <div class="form-group" style="grid-column:1/-1;">
+                                    <label for="cfg-escalation-keywords">Palavras-chave de Escalação</label>
+                                    <input type="text" id="cfg-escalation-keywords" placeholder="urgente, reclamação, cancelar, gerente">
+                                    <small class="form-hint">Separadas por vírgula. Quando detectadas, aciona escalação.</small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-escalation-phone">WhatsApp para Notificação</label>
+                                    <input type="text" id="cfg-escalation-phone" placeholder="5511999999999">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cfg-escalation-email">Email para Notificação</label>
+                                    <input type="email" id="cfg-escalation-email" placeholder="gestor@empresa.com">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex;justify-content:flex-end;gap:8px;padding:4px 0 16px;">
+                            <button type="button" class="btn-primary" id="btn-save-sdr-bot-config">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                                <span>Salvar Config SDR</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Tab: WhatsApp -->
@@ -1756,6 +1860,70 @@
                     </div>
                 </div>
 
+                <!-- Tab: Menu (Cardápio) -->
+                <div class="sdr-tab-content" id="sdr-tab-menu">
+                    <div class="card" style="margin-bottom:16px;">
+                        <div class="card-header">
+                            <h3>Cardápio</h3>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn-secondary btn-sm" onclick="handleSyncMenuKB()" title="Sincronizar com Knowledge Base">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                    <span>Sincronizar KB</span>
+                                </button>
+                                <button class="btn-primary btn-sm" onclick="handleAddMenuCategory()">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                    <span>Nova Categoria</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="sdr-menu-list">
+                        <div class="activity-empty"><p>Nenhuma categoria cadastrada</p></div>
+                    </div>
+                </div>
+
+                <!-- Tab: Pedidos (Orders) -->
+                <div class="sdr-tab-content" id="sdr-tab-orders">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Pedidos</h3>
+                        </div>
+                        <div id="sdr-orders-list" style="padding:16px;">
+                            <div class="activity-empty"><p>Nenhum pedido encontrado</p></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Agendamentos (Appointments) -->
+                <div class="sdr-tab-content" id="sdr-tab-appointments">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Agendamentos</h3>
+                        </div>
+                        <div id="sdr-appointments-list" style="padding:16px;">
+                            <div class="activity-empty"><p>Nenhum agendamento encontrado</p></div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Modal: Lead Detail -->
+            <div class="modal-overlay" id="modal-lead-detail">
+                <div class="modal" style="max-width:560px;">
+                    <div class="modal-header">
+                        <h3>Detalhes do Lead</h3>
+                        <button class="btn-icon" onclick="closeLeadDetailModal()">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="modal-body" id="lead-detail-body" style="padding:20px;">
+                        <div class="activity-empty"><p>Carregando...</p></div>
+                    </div>
+                </div>
             </div>
         </section>
 

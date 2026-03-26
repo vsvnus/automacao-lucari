@@ -4750,3 +4750,67 @@ kbd {
         overflow-x: auto;
     }
 }
+
+/* SDR Toggle Row */
+.sdr-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    padding: 6px 0;
+}
+.sdr-toggle-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent-primary, #6366f1);
+    cursor: pointer;
+}
+
+/* SDR Mini Stat */
+.sdr-mini-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    min-width: 60px;
+}
+
+/* SDR Table */
+.sdr-table {
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.sdr-table th {
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-weight: 600;
+}
+.sdr-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: middle;
+}
+.sdr-table tbody tr:hover {
+    background: var(--bg-surface-hover, rgba(255,255,255,0.03));
+}
+
+/* Badge Status (reusable) */
+.badge-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
