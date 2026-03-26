@@ -2874,6 +2874,11 @@ const sdrState = {
     leads: [],
     pipeline: {},
     selectedConversationId: null,
+    leadsViewMode: 'kanban',
+    leadsPage: 1,
+    leadsPageSize: 25,
+    dragLeadId: null,
+    dragOverCol: null,
 };
 
 // --- SDR: Load Tenant List ---
@@ -3884,27 +3889,55 @@ async function loadSdrLeads(tenantId) {
     const container = $('#sdr-leads-list');
     if (!container) return;
 
-    container.innerHTML = '<div class="activity-empty"><p>Carregando...</p></div>';
+    container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;padding:48px 0;"><div style="width:24px;height:24px;border:2px solid #6366f1;border-top-color:transparent;border-radius:50%;animation:spin 0.6s linear infinite;"></div></div>';
 
     try {
         const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads`);
         if (!res.ok) throw new Error('Erro ao carregar');
         const leads = await res.json();
         sdrState.leads = leads || [];
+        sdrState.leadsPage = 1;
 
-        renderLeadsKanban();
+        renderLeadsView();
     } catch (err) {
         container.innerHTML = `<div class="activity-empty"><p>Erro ao carregar leads</p><small>${escapeHtml(err.message)}</small></div>`;
     }
 }
 
-function renderLeadsKanban(filterStage, filterTemp, filterSearch) {
-    const container = $('#sdr-leads-list');
-    if (!container) return;
+function formatRelativeTime(dateStr) {
+    if (!dateStr) return '';
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'agora';
+    if (diffMin < 60) return `${diffMin}min`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH}h`;
+    const diffD = Math.floor(diffH / 24);
+    if (diffD < 30) return `${diffD}d`;
+    const diffM = Math.floor(diffD / 30);
+    return `${diffM}m`;
+}
 
+function getScoreBarColor(score) {
+    if (score >= 70) return '#22c55e';
+    if (score >= 40) return '#f59e0b';
+    return '#6366f1';
+}
+
+function getScoreColor(score) {
+    if (score >= 70) return '#22c55e';
+    if (score >= 40) return '#f59e0b';
+    return '#94a3b8';
+}
+
+function getFilteredLeads() {
     let leads = sdrState.leads || [];
+    const filterStage = $('#sdr-lead-filter-stage')?.value || '';
+    const filterTemp = $('#sdr-lead-filter-temp')?.value || '';
+    const filterSearch = $('#sdr-lead-search')?.value || '';
 
-    // Apply filters
     if (filterStage) leads = leads.filter(l => (l.pipeline_stage || l.stage) === filterStage);
     if (filterTemp) leads = leads.filter(l => l.temperature === filterTemp);
     if (filterSearch) {
@@ -3912,100 +3945,354 @@ function renderLeadsKanban(filterStage, filterTemp, filterSearch) {
         leads = leads.filter(l => {
             const name = (l.name || l.contact_name || '').toLowerCase();
             const phone = (l.phone || l.contact_phone || '').toLowerCase();
-            return name.includes(q) || phone.includes(q);
+            const email = (l.email || '').toLowerCase();
+            return name.includes(q) || phone.includes(q) || email.includes(q);
         });
     }
+    return leads;
+}
+
+function renderLeadsView() {
+    const container = $('#sdr-leads-list');
+    if (!container) return;
+
+    const allLeads = sdrState.leads || [];
+    const filtered = getFilteredLeads();
 
     // Stats
-    const total = sdrState.leads.length;
+    const total = allLeads.length;
     const today = new Date().toISOString().split('T')[0];
-    const newToday = sdrState.leads.filter(l => l.created_at && l.created_at.startsWith(today)).length;
-    const converted = sdrState.leads.filter(l => (l.pipeline_stage || l.stage) === 'convertido').length;
+    const newToday = allLeads.filter(l => l.created_at && l.created_at.startsWith(today)).length;
+    const converted = allLeads.filter(l => (l.pipeline_stage || l.stage) === 'convertido').length;
     const convRate = total > 0 ? ((converted / total) * 100).toFixed(1) : '0';
-    const hotCount = sdrState.leads.filter(l => l.temperature === 'hot').length;
-    const warmCount = sdrState.leads.filter(l => l.temperature === 'warm').length;
-    const coldCount = sdrState.leads.filter(l => l.temperature === 'cold').length;
+    const hotCount = allLeads.filter(l => l.temperature === 'hot').length;
 
-    // Group by stage
-    const grouped = {};
-    for (const key of Object.keys(STAGE_CONFIG)) grouped[key] = [];
-    leads.forEach(lead => {
-        const stage = lead.pipeline_stage || lead.stage || 'novo';
-        if (!grouped[stage]) grouped[stage] = [];
-        grouped[stage].push(lead);
-    });
+    const filterStage = $('#sdr-lead-filter-stage')?.value || '';
+    const filterTemp = $('#sdr-lead-filter-temp')?.value || '';
+    const filterSearch = $('#sdr-lead-search')?.value || '';
+    const viewMode = sdrState.leadsViewMode;
 
+    // Stats Cards
     const statsHtml = `
-        <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-            <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;">${total}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Total</span></div>
-                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;">${newToday}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Novos Hoje</span></div>
-                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;">${convRate}%</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Conversão</span></div>
-                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;color:#ef4444;">${hotCount}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Quentes</span></div>
-                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;color:#f59e0b;">${warmCount}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Mornos</span></div>
-                <div class="sdr-mini-stat"><span style="font-weight:700;font-size:1.1rem;color:#3b82f6;">${coldCount}</span><span style="font-size:0.7rem;color:var(--text-tertiary);">Frios</span></div>
+        <div class="leads-stats-grid">
+            <div class="leads-stat-card"><div class="stat-label">Total</div><div class="stat-value">${total}</div></div>
+            <div class="leads-stat-card"><div class="stat-label">Novos Hoje</div><div class="stat-value" style="color:#4ade80;">${newToday}</div></div>
+            <div class="leads-stat-card"><div class="stat-label">Conversão</div><div class="stat-value" style="color:#818cf8;">${convRate}%</div></div>
+            <div class="leads-stat-card"><div class="stat-label">Quentes</div><div class="stat-value" style="color:#f87171;">${hotCount}</div></div>
+        </div>`;
+
+    // Filter Row
+    const filtersHtml = `
+        <div class="leads-filter-row">
+            <div class="leads-search-wrap">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="sdr-lead-search" placeholder="Buscar por nome, telefone ou email..." value="${escapeHtml(filterSearch)}">
             </div>
-            <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-                <input type="text" id="sdr-lead-search" placeholder="Buscar nome/telefone..." class="setting-input" style="width:180px;height:32px;font-size:0.8rem;" value="${escapeHtml(filterSearch || '')}">
-                <select id="sdr-lead-filter-temp" class="setting-input" style="height:32px;font-size:0.8rem;padding:4px 8px;">
-                    <option value="">Temperatura</option>
-                    <option value="hot" ${filterTemp === 'hot' ? 'selected' : ''}>Quente</option>
-                    <option value="warm" ${filterTemp === 'warm' ? 'selected' : ''}>Morno</option>
-                    <option value="cold" ${filterTemp === 'cold' ? 'selected' : ''}>Frio</option>
-                </select>
-                <button class="btn-secondary btn-sm" onclick="exportLeadsCsv()" title="Exportar CSV">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    <span>CSV</span>
+            <select id="sdr-lead-filter-stage" class="setting-input" style="height:34px;font-size:0.8rem;padding:4px 8px;min-width:130px;">
+                <option value="">Todos os stages</option>
+                ${Object.entries(STAGE_CONFIG).map(([k, v]) => `<option value="${k}" ${filterStage === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+            </select>
+            <select id="sdr-lead-filter-temp" class="setting-input" style="height:34px;font-size:0.8rem;padding:4px 8px;min-width:120px;">
+                <option value="">Todas as temp.</option>
+                <option value="hot" ${filterTemp === 'hot' ? 'selected' : ''}>Quente</option>
+                <option value="warm" ${filterTemp === 'warm' ? 'selected' : ''}>Morno</option>
+                <option value="cold" ${filterTemp === 'cold' ? 'selected' : ''}>Frio</option>
+            </select>
+            <button class="btn-secondary btn-sm" onclick="exportLeadsCsv()" title="Exportar CSV" style="height:34px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>CSV</span>
+            </button>
+            <div class="leads-view-toggle">
+                <button class="${viewMode === 'kanban' ? 'active' : ''}" onclick="switchLeadsView('kanban')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
+                    Kanban
+                </button>
+                <button class="${viewMode === 'table' ? 'active' : ''}" onclick="switchLeadsView('table')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                    Tabela
                 </button>
             </div>
         </div>`;
 
-    const kanbanHtml = `<div class="kanban-board">${Object.entries(STAGE_CONFIG).map(([key, cfg]) => {
-        const items = grouped[key] || [];
-        return `<div class="kanban-column">
-                <div class="kanban-column-header" style="border-top:3px solid ${cfg.color};">
-                    <span class="kanban-column-title">${cfg.label}</span>
-                    <span class="kanban-column-count" style="background:${cfg.bg};color:${cfg.color}">${items.length}</span>
-                </div>
-                <div class="kanban-column-body">
-                    ${items.length === 0 ? '<div class="kanban-empty">—</div>' : items.map(lead => {
-            const phone = lead.phone || lead.contact_phone || '';
-            const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
-            const interest = lead.interest || lead.interest_text || '';
-            const score = lead.lead_score || lead.score || 0;
-            const temp = lead.temperature || 'cold';
-            const tempCfg = TEMP_CONFIG[temp] || TEMP_CONFIG.cold;
-            const tags = Array.isArray(lead.tags) ? lead.tags : [];
-            const date = lead.updated_at || lead.created_at;
-            const dateStr = date ? new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
-            return `<div class="kanban-card" onclick="openLeadDetailModal(${lead.id})" style="cursor:pointer;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                                <div class="kanban-card-name">${escapeHtml(name)}</div>
-                                <span class="badge-status" style="background:${tempCfg.bg};color:${tempCfg.color};font-size:0.65rem;padding:2px 6px;">${tempCfg.label}</span>
-                            </div>
-                            <div class="kanban-card-phone">${escapeHtml(formatPhoneDisplay(phone))}</div>
-                            ${interest ? `<div class="kanban-card-interest">${escapeHtml(interest)}</div>` : ''}
-                            ${tags.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">${tags.slice(0, 3).map(t => `<span style="font-size:0.6rem;padding:1px 5px;border-radius:8px;background:rgba(99,102,241,0.12);color:#6366f1;">${escapeHtml(t)}</span>`).join('')}${tags.length > 3 ? `<span style="font-size:0.6rem;color:var(--text-tertiary);">+${tags.length - 3}</span>` : ''}</div>` : ''}
-                            <div class="kanban-card-footer">
-                                <div class="score-bar-mini"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div>
-                                <span class="kanban-card-date">${escapeHtml(dateStr)}</span>
-                            </div>
-                        </div>`;
-        }).join('')}
-                </div>
+    // Empty state
+    if (filtered.length === 0 && !filterStage && !filterTemp && !filterSearch) {
+        container.innerHTML = statsHtml + filtersHtml + `
+            <div style="text-align:center;padding:48px 0;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--text-tertiary);margin:0 auto 12px;">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line>
+                </svg>
+                <p style="color:var(--text-secondary);font-size:0.85rem;font-weight:600;">Nenhum lead encontrado</p>
+                <p style="color:var(--text-tertiary);font-size:0.75rem;margin-top:4px;">Leads serão capturados automaticamente quando o SDR estiver ativo.</p>
             </div>`;
-    }).join('')}</div>`;
-
-    if (leads.length === 0 && !filterStage && !filterTemp && !filterSearch) {
-        container.innerHTML = '<div class="activity-empty"><p>Nenhum lead encontrado</p><small>Leads são criados automaticamente a partir das conversas</small></div>';
+        attachLeadFilterListeners();
         return;
     }
 
-    container.innerHTML = statsHtml + kanbanHtml;
+    if (filtered.length === 0) {
+        container.innerHTML = statsHtml + filtersHtml + '<div class="activity-empty"><p>Nenhum resultado para os filtros aplicados</p></div>';
+        attachLeadFilterListeners();
+        return;
+    }
 
-    // Attach filter event listeners
+    let contentHtml = '';
+    if (viewMode === 'kanban') {
+        contentHtml = renderLeadsKanbanBoard(filtered);
+    } else {
+        contentHtml = renderLeadsTableView(filtered);
+    }
+
+    container.innerHTML = statsHtml + filtersHtml + contentHtml;
+    attachLeadFilterListeners();
+
+    if (viewMode === 'kanban') {
+        attachKanbanDragDrop();
+    }
+}
+
+function renderLeadsKanbanBoard(leads) {
+    // Kanban columns — group stages like Server-Vinicius
+    const KANBAN_COLUMNS = [
+        { key: 'novo', label: 'Novo', color: '#6366f1', dot: '#818cf8', stages: ['novo'] },
+        { key: 'qualificado', label: 'Qualificado', color: '#f59e0b', dot: '#fbbf24', stages: ['em_conversa', 'qualificado'] },
+        { key: 'negociacao', label: 'Negociação', color: '#8b5cf6', dot: '#a78bfa', stages: ['agendado'] },
+        { key: 'convertido', label: 'Convertido', color: '#22c55e', dot: '#4ade80', stages: ['convertido'] },
+    ];
+
+    return `<div class="kanban-board">${KANBAN_COLUMNS.map(col => {
+        const items = leads.filter(l => col.stages.includes(l.pipeline_stage || l.stage || 'novo'));
+        return `<div class="kanban-column" data-drop-stage="${col.key}" data-drop-stages="${col.stages.join(',')}">
+                <div class="kanban-column-header" style="border-top:3px solid ${col.color};">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div style="width:8px;height:8px;border-radius:50%;background:${col.dot};"></div>
+                        <span class="kanban-column-title">${col.label}</span>
+                    </div>
+                    <span class="kanban-column-count" style="background:rgba(255,255,255,0.06);color:var(--text-secondary);">${items.length}</span>
+                </div>
+                <div class="kanban-column-body" data-col="${col.key}">
+                    ${items.length === 0
+                        ? `<div class="kanban-empty" data-col="${col.key}">Nenhum lead</div>`
+                        : items.map(lead => renderKanbanCard(lead)).join('')}
+                </div>
+            </div>`;
+    }).join('')}</div>`;
+}
+
+function renderKanbanCard(lead) {
+    const phone = lead.phone || lead.contact_phone || '';
+    const name = lead.name || lead.contact_name || formatPhoneDisplay(phone) || 'Sem nome';
+    const score = lead.lead_score || lead.score || 0;
+    const tags = Array.isArray(lead.tags) ? lead.tags : [];
+    const updatedAt = lead.updated_at || lead.created_at;
+
+    return `<div class="kanban-card" draggable="true" data-lead-id="${lead.id}" onclick="if(!sdrState.dragLeadId)openLeadDetailModal(${lead.id})">
+        <div class="kanban-card-header">
+            <div class="kanban-card-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</div>
+            <span class="whatsapp-badge">WhatsApp Bot</span>
+        </div>
+        <div class="kanban-card-phone">${escapeHtml(formatPhoneDisplay(phone))}</div>
+        <div class="score-section">
+            <div class="score-header">
+                <span class="score-label">Score</span>
+                <span class="score-value">${score}%</span>
+            </div>
+            <div class="score-bar-mini" style="max-width:none;"><div class="score-bar-fill" style="width:${Math.min(score, 100)}%;background:${getScoreBarColor(score)}"></div></div>
+        </div>
+        ${tags.length > 0 ? `<div class="tags-row">${tags.slice(0, 3).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}${tags.length > 3 ? `<span class="tag-more">+${tags.length - 3}</span>` : ''}</div>` : ''}
+        ${updatedAt ? `<div class="time-row"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>${formatRelativeTime(updatedAt)}</div>` : ''}
+    </div>`;
+}
+
+function renderLeadsTableView(leads) {
+    const page = sdrState.leadsPage;
+    const pageSize = sdrState.leadsPageSize;
+    const start = (page - 1) * pageSize;
+    const end = Math.min(start + pageSize, leads.length);
+    const pageLeads = leads.slice(start, end);
+    const totalPages = Math.ceil(leads.length / pageSize);
+
+    const TEMP_ICONS = {
+        hot: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>',
+        warm: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg>',
+        cold: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line><line x1="20" y1="16" x2="4" y2="8"></line><line x1="4" y1="16" x2="20" y2="8"></line></svg>',
+    };
+
+    const tableHtml = `
+        <div class="leads-table-wrap">
+            <table class="leads-table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Telefone</th>
+                        <th>Stage</th>
+                        <th>Temp</th>
+                        <th>Score</th>
+                        <th>Follow-ups</th>
+                        <th>Criado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${pageLeads.map(lead => {
+                        const name = lead.name || lead.contact_name || 'Sem nome';
+                        const phone = lead.phone || lead.contact_phone || '';
+                        const stage = lead.pipeline_stage || lead.stage || 'novo';
+                        const stageCfg = STAGE_CONFIG[stage] || STAGE_CONFIG.novo;
+                        const temp = lead.temperature || 'cold';
+                        const tempIcon = TEMP_ICONS[temp] || TEMP_ICONS.cold;
+                        const score = lead.lead_score || lead.score || 0;
+                        const followUps = lead.follow_up_count || 0;
+                        const maxReached = lead.max_follow_ups_reached ? ' (max)' : '';
+                        const created = lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-';
+
+                        return `<tr onclick="openLeadDetailModal(${lead.id})">
+                            <td>
+                                <div class="lead-name">${escapeHtml(name)}</div>
+                                ${lead.email ? `<div class="lead-email">${escapeHtml(lead.email)}</div>` : ''}
+                            </td>
+                            <td><span class="lead-phone">${escapeHtml(formatPhoneDisplay(phone))}</span></td>
+                            <td><span class="badge-stage-inline badge-stage-${stage}">${stageCfg.label}</span></td>
+                            <td><span class="badge-temp-inline badge-temp-${temp}">${tempIcon} ${temp === 'hot' ? 'Quente' : temp === 'warm' ? 'Morno' : 'Frio'}</span></td>
+                            <td>
+                                <div class="lead-score-cell">
+                                    <span class="lead-score-num">${score}</span>
+                                    <div class="lead-score-bar"><div class="lead-score-bar-fill" style="width:${Math.min(score, 100)}%;background:${getScoreColor(score)}"></div></div>
+                                </div>
+                            </td>
+                            <td><span class="lead-followup">${followUps}${maxReached}</span></td>
+                            <td><span class="lead-date">${created}</span></td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>`;
+
+    let paginationHtml = '';
+    if (leads.length > pageSize) {
+        paginationHtml = `
+            <div class="leads-pagination">
+                <span class="pagination-info">Mostrando ${start + 1}-${end} de ${leads.length}</span>
+                <div class="pagination-controls">
+                    <button onclick="changeLeadsPage(-1)" ${page <= 1 ? 'disabled' : ''}>Anterior</button>
+                    <span class="pagination-page">${page} / ${totalPages}</span>
+                    <button onclick="changeLeadsPage(1)" ${page >= totalPages ? 'disabled' : ''}>Próximo</button>
+                </div>
+            </div>`;
+    }
+
+    return tableHtml + paginationHtml;
+}
+
+window.switchLeadsView = function(mode) {
+    sdrState.leadsViewMode = mode;
+    sdrState.leadsPage = 1;
+    renderLeadsView();
+};
+
+window.changeLeadsPage = function(delta) {
+    const filtered = getFilteredLeads();
+    const totalPages = Math.ceil(filtered.length / sdrState.leadsPageSize);
+    const newPage = sdrState.leadsPage + delta;
+    if (newPage >= 1 && newPage <= totalPages) {
+        sdrState.leadsPage = newPage;
+        renderLeadsView();
+    }
+};
+
+function attachLeadFilterListeners() {
     $('#sdr-lead-search')?.addEventListener('input', debounceLeadFilter);
     $('#sdr-lead-filter-temp')?.addEventListener('change', () => applyLeadFilters());
+    $('#sdr-lead-filter-stage')?.addEventListener('change', () => applyLeadFilters());
+}
+
+function attachKanbanDragDrop() {
+    document.querySelectorAll('.kanban-card[draggable]').forEach(card => {
+        card.addEventListener('dragstart', e => {
+            const leadId = card.dataset.leadId;
+            e.dataTransfer.setData('text/plain', leadId);
+            e.dataTransfer.effectAllowed = 'move';
+            sdrState.dragLeadId = leadId;
+            card.classList.add('dragging');
+        });
+        card.addEventListener('dragend', () => {
+            sdrState.dragLeadId = null;
+            sdrState.dragOverCol = null;
+            card.classList.remove('dragging');
+            document.querySelectorAll('.kanban-column.drag-over').forEach(el => el.classList.remove('drag-over'));
+            document.querySelectorAll('.kanban-empty.drag-over-empty').forEach(el => el.classList.remove('drag-over-empty'));
+        });
+    });
+
+    document.querySelectorAll('.kanban-column-body').forEach(body => {
+        body.addEventListener('dragover', e => {
+            e.preventDefault();
+            const col = body.closest('.kanban-column');
+            if (col) {
+                col.classList.add('drag-over');
+                const empty = body.querySelector('.kanban-empty');
+                if (empty) empty.classList.add('drag-over-empty');
+            }
+        });
+        body.addEventListener('dragleave', e => {
+            if (!body.contains(e.relatedTarget)) {
+                const col = body.closest('.kanban-column');
+                if (col) col.classList.remove('drag-over');
+                const empty = body.querySelector('.kanban-empty');
+                if (empty) empty.classList.remove('drag-over-empty');
+            }
+        });
+        body.addEventListener('drop', e => {
+            e.preventDefault();
+            const col = body.closest('.kanban-column');
+            if (col) col.classList.remove('drag-over');
+            const leadId = e.dataTransfer.getData('text/plain');
+            if (!leadId) return;
+            const dropStages = col?.dataset.dropStages?.split(',') || [];
+            const dropStage = dropStages[dropStages.length - 1] || '';
+            if (dropStage) handleLeadDrop(leadId, dropStage);
+        });
+    });
+
+    // Update empty column text on drag
+    document.querySelectorAll('.kanban-empty').forEach(el => {
+        el.addEventListener('dragover', () => { el.textContent = 'Soltar aqui'; el.classList.add('drag-over-empty'); });
+        el.addEventListener('dragleave', () => { el.textContent = 'Nenhum lead'; el.classList.remove('drag-over-empty'); });
+    });
+}
+
+async function handleLeadDrop(leadId, newStage) {
+    const lead = sdrState.leads.find(l => String(l.id) === String(leadId));
+    if (!lead) return;
+    const currentStage = lead.pipeline_stage || lead.stage || 'novo';
+    if (currentStage === newStage) return;
+
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    // Optimistic update
+    lead.pipeline_stage = newStage;
+    lead.stage = newStage;
+    renderLeadsView();
+
+    try {
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads/${leadId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pipeline_stage: newStage }),
+        });
+        if (res.ok) {
+            showToast('Stage atualizado!', 'success');
+            // Reload stats
+            loadSdrStats(tenantId);
+        } else {
+            // Revert
+            lead.pipeline_stage = currentStage;
+            lead.stage = currentStage;
+            renderLeadsView();
+        }
+    } catch {
+        lead.pipeline_stage = currentStage;
+        lead.stage = currentStage;
+        renderLeadsView();
+    }
 }
 
 let leadFilterTimer = null;
@@ -4015,9 +4302,8 @@ function debounceLeadFilter() {
 }
 
 function applyLeadFilters() {
-    const search = $('#sdr-lead-search')?.value || '';
-    const temp = $('#sdr-lead-filter-temp')?.value || '';
-    renderLeadsKanban(null, temp, search);
+    sdrState.leadsPage = 1;
+    renderLeadsView();
 }
 
 // ============================================
@@ -4465,45 +4751,71 @@ window.openLeadDetailModal = function(leadId) {
     const modal = $('#modal-lead-detail');
     if (!modal) return;
 
-    const tempCfg = TEMP_CONFIG[lead.temperature] || TEMP_CONFIG.cold;
-    const stageCfg = STAGE_CONFIG[lead.pipeline_stage || lead.stage || 'novo'] || STAGE_CONFIG.novo;
+    const temp = lead.temperature || 'cold';
+    const stage = lead.pipeline_stage || lead.stage || 'novo';
     const score = lead.lead_score || lead.score || 0;
     const tags = Array.isArray(lead.tags) ? lead.tags : [];
+    const name = lead.name || lead.contact_name || 'Sem nome';
+    const phone = lead.phone || lead.contact_phone || '';
+    const followUps = lead.follow_up_count || 0;
+    const maxReached = lead.max_follow_ups_reached ? ' (max)' : '';
+    const created = lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-';
+
+    // Store current lead for save
+    sdrState._editingLeadId = leadId;
 
     const body = $('#lead-detail-body');
     if (body) {
         body.innerHTML = `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
-                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Nome</label><div style="font-weight:600;">${escapeHtml(lead.name || lead.contact_name || 'Sem nome')}</div></div>
-                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Telefone</label><div>${escapeHtml(lead.phone || lead.contact_phone || '-')}</div></div>
-                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Email</label><div>${escapeHtml(lead.email || '-')}</div></div>
-                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Score</label><div style="display:flex;align-items:center;gap:8px;"><div class="score-bar-mini" style="width:60px;"><div class="score-bar-fill" style="width:${score}%;background:${score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#94a3b8'}"></div></div><span style="font-weight:600;">${score}</span></div></div>
-                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Temperatura</label><div><span class="badge-status" style="background:${tempCfg.bg};color:${tempCfg.color};">${tempCfg.label}</span></div></div>
-                <div><label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Stage</label><div>
-                    <select id="lead-detail-stage" class="setting-input" style="font-size:0.8rem;padding:4px 8px;" onchange="handleMoveLeadStage(${lead.id}, this.value)">
-                        ${Object.entries(STAGE_CONFIG).map(([k,v]) => `<option value="${k}" ${(lead.pipeline_stage || lead.stage) === k ? 'selected' : ''}>${v.label}</option>`).join('')}
-                    </select>
-                </div></div>
-            </div>
-            <div style="margin-bottom:12px;">
-                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Tags</label>
-                <div id="lead-detail-tags" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
-                    ${tags.map(t => `<span class="badge-status" style="background:rgba(99,102,241,0.15);color:#6366f1;font-size:0.7rem;">${escapeHtml(t)}</span>`).join('')}
-                    <button class="btn-icon" onclick="handleAddLeadTag(${lead.id})" title="Adicionar tag" style="width:24px;height:24px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+            <!-- Header compacto -->
+            <div class="lead-detail-header">
+                <div class="lead-info">
+                    <h4>${escapeHtml(name)}</h4>
+                    <p>${escapeHtml(formatPhoneDisplay(phone))}${lead.email ? ` · ${escapeHtml(lead.email)}` : ''}</p>
+                </div>
+                <div class="lead-badges">
+                    <span class="badge-temp-inline badge-temp-${temp}">${temp === 'hot' ? 'Quente' : temp === 'warm' ? 'Morno' : 'Frio'}</span>
+                    <span class="badge-stage-inline badge-stage-${stage}">${(STAGE_CONFIG[stage] || STAGE_CONFIG.novo).label}</span>
                 </div>
             </div>
-            <div style="margin-bottom:12px;">
-                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Notas</label>
-                <textarea id="lead-detail-notes" class="setting-input" rows="3" style="margin-top:4px;width:100%;">${escapeHtml(lead.notes || '')}</textarea>
-                <button class="btn-secondary btn-sm" onclick="handleSaveLeadNotes(${lead.id})" style="margin-top:4px;">Salvar Notas</button>
+
+            <!-- Métricas inline -->
+            <div class="lead-detail-metrics">
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="color:var(--text-tertiary);">Score</span>
+                    <span style="font-family:monospace;font-weight:700;color:var(--text-primary);">${score}</span>
+                    <div class="score-bar-mini" style="width:56px;max-width:56px;"><div class="score-bar-fill" style="width:${Math.min(score, 100)}%;background:${getScoreBarColor(score)}"></div></div>
+                </div>
+                <span class="metric-sep">|</span>
+                <span>Follow-ups: ${followUps}${maxReached}</span>
+                <span class="metric-sep">|</span>
+                <span>${created}</span>
             </div>
-            <div>
-                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Interesse</label>
-                <div style="font-size:0.85rem;margin-top:4px;">${escapeHtml(lead.interest || lead.interest_text || '-')}</div>
+
+            <!-- Tags -->
+            ${tags.length > 0 ? `<div class="lead-detail-tags">
+                ${tags.map(t => `<span class="badge-status" style="background:rgba(99,102,241,0.12);color:#818cf8;font-size:0.68rem;font-weight:700;">${escapeHtml(t)}</span>`).join('')}
+                <button class="btn-icon" onclick="handleAddLeadTag(${lead.id})" title="Adicionar tag" style="width:22px;height:22px;border-radius:4px;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+            </div>` : `<div class="lead-detail-tags"><button class="btn-icon" onclick="handleAddLeadTag(${lead.id})" title="Adicionar tag" style="width:22px;height:22px;border-radius:4px;font-size:0.65rem;gap:3px;display:inline-flex;align-items:center;color:var(--text-tertiary);"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Tag</button></div>`}
+
+            <!-- Stage selector -->
+            <div class="lead-detail-field">
+                <label>Stage</label>
+                <select id="lead-detail-stage" class="setting-input" style="font-size:0.8rem;padding:6px 8px;">
+                    ${Object.entries(STAGE_CONFIG).map(([k, v]) => `<option value="${k}" ${stage === k ? 'selected' : ''}>${v.label}</option>`).join('')}
+                </select>
             </div>
-            <div style="margin-top:12px;">
-                <label style="font-size:0.7rem;color:var(--text-tertiary);text-transform:uppercase;">Criado em</label>
-                <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px;">${lead.created_at ? new Date(lead.created_at).toLocaleString('pt-BR') : '-'}</div>
+
+            <!-- Notas -->
+            <div class="lead-detail-field">
+                <label>Notas</label>
+                <textarea id="lead-detail-notes" class="setting-input" rows="2" style="width:100%;resize:none;">${escapeHtml(lead.notes || '')}</textarea>
+            </div>
+
+            <!-- Actions -->
+            <div class="lead-detail-actions">
+                <button class="btn-cancel" onclick="closeLeadDetailModal()">Cancelar</button>
+                <button class="btn-save" id="btn-lead-save" onclick="handleSaveLeadDetail(${lead.id})">Salvar</button>
             </div>`;
     }
 
@@ -4566,6 +4878,45 @@ window.handleSaveLeadNotes = async function(leadId) {
         if (lead) lead.notes = notes;
         showToast('Notas salvas!', 'success');
     } catch { showToast('Erro ao salvar notas', 'error'); }
+};
+
+window.handleSaveLeadDetail = async function(leadId) {
+    const notes = $('#lead-detail-notes')?.value || '';
+    const newStage = $('#lead-detail-stage')?.value || '';
+    const tenantId = sdrState.selectedTenantId;
+    if (!tenantId) return;
+
+    const btn = $('#btn-lead-save');
+    if (btn) { btn.textContent = 'Salvando...'; btn.disabled = true; }
+
+    try {
+        const body = { notes };
+        if (newStage) body.pipeline_stage = newStage;
+
+        const res = await fetch(`${SDR_API_BASE}/tenants/${tenantId}/leads/${leadId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (res.ok) {
+            const lead = sdrState.leads.find(l => String(l.id) === String(leadId));
+            if (lead) {
+                lead.notes = notes;
+                if (newStage) { lead.pipeline_stage = newStage; lead.stage = newStage; }
+            }
+            closeLeadDetailModal();
+            renderLeadsView();
+            loadSdrStats(tenantId);
+            showToast('Lead atualizado!', 'success');
+        } else {
+            showToast('Erro ao salvar', 'error');
+        }
+    } catch {
+        showToast('Erro ao salvar lead', 'error');
+    } finally {
+        if (btn) { btn.textContent = 'Salvar'; btn.disabled = false; }
+    }
 };
 
 window.exportLeadsCsv = function() {
