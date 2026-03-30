@@ -1,14 +1,23 @@
 /**
  * Queues — BullMQ queue definitions for async webhook processing
  *
- * Queue names are prefixed by NODE_ENV so that production and staging
- * workers never compete for the same jobs when sharing a Redis instance.
+ * Queue names are prefixed to isolate production from staging when
+ * both share the same Redis instance.
+ *
+ * Resolution order:
+ *   1. QUEUE_PREFIX env var (explicit, e.g. "staging-")
+ *   2. NODE_ENV-based: "staging" → "staging-", anything else → "" (no prefix)
+ *   3. Default: no prefix (production-safe — jobs never leak to staging)
  */
 
 const { Queue } = require('bullmq');
 const { getRedis } = require('./redis');
+const { logger } = require('../utils/logger');
 
-const ENV_PREFIX = process.env.NODE_ENV === 'production' ? '' : `${process.env.NODE_ENV || 'dev'}-`;
+const ENV_PREFIX = process.env.QUEUE_PREFIX
+    || (process.env.NODE_ENV && process.env.NODE_ENV !== 'production' ? `${process.env.NODE_ENV}-` : '');
+
+logger.info(`[Queues] prefix="${ENV_PREFIX || '(none)'}" | NODE_ENV=${process.env.NODE_ENV || '(not set)'} | QUEUE_PREFIX=${process.env.QUEUE_PREFIX || '(not set)'}`);
 
 const QUEUE_NAMES = {
     tintim:         `${ENV_PREFIX}webhook-tintim`,
