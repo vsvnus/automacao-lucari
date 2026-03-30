@@ -673,6 +673,15 @@
                     <p class="page-subtitle">Adicione, edite ou remova clientes do sistema</p>
                 </div>
                 <div class="header-actions">
+                    <button class="btn-secondary" id="btn-help-config" onclick="document.getElementById('help-config-modal').style.display='flex'" style="margin-right:8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span>Como configurar</span>
+                    </button>
                     <button class="btn-primary" id="btn-add-client">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1978,6 +1987,121 @@
 
     <script src="app.js?v=1.7.1"></script>
     <script src="alerts.js?v=1.3.0"></script>
+
+    <!-- Help Config Modal -->
+    <div id="help-config-modal" style="display:none; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center;">
+        <div style="position:absolute; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px);" onclick="document.getElementById('help-config-modal').style.display='none'"></div>
+        <div style="position:relative; width:100%; max-width:640px; max-height:90vh; overflow-y:auto; background:var(--bg-card, #18181b); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:32px; margin:16px; box-shadow:0 25px 50px rgba(0,0,0,0.5);">
+            
+            <!-- Header -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px;">
+                <h2 style="font-size:18px; font-weight:600; color:#fafafa; margin:0;">Como adicionar um novo cliente</h2>
+                <button onclick="document.getElementById('help-config-modal').style.display='none'" style="background:none; border:none; color:#a1a1aa; cursor:pointer; padding:8px; border-radius:8px; transition:all 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.06)';this.style.color='#d4d4d8'" onmouseout="this.style.background='none';this.style.color='#a1a1aa'">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            
+            <p style="color:#a1a1aa; font-size:13px; margin-bottom:20px; line-height:1.5;">Siga os 4 passos abaixo para configurar um novo cliente na plataforma.</p>
+
+            <!-- Step 1 -->
+            <div style="border:1px solid rgba(255,255,255,0.06); background:rgba(39,39,42,0.6); border-radius:12px; padding:20px; margin-bottom:12px;">
+                <div style="display:flex; align-items:flex-start; gap:14px;">
+                    <span style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; min-width:28px; border-radius:50%; background:#4f46e5; color:#fff; font-size:13px; font-weight:700;">1</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                            <h3 style="font-size:14px; font-weight:500; color:#fafafa; margin:0;">Pegue o ID da Planilha Google</h3>
+                        </div>
+                        <p style="color:#a1a1aa; font-size:12px; line-height:1.6; margin:0 0 12px 0;">Abra a planilha do Google Sheets do cliente no navegador. Olhe na <strong style="color:#d4d4d8;">barra de endereço</strong> (URL) do navegador. O ID da planilha é aquele código grande que fica entre <code style="background:rgba(39,39,42,0.8); padding:2px 6px; border-radius:4px; color:#d4d4d8; font-size:11px;">/d/</code> e <code style="background:rgba(39,39,42,0.8); padding:2px 6px; border-radius:4px; color:#d4d4d8; font-size:11px;">/edit</code>.</p>
+                        <div style="background:rgba(24,24,27,0.8); border:1px solid rgba(255,255,255,0.04); border-radius:8px; padding:12px 14px; font-family:monospace; font-size:11px; color:#71717a; word-break:break-all; line-height:1.8;">
+                            https://docs.google.com/spreadsheets/d/<span style="color:#818cf8; font-weight:600; background:rgba(79,70,229,0.15); padding:2px 4px; border-radius:4px;">1aBcDeFgHiJkLmNoPqRsTuVwXyZ</span>/edit#gid=0
+                        </div>
+                        <p style="color:#71717a; font-size:11px; margin:8px 0 0 0;">Copie somente a parte destacada em roxo. Esse e o ID da planilha.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div style="border:1px solid rgba(255,255,255,0.06); background:rgba(39,39,42,0.6); border-radius:12px; padding:20px; margin-bottom:12px;">
+                <div style="display:flex; align-items:flex-start; gap:14px;">
+                    <span style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; min-width:28px; border-radius:50%; background:#4f46e5; color:#fff; font-size:13px; font-weight:700;">2</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            <h3 style="font-size:14px; font-weight:500; color:#fafafa; margin:0;">Pegue o ID do TimTim</h3>
+                        </div>
+                        <p style="color:#a1a1aa; font-size:12px; line-height:1.6; margin:0 0 12px 0;">Acesse o painel do TimTim e entre na pagina do cliente. Assim como a planilha, o <strong style="color:#d4d4d8;">ID fica na URL do navegador</strong> — e o numero que aparece no final do endereco.</p>
+                        <div style="background:rgba(24,24,27,0.8); border:1px solid rgba(255,255,255,0.04); border-radius:8px; padding:12px 14px; font-family:monospace; font-size:11px; color:#71717a; word-break:break-all; line-height:1.8;">
+                            https://s.tintim.app/<span style="color:#818cf8; font-weight:600; background:rgba(79,70,229,0.15); padding:2px 4px; border-radius:4px;">8e616ad4-2d89-4a76-b81d-334097836c1b</span>/dashboard
+                        </div>
+                        <p style="color:#71717a; font-size:11px; margin:8px 0 0 0;">O codigo entre tintim.app/ e /dashboard e o ID do cliente no TimTim.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div style="border:1px solid rgba(255,255,255,0.06); background:rgba(39,39,42,0.6); border-radius:12px; padding:20px; margin-bottom:12px;">
+                <div style="display:flex; align-items:flex-start; gap:14px;">
+                    <span style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; min-width:28px; border-radius:50%; background:#4f46e5; color:#fff; font-size:13px; font-weight:700;">3</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                            <h3 style="font-size:14px; font-weight:500; color:#fafafa; margin:0;">Adicione o Webhook no TimTim</h3>
+                        </div>
+                        <p style="color:#a1a1aa; font-size:12px; line-height:1.6; margin:0 0 12px 0;">Na pagina do cliente no TimTim, va em <strong style="color:#d4d4d8;">Endereco de Webhooks</strong> e clique em <strong style="color:#d4d4d8;">Editar</strong>. Cole o link do webhook nos campos abaixo:</p>
+                        <div style="background:rgba(24,24,27,0.8); border:1px solid rgba(255,255,255,0.04); border-radius:8px; padding:14px; margin-bottom:10px;">
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="color:#34d399; font-size:11px;">&#10003;</span>
+                                    <span style="color:#d4d4d8; font-size:12px;">Criacao de Conversa</span>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="color:#34d399; font-size:11px;">&#10003;</span>
+                                    <span style="color:#d4d4d8; font-size:12px;">Alteracao de Conversa</span>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="color:#34d399; font-size:11px;">&#10003;</span>
+                                    <span style="color:#d4d4d8; font-size:12px;">Alteracao da Origem de Conversa</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p style="color:#a1a1aa; font-size:12px; line-height:1.6; margin:0 0 8px 0;">O link do webhook voce encontra na aba <strong style="color:#d4d4d8;">Visao Geral</strong> da Automacao de Leads (banner roxo no topo da pagina). Copie e cole o mesmo link nos 3 campos acima.</p>
+                        <p style="color:#71717a; font-size:11px; margin:0;">O campo "Criacao de Mensagem" pode deixar sem preencher.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div style="border:1px solid rgba(255,255,255,0.06); background:rgba(39,39,42,0.6); border-radius:12px; padding:20px; margin-bottom:12px;">
+                <div style="display:flex; align-items:flex-start; gap:14px;">
+                    <span style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; min-width:28px; border-radius:50%; background:#4f46e5; color:#fff; font-size:13px; font-weight:700;">4</span>
+                    <div style="flex:1; min-width:0;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                            <h3 style="font-size:14px; font-weight:500; color:#fafafa; margin:0;">Compartilhe a planilha com o bot</h3>
+                        </div>
+                        <p style="color:#a1a1aa; font-size:12px; line-height:1.6; margin:0 0 12px 0;">Para o bot conseguir escrever na planilha, voce precisa dar acesso de <strong style="color:#d4d4d8;">Editor</strong>. Abra a planilha do cliente, clique em <strong style="color:#d4d4d8;">Compartilhar</strong> e adicione o email abaixo.</p>
+                        <div style="background:rgba(24,24,27,0.8); border:1px solid rgba(255,255,255,0.04); border-radius:8px; padding:12px 14px; margin-bottom:8px;">
+                            <p style="color:#71717a; font-size:11px; margin:0 0 6px 0;">Email do bot (service account):</p>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <code id="help-bot-email" style="font-family:monospace; font-size:12px; color:#818cf8; word-break:break-all; flex:1;">automacao-wpp@automacao-planilha-487020.iam.gserviceaccount.com</code>
+                                <button onclick="navigator.clipboard.writeText('automacao-wpp@automacao-planilha-487020.iam.gserviceaccount.com');this.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'#34d399\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'20 6 9 17 4 12\'></polyline></svg>';setTimeout(()=>{this.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><rect x=\'9\' y=\'9\' width=\'13\' height=\'13\' rx=\'2\' ry=\'2\'></rect><path d=\'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\'></path></svg>'},2000)" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:6px 8px; color:#a1a1aa; cursor:pointer; transition:all 0.15s; display:flex; align-items:center;" title="Copiar email">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <p style="color:#71717a; font-size:11px; margin:0;">Sem esse acesso, os leads nao serao adicionados automaticamente na planilha.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="display:flex; justify-content:flex-end; padding-top:12px;">
+                <button onclick="document.getElementById('help-config-modal').style.display='none'" style="background:rgba(39,39,42,0.8); border:1px solid rgba(255,255,255,0.08); color:#d4d4d8; padding:8px 20px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; transition:all 0.15s;" onmouseover="this.style.background='rgba(63,63,70,0.8)'" onmouseout="this.style.background='rgba(39,39,42,0.8)'">Entendi</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 
 </html>
