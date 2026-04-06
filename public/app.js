@@ -3510,6 +3510,73 @@ function extractSheetId(value) {
     return match ? match[1] : value.trim();
 }
 
+async function loadSpreadsheetTabs(spreadsheetId) {
+    const tabsBlock = $('#rel-tabs-block');
+    const semanalSel = $('#rel-semanal-tab');
+    const mensalSel = $('#rel-mensal-tab');
+    const hint = $('#rel-tabs-hint');
+
+    if (!spreadsheetId || !tabsBlock) return;
+
+    tabsBlock.style.display = '';
+    semanalSel.innerHTML = '<option value="">Carregando abas...</option>';
+    mensalSel.innerHTML = '<option value="">Carregando abas...</option>';
+    if (hint) hint.textContent = 'Buscando abas da planilha...';
+
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/sheets/tabs?spreadsheetId=${encodeURIComponent(spreadsheetId)}`);
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || 'Erro ao buscar abas');
+        }
+        const tabs = (await res.json()).data || [];
+
+        if (tabs.length === 0) {
+            semanalSel.innerHTML = '<option value="">Nenhuma aba encontrada</option>';
+            mensalSel.innerHTML = '<option value="">Nenhuma aba encontrada</option>';
+            if (hint) hint.textContent = 'A planilha não tem abas ou não foi compartilhada com a conta de serviço';
+            return tabs;
+        }
+
+        const buildOptions = (tabs, preselect) => {
+            let html = '<option value="">— Selecione —</option>';
+            for (const tab of tabs) {
+                const selected = tab === preselect ? ' selected' : '';
+                html += `<option value="${escapeHtml(tab)}"${selected}>${escapeHtml(tab)}</option>`;
+            }
+            return html;
+        };
+
+        // Smart defaults: detectar abas prováveis
+        const semanalGuess = tabs.find(t => /semanal/i.test(t)) || '';
+        const mensalGuess = tabs.find(t => /m[eé]trica|proje[çc][aã]o mensal/i.test(t)) || '';
+
+        semanalSel.innerHTML = buildOptions(tabs, semanalGuess);
+        mensalSel.innerHTML = buildOptions(tabs, mensalGuess);
+
+        if (hint) hint.textContent = `${tabs.length} abas encontradas`;
+        return tabs;
+    } catch (err) {
+        semanalSel.innerHTML = `<option value="">Erro: ${escapeHtml(err.message)}</option>`;
+        mensalSel.innerHTML = `<option value="">Erro: ${escapeHtml(err.message)}</option>`;
+        if (hint) hint.textContent = err.message;
+        return [];
+    }
+}
+
+$('#btn-detect-tabs')?.addEventListener('click', () => {
+    const raw = $('#rel-spreadsheet-url')?.value?.trim() || '';
+    const sheetId = extractSheetId(raw);
+    if (!sheetId) return showToast('Informe o link da planilha primeiro', 'error');
+    loadSpreadsheetTabs(sheetId);
+});
+
+$('#rel-spreadsheet-url')?.addEventListener('blur', () => {
+    const raw = $('#rel-spreadsheet-url')?.value?.trim() || '';
+    const sheetId = extractSheetId(raw);
+    if (sheetId && sheetId.length > 10) loadSpreadsheetTabs(sheetId);
+});
+
 async function openRelatorioModal(client = null) {
     relatorioEditId = client ? client.id : null;
     relCurrentMetricsConfig = client?.metrics_config || null;
@@ -3526,6 +3593,14 @@ async function openRelatorioModal(client = null) {
     if (mcBlock) { mcBlock.style.display = 'none'; }
     const mcContainer = $('#rel-metrics-config-container');
     if (mcContainer) mcContainer.innerHTML = '';
+
+    // Reset tab selects
+    const tabsBlock = $('#rel-tabs-block');
+    if (tabsBlock) tabsBlock.style.display = 'none';
+    const semanalSel = $('#rel-semanal-tab');
+    const mensalSel = $('#rel-mensal-tab');
+    if (semanalSel) semanalSel.innerHTML = '<option value="">— Detecte as abas primeiro —</option>';
+    if (mensalSel) mensalSel.innerHTML = '<option value="">— Detecte as abas primeiro —</option>';
 
     // Reset blocos
     const sel = $('#rel-reportei-select');
@@ -3624,6 +3699,36 @@ async function onReporteiClientSelected(reporteiId, existingClient = null) {
     if (sheetBlock) sheetBlock.style.display = '';
     if (advBlock) advBlock.style.display = '';
     if (submitBtn) submitBtn.disabled = false;
+
+    // Em modo edição, carrega abas e pré-seleciona as configuradas
+    if (existingClient?.spreadsheet_id) {
+        const tabs = await loadSpreadsheetTabs(existingClient.spreadsheet_id);
+        if (tabs && tabs.length > 0) {
+            const semanalSel = $('#rel-semanal-tab');
+            const mensalSel = $('#rel-mensal-tab');
+            if (existingClient.semanal_tab_name && semanalSel) {
+                semanalSel.value = existingClient.semanal_tab_name;
+                // Se não achou match exato, adiciona como opção com warning
+                if (!semanalSel.value && existingClient.semanal_tab_name) {
+                    const opt = document.createElement('option');
+                    opt.value = existingClient.semanal_tab_name;
+                    opt.textContent = `⚠ ${existingClient.semanal_tab_name} (não encontrada)`;
+                    semanalSel.prepend(opt);
+                    semanalSel.value = existingClient.semanal_tab_name;
+                }
+            }
+            if (existingClient.mensal_tab_name && mensalSel) {
+                mensalSel.value = existingClient.mensal_tab_name;
+                if (!mensalSel.value && existingClient.mensal_tab_name) {
+                    const opt = document.createElement('option');
+                    opt.value = existingClient.mensal_tab_name;
+                    opt.textContent = `⚠ ${existingClient.mensal_tab_name} (não encontrada)`;
+                    mensalSel.prepend(opt);
+                    mensalSel.value = existingClient.mensal_tab_name;
+                }
+            }
+        }
+    }
 
     // Build metrics config UI
     const mcBlock = $('#rel-metrics-config-block');
@@ -3872,6 +3977,8 @@ $('#form-relatorio-client')?.addEventListener('submit', async (e) => {
         meta_ads_integration_id: $('#rel-meta-select')?.value || null,
         google_ads_integration_id: $('#rel-google-select')?.value || null,
         spreadsheet_id: sheetId,
+        semanal_tab_name: $('#rel-semanal-tab')?.value || null,
+        mensal_tab_name: $('#rel-mensal-tab')?.value || null,
 
         lead_metric: $('#rel-lead-metric-ig').checked ? 'ig:new_followers_count' : null,
         metrics_config: metricsConfig,
