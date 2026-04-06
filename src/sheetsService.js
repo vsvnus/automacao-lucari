@@ -53,7 +53,7 @@ const HEADERS = [
 const HEADER_ALIASES = {
     nome:           ['nome do lead', 'nome'],
     telefone:       ['telefone'],
-    origem:         ['meio de contato', 'contato', 'fonte'],
+    origem:         ['meio de contato', 'contato', 'fonte', 'canal de aquisição', 'canal de aquisicao', 'canal'],
     data:           ['data 1º contato', 'data 1', 'data 1o contato'],
     dataFechamento: ['data fechamento', 'data de fechamento'],
     valor:          ['valor de fechamento', 'valor'],
@@ -189,6 +189,17 @@ class SheetsService {
             logger.info(`Aba existente encontrada: "${existingMatch}" (match para ${targetName})`);
             this.spreadsheetCache.set(cacheKey, existingMatch);
             return existingMatch;
+        }
+
+        // Staging NUNCA cria abas novas — evita conflito com produção na mesma planilha
+        if (process.env.NODE_ENV === 'staging') {
+            logger.warn(`[Staging] Aba "${targetName}" não encontrada para ${client.name}. Staging não cria abas — aguardando produção.`);
+            const fallback = this.findPreviousMonthSheet(existingSheets) || existingSheets[0];
+            if (fallback) {
+                this.spreadsheetCache.set(cacheKey, fallback);
+                return fallback;
+            }
+            throw new Error(`[Staging] Nenhuma aba disponível para ${client.name}`);
         }
 
         // Nenhuma aba do mês encontrada — criar via duplicação ou do zero
