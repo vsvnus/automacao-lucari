@@ -367,10 +367,17 @@ class SheetsService {
 
         const response = await this.sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: `'${sheetName}'!1:1`,
+            range: `'${sheetName}'!1:2`,
         });
 
-        const headers = (response.data.values || [[]])[0];
+        const rows = response.data.values || [[]];
+        const row1 = rows[0] || [];
+        const row2 = rows[1] || [];
+        // Merge: usa linha 1, mas se célula vazia, tenta linha 2 (sub-headers)
+        const headers = [];
+        for (let i = 0; i < Math.max(row1.length, row2.length); i++) {
+            headers[i] = (row1[i] || '').trim() || (row2[i] || '').trim();
+        }
         const mapping = {};
 
         for (let i = 0; i < headers.length; i++) {
@@ -1396,10 +1403,6 @@ class SheetsService {
             });
 
             const values = (response.data.values || []).map(r => r[0] || '');
-            if (values.length <= 1) {
-                // Only header or empty — append
-                return { row: values.length + 1, needsInsert: false };
-            }
 
             // Parse lead date (DD/MM/YYYY format)
             const parseBRDate = (str) => {
@@ -1411,20 +1414,32 @@ class SheetsService {
                 return new Date(y, m - 1, d);
             };
 
+            // Detectar quantas linhas de header existem (1 ou 2)
+            // Linha 2 é sub-header se não contém data válida E não está vazia
+            let headerRows = 1;
+            if (values.length >= 2 && !parseBRDate(values[1]) && values[1]) {
+                headerRows = 2;
+            }
+
+            if (values.length <= headerRows) {
+                // Only headers or empty — append
+                return { row: values.length + 1, needsInsert: false };
+            }
+
             const newDate = parseBRDate(leadDate);
             if (!newDate || isNaN(newDate.getTime())) {
                 return { row: values.length + 1, needsInsert: false };
             }
 
-            // Find correct position (skip header at index 0)
+            // Find correct position (skip header rows)
             // Dates should be ascending (oldest first)
             const lastDataRow = values.length; // last row with data
-            
+
             // Check from the end — if new date >= last date, append at end
-            for (let i = lastDataRow - 1; i >= 1; i--) {
+            for (let i = lastDataRow - 1; i >= headerRows; i--) {
                 const existingDate = parseBRDate(values[i]);
                 if (!existingDate) continue;
-                
+
                 if (newDate >= existingDate) {
                     // Insert after this row
                     const insertAt = i + 2; // +1 for 0-index, +1 for "after"
@@ -1436,8 +1451,8 @@ class SheetsService {
                 }
             }
 
-            // New date is before all existing dates — insert at row 2 (after header)
-            return { row: 2, needsInsert: true };
+            // New date is before all existing dates — insert after headers
+            return { row: headerRows + 1, needsInsert: true };
         } catch (error) {
             logger.warn('Erro ao buscar posição por data, usando append', { error: error.message });
             return { row: await this.getNextEmptyRow(spreadsheetId, sheetName), needsInsert: false };
