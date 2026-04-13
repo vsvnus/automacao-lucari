@@ -1236,6 +1236,10 @@
                 <button class="automacao-tab active" data-reltab="clientes">Clientes</button>
                 <button class="automacao-tab" data-reltab="config">Configuração</button>
                 <button class="automacao-tab" data-reltab="execucoes">Execuções</button>
+                <button class="automacao-tab" data-reltab="alertas">
+                    Erros
+                    <span class="tab-badge" id="rel-tab-alertas-badge" style="display:none"></span>
+                </button>
             </div>
 
             <div class="page-header">
@@ -1450,6 +1454,39 @@
                         </button>
                     </div>
                     <div class="activity-feed" id="relatorio-executions">
+                        <div class="activity-empty">
+                            <p>Carregando...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Erros / Alertas de Integração -->
+            <div class="rel-tab-content" id="rel-tab-alertas">
+                <div class="card" style="margin-bottom:16px;">
+                    <div class="card-body" style="padding:14px 18px;color:var(--text-secondary);font-size:0.88rem;line-height:1.5;">
+                        Quando um cliente reconecta uma conta no Reportei, o <code>integration_id</code> muda e a automação deixa de conseguir ler as métricas — a planilha passa a receber zeros.
+                        Esta aba mostra esses casos. Quando possível, o sistema identifica sozinho o novo ID e corrige o cadastro; quando não for possível, o alerta fica aqui até você resolver.
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Alertas de Integração</h3>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <label style="font-size:0.8rem;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
+                                <input type="checkbox" id="rel-alerts-show-dismissed">
+                                Mostrar dispensados
+                            </label>
+                            <button class="btn-icon" id="btn-rel-refresh-alerts" title="Atualizar">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="activity-feed" id="rel-alerts-list">
                         <div class="activity-empty">
                             <p>Carregando...</p>
                         </div>

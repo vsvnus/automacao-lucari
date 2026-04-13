@@ -3275,6 +3275,7 @@ async function loadRelatorioSection() {
         loadRelatorioStats(),
         loadRelatorioClients(),
         loadRelatorioExecutions(),
+        loadRelatorioAlerts(),
     ]);
 }
 
@@ -3501,6 +3502,106 @@ async function loadRelatorioExecutions() {
         container.innerHTML = `<div class="activity-empty"><p>Sem dados de execução</p></div>`;
     }
 }
+
+// ---- Integration alerts ----
+
+const ALERT_REASON_LABEL = {
+    '403_forbidden':          'integração rejeitou acesso (403)',
+    'no_substitute':          'substituto não encontrado no Reportei',
+    'ambiguous_substitute':   'múltiplas integrações candidatas — ambíguo',
+    'lookup_failed':          'falha ao consultar Reportei',
+};
+
+const ALERT_PLATFORM_LABEL = {
+    meta_ads:   'Meta Ads',
+    google_ads: 'Google Ads',
+};
+
+async function loadRelatorioAlerts() {
+    const list  = $('#rel-alerts-list');
+    const badge = $('#rel-tab-alertas-badge');
+    if (!list) return;
+
+    const showDismissed = $('#rel-alerts-show-dismissed')?.checked;
+    const qs = showDismissed ? '' : '?status=open';
+
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/alerts${qs}`);
+        if (!res.ok) throw new Error('offline');
+        const json = await res.json();
+        const alerts = json.data || [];
+        const openCount = json.openCount || 0;
+
+        if (badge) {
+            if (openCount > 0) {
+                badge.style.display = '';
+                badge.textContent = String(openCount);
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        if (alerts.length === 0) {
+            list.innerHTML = `<div class="activity-empty"><p>Sem alertas${showDismissed ? '' : ' abertos'}</p><small>As integrações do Reportei estão funcionando.</small></div>`;
+            return;
+        }
+
+        list.innerHTML = alerts.map(renderAlertItem).join('');
+    } catch (err) {
+        list.innerHTML = `<div class="activity-empty"><p>Não foi possível carregar alertas</p><small>${escapeHtml(err.message)}</small></div>`;
+    }
+}
+
+function renderAlertItem(a) {
+    const isWarning = a.severity === 'warning';
+    const isDismissed = a.status === 'dismissed';
+    const color = isWarning ? 'var(--success)' : 'var(--error)';
+    const icon  = isWarning ? '✅' : '🔴';
+    const title = isWarning
+        ? `Corrigido automaticamente — ${escapeHtml(a.client_name || '?')}`
+        : `Integração quebrada — ${escapeHtml(a.client_name || '?')}`;
+    const platformLabel = ALERT_PLATFORM_LABEL[a.platform] || a.platform;
+    const reasonLabel   = ALERT_REASON_LABEL[a.reason] || a.reason;
+    const detectedAt    = a.detected_at ? new Date(a.detected_at).toLocaleString('pt-BR') : '—';
+
+    const idsLine = a.new_integration_id
+        ? `<div class="alert-ids">ID antigo: <code>${escapeHtml(a.old_integration_id || '—')}</code> → novo: <code>${escapeHtml(a.new_integration_id)}</code></div>`
+        : `<div class="alert-ids">ID quebrado: <code>${escapeHtml(a.old_integration_id || '—')}</code></div>`;
+
+    const dismissBtn = !isDismissed
+        ? `<button class="btn-secondary btn-small" onclick="dismissAlert(${a.id})" title="Marcar como lido">
+               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+               Dispensar
+           </button>`
+        : `<span class="badge" style="opacity:0.6">Dispensado</span>`;
+
+    return `<div class="activity-item alert-item alert-${a.severity}${isDismissed ? ' alert-dismissed' : ''}">
+        <div class="activity-dot" style="background:${color};"></div>
+        <div class="activity-content">
+            <div class="alert-header">
+                <span class="activity-title">${icon} ${title}</span>
+                <span class="activity-meta">${escapeHtml(platformLabel)} · ${escapeHtml(detectedAt)}</span>
+            </div>
+            ${idsLine}
+            <div class="alert-reason"><strong>Motivo:</strong> ${escapeHtml(reasonLabel)}</div>
+            <div class="alert-detail">${escapeHtml(a.detail || '')}</div>
+            <div class="alert-actions">${dismissBtn}</div>
+        </div>
+    </div>`;
+}
+
+async function dismissAlert(id) {
+    try {
+        const res = await fetch(`${RELATORIO_API_BASE}/alerts/${id}/dismiss`, { method: 'POST' });
+        if (!res.ok) throw new Error('dismiss falhou');
+        await loadRelatorioAlerts();
+    } catch (err) {
+        showToast('Não foi possível dispensar: ' + err.message, 'error');
+    }
+}
+
+$('#btn-rel-refresh-alerts')?.addEventListener('click', loadRelatorioAlerts);
+$('#rel-alerts-show-dismissed')?.addEventListener('change', loadRelatorioAlerts);
 
 // ---- Modal (novo/editar) ----
 

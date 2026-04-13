@@ -1298,6 +1298,20 @@ body {
     border-bottom: none;
 }
 
+/* Integration alerts */
+.alert-item { align-items: start; grid-template-columns: 44px 1fr; }
+.alert-item .activity-content { display: flex; flex-direction: column; gap: 6px; }
+.alert-item .alert-header { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+.alert-item .alert-ids { font-size: 0.82rem; color: var(--text-secondary); }
+.alert-item .alert-ids code { background: var(--bg-surface); padding: 1px 6px; border-radius: 4px; font-size: 0.78rem; }
+.alert-item .alert-reason { font-size: 0.82rem; color: var(--text-secondary); }
+.alert-item .alert-detail { font-size: 0.85rem; color: var(--text-primary); line-height: 1.5; padding: 8px 10px; background: var(--bg-surface); border-radius: 6px; }
+.alert-item .alert-actions { display: flex; gap: 8px; margin-top: 4px; }
+.alert-item.alert-warning { border-left: 3px solid var(--success, #10b981); }
+.alert-item.alert-critical { border-left: 3px solid var(--error, #ef4444); }
+.alert-item.alert-dismissed { opacity: 0.55; }
+.btn-small { padding: 4px 10px !important; font-size: 0.78rem !important; height: auto !important; display: inline-flex; align-items: center; gap: 4px; }
+
 .activity-icon-wrapper {
     width: 44px;
     height: 44px;
