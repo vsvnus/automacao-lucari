@@ -45,11 +45,17 @@ const SALE_STATUS_KEYWORDS = [
     "sale", "won", "closed",
 ];
 
+// Palavras que negam venda mesmo se houver keyword de venda no status.
+// Ex: "Contrato Enviado" e "Proposta Enviada" contêm "contrato"/"proposta"
+// mas indicam proposta em aberto, não fechamento.
+const NON_SALE_MARKERS = ["enviado", "enviada", "envio"];
+
 function isSaleStatus(statusName) {
     if (!statusName) return false;
     const normalized = statusName.toLowerCase().trim();
     // Exclui "pré-venda", "pré-vendido" etc. que contêm keywords de venda mas não são vendas
     if (normalized.startsWith('pré') || normalized.startsWith('pre')) return false;
+    if (NON_SALE_MARKERS.some(m => normalized.includes(m))) return false;
     return SALE_STATUS_KEYWORDS.some(kw => normalized.includes(kw));
 }
 
