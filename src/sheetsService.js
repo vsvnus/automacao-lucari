@@ -361,8 +361,11 @@ class SheetsService {
      */
     async getColumnMapping(spreadsheetId, sheetName) {
         const cacheKey = `${spreadsheetId}:${sheetName}:colmap`;
-        if (this.spreadsheetCache.has(cacheKey)) {
-            return this.spreadsheetCache.get(cacheKey);
+        // TTL 5min: detecta mudança de header (ex: cliente adiciona coluna) sem exigir restart
+        const COLMAP_TTL_MS = 5 * 60 * 1000;
+        const cached = this.spreadsheetCache.get(cacheKey);
+        if (cached && cached.__cachedAt && (Date.now() - cached.__cachedAt) < COLMAP_TTL_MS) {
+            return cached;
         }
 
         const response = await this.sheets.spreadsheets.values.get({
@@ -394,6 +397,7 @@ class SheetsService {
         }
 
         mapping._totalCols = headers.length;
+        mapping.__cachedAt = Date.now();
 
         const required = ['nome', 'telefone', 'status', 'comentarios'];
         const missing = required.filter(f => !mapping[f]);
