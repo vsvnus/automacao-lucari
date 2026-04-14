@@ -1634,6 +1634,34 @@ class PgService {
         }
     }
 
+    async getChannelSummary(clientId, startDate, endDate) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+
+            const { rows } = await this.query(`
+                SELECT
+                    COALESCE(channel, 'google') as channel,
+                    COUNT(*) as leads,
+                    SUM(CASE WHEN converted THEN 1 ELSE 0 END) as sales,
+                    COALESCE(SUM(sale_amount), 0) as revenue
+                FROM keyword_conversions
+                ${where}
+                GROUP BY channel
+                ORDER BY revenue DESC NULLS LAST
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar channel summary", { error: error.message });
+            return [];
+        }
+    }
+
     async backfillMetaAds() {
         if (!this.isAvailable()) return 0;
         try {

@@ -953,6 +953,17 @@ app.get('/api/sales/by-ad', requireAuth, async (req, res) => {
     res.json(data);
 });
 
+app.get('/api/sales/channel-summary', requireAuth, async (req, res) => {
+    const { client, from, to } = req.query;
+    const cacheKey = `sales:channel-summary:${client || ''}:${from || ''}:${to || ''}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const data = await pgService.getChannelSummary(client || null, from || null, to || null);
+    await cache.set(cacheKey, data, 120);
+    res.json(data);
+});
+
 app.post('/api/sales/backfill-meta', requireAuth, async (_req, res) => {
     try {
         const count = await pgService.backfillMetaAds();
