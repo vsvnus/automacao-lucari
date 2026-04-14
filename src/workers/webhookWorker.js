@@ -35,6 +35,7 @@ function startWorkers() {
             const cache = require('../infra/cache');
             await cache.invalidatePattern('dashboard:*');
             await cache.invalidatePattern('keywords:*');
+            await cache.invalidatePattern('sales:*');
         } catch (err) {
             // Cache invalidation is best-effort
         }
@@ -96,6 +97,7 @@ function startWorkers() {
             const cache = require('../infra/cache');
             await cache.invalidatePattern('dashboard:*');
             await cache.invalidatePattern('keywords:*');
+            await cache.invalidatePattern('sales:*');
         } catch (err) {
             // Cache invalidation is best-effort
         }

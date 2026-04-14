@@ -4163,6 +4163,7 @@ const kwState = {
     clientId: null,
     dateFrom: null,
     dateTo: null,
+    channel: 'all',
 };
 
 function getKwDateRange() {
@@ -4209,7 +4210,43 @@ async function loadKeywordsSection() {
         loadKeywordsTrend(),
         loadKeywordsBreakdown(),
         loadKeywordsCampaigns(),
+        loadSalesByAd(),
     ]);
+}
+
+async function loadSalesByAd() {
+    const tbody = document.getElementById('sales-by-ad-body');
+    if (!tbody) return;
+    try {
+        const params = new URLSearchParams(buildKwParams());
+        if (kwState.channel && kwState.channel !== 'all') params.set('channel', kwState.channel);
+        const data = await fetch('/api/sales/by-ad?' + params.toString(), { credentials: 'same-origin' }).then(r => r.json());
+        if (!Array.isArray(data) || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nenhum anúncio encontrado no período</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.map(row => {
+            const channelLabel = row.channel === 'meta'
+                ? '<span style="color:#4267B2;font-weight:600">Meta</span>'
+                : row.channel === 'google'
+                    ? '<span style="color:#34A853;font-weight:600">Google</span>'
+                    : escapeHtml(row.channel || '—');
+            const revenue = parseFloat(row.revenue || 0);
+            const rate = row.conversion_rate != null ? parseFloat(row.conversion_rate).toFixed(1) + '%' : '—';
+            return '<tr>' +
+                '<td>' + channelLabel + '</td>' +
+                '<td>' + escapeHtml(row.campaign || '—') + '</td>' +
+                '<td>' + escapeHtml(row.ad_label || '—') + '</td>' +
+                '<td>' + (row.leads || 0) + '</td>' +
+                '<td>' + (row.sales || 0) + '</td>' +
+                '<td>' + rate + '</td>' +
+                '<td>R$ ' + revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td>' +
+                '</tr>';
+        }).join('');
+    } catch (e) {
+        console.error('loadSalesByAd failed', e);
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Erro ao carregar vendas por anúncio</td></tr>';
+    }
 }
 
 async function loadKeywordsStats() {
@@ -4855,6 +4892,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Channel select (Google / Meta / All)
+    const kwChannelSelect = document.getElementById('kw-channel-select');
+    if (kwChannelSelect) {
+        kwChannelSelect.addEventListener('change', () => {
+            kwState.channel = kwChannelSelect.value || 'all';
+            loadSalesByAd();
+        });
+    }
+
     // Custom date apply
     const btnKwApply = document.getElementById('btn-kw-apply');
     if (btnKwApply) {
@@ -4875,22 +4921,44 @@ document.addEventListener('DOMContentLoaded', () => {
         btnReloadKw.addEventListener('click', () => loadKeywordsSection());
     }
 
-    // Backfill button
+    // Backfill button Google
     const btnBackfill = document.getElementById('btn-kw-backfill');
     if (btnBackfill) {
         btnBackfill.addEventListener('click', async () => {
-            if (!confirm('Migrar dados historicos de keywords do JSONB? Isso pode levar alguns segundos.')) return;
+            if (!confirm('Migrar dados historicos de keywords (Google Ads) do JSONB? Pode levar alguns segundos.')) return;
             btnBackfill.disabled = true;
+            const original = btnBackfill.textContent;
             btnBackfill.textContent = 'Migrando...';
             try {
                 const res = await fetch('/api/keywords/backfill', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
-                alert('Migrados: ' + (res.migrated || 0) + ' registros');
+                alert('Migrados (Google): ' + (res.migrated || 0) + ' registros');
                 loadKeywordsSection();
             } catch (e) {
                 alert('Erro ao migrar: ' + e.message);
             } finally {
                 btnBackfill.disabled = false;
-                btnBackfill.textContent = 'Migrar dados historicos';
+                btnBackfill.textContent = original;
+            }
+        });
+    }
+
+    // Backfill button Meta
+    const btnMetaBackfill = document.getElementById('btn-meta-backfill');
+    if (btnMetaBackfill) {
+        btnMetaBackfill.addEventListener('click', async () => {
+            if (!confirm('Migrar dados historicos de Meta Ads do JSONB? Isso processa payload.ad.* e ctwa_clid dos webhook_events. Pode levar alguns segundos.')) return;
+            btnMetaBackfill.disabled = true;
+            const original = btnMetaBackfill.textContent;
+            btnMetaBackfill.textContent = 'Migrando...';
+            try {
+                const res = await fetch('/api/sales/backfill-meta', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+                alert('Migrados (Meta): ' + (res.migrated || 0) + ' registros');
+                loadKeywordsSection();
+            } catch (e) {
+                alert('Erro ao migrar: ' + e.message);
+            } finally {
+                btnMetaBackfill.disabled = false;
+                btnMetaBackfill.textContent = original;
             }
         });
     }

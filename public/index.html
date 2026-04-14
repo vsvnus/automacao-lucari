@@ -1533,8 +1533,8 @@
         <section class="page-section" id="section-keywords">
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Palavras-Chave Google Ads</h2>
-                    <p class="page-subtitle">Performance de keywords nas campanhas Google</p>
+                    <h2 class="page-title">Vendas por Anúncio</h2>
+                    <p class="page-subtitle">Performance por campanha e anúncio — Google Ads + Meta Ads</p>
                 </div>
                 <div class="header-actions">
                     <button class="btn-icon" id="btn-reload-keywords" title="Recarregar">
@@ -1551,6 +1551,11 @@
             <div class="keywords-filters">
                 <select class="keywords-client-select" id="kw-client-select">
                     <option value="">Todos os Clientes</option>
+                </select>
+                <select class="keywords-client-select" id="kw-channel-select" style="max-width:180px">
+                    <option value="all">Todos os canais</option>
+                    <option value="google">Google Ads</option>
+                    <option value="meta">Meta Ads</option>
                 </select>
                 <div class="period-pills">
                     <button class="period-pill kw-period active" data-kwperiod="7d">7 dias</button>
@@ -1706,6 +1711,36 @@
 
 
 
+            <!-- Vendas por Anúncio (Google + Meta) -->
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <h3>Vendas por Anúncio</h3>
+                        <p style="margin:4px 0 0;font-size:12px;color:var(--text-tertiary)">Campanha → anúncio → leads/vendas/receita. Filtre por canal acima.</p>
+                    </div>
+                </div>
+                <div class="card-body" style="padding: 0;">
+                    <div class="table-wrapper">
+                        <table class="keywords-table" id="sales-by-ad-table">
+                            <thead>
+                                <tr>
+                                    <th>Canal</th>
+                                    <th>Campanha</th>
+                                    <th>Anúncio</th>
+                                    <th>Leads</th>
+                                    <th>Vendas</th>
+                                    <th>Taxa</th>
+                                    <th>Receita</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sales-by-ad-body">
+                                <tr><td colspan="7" class="empty-state">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <!-- Campaigns Table -->
             <div class="card" style="margin-bottom: 24px;">
                 <div class="card-header">
@@ -1731,10 +1766,13 @@
                 </div>
             </div>
 
-            <!-- Backfill Button -->
-            <div style="margin-top: 24px; text-align: right;">
+            <!-- Backfill Buttons -->
+            <div style="margin-top: 24px; display:flex; justify-content:flex-end; gap:12px;">
                 <button class="btn-text" id="btn-kw-backfill" style="font-size: 12px; color: var(--text-tertiary);">
-                    Migrar dados historicos
+                    Migrar dados Google
+                </button>
+                <button class="btn-text" id="btn-meta-backfill" style="font-size: 12px; color: var(--text-tertiary);">
+                    Migrar dados Meta
                 </button>
             </div>
         </section>

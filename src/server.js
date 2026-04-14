@@ -941,6 +941,27 @@ app.post('/api/keywords/backfill', requireAuth, async (_req, res) => {
     }
 });
 
+// Monitor de Vendas por Anúncio (Google Ads + Meta Ads)
+app.get('/api/sales/by-ad', requireAuth, async (req, res) => {
+    const { client, from, to, channel } = req.query;
+    const cacheKey = `sales:by-ad:${client || ''}:${from || ''}:${to || ''}:${channel || 'all'}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const data = await pgService.getSalesByAd(client || null, from || null, to || null, channel || null);
+    await cache.set(cacheKey, data, 120);
+    res.json(data);
+});
+
+app.post('/api/sales/backfill-meta', requireAuth, async (_req, res) => {
+    try {
+        const count = await pgService.backfillMetaAds();
+        res.json({ success: true, migrated: count });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // ====================================================
 // Trail & Alerts API (novo sistema de rastreamento)
 // ====================================================

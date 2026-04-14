@@ -1409,13 +1409,16 @@ class PgService {
         try {
             const { rows } = await this.query(
                 `INSERT INTO keyword_conversions
-                 (client_id, keyword, campaign, utm_source, utm_medium, utm_content, gclid,
+                 (client_id, channel, keyword, campaign, ad_name, ad_id, campaign_id, ctwa_clid,
+                  utm_source, utm_medium, utm_content, gclid,
                   landing_page, device_type, location_state, lead_phone, lead_name, lead_status, product,
                   sale_amount, converted)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
                  RETURNING id`,
-                [data.clientId, data.keyword, data.campaign, data.utmSource, data.utmMedium,
-                 data.utmContent, data.gclid, data.landingPage, data.deviceType, data.locationState,
+                [data.clientId, data.channel || 'google', data.keyword, data.campaign,
+                 data.adName || null, data.adId || null, data.campaignId || null, data.ctwaClid || null,
+                 data.utmSource, data.utmMedium, data.utmContent, data.gclid,
+                 data.landingPage, data.deviceType, data.locationState,
                  data.leadPhone, data.leadName, data.leadStatus, data.product,
                  data.saleAmount || 0, data.converted || false]
             );
@@ -1591,6 +1594,98 @@ class PgService {
         } catch (error) {
             logger.error("Erro ao buscar campaigns overview", { error: error.message });
             return [];
+        }
+    }
+
+    async getSalesByAd(clientId, startDate, endDate, channel) {
+        if (!this.isAvailable()) return [];
+        try {
+            let where = "WHERE 1=1";
+            const params = [];
+            let idx = 1;
+            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+            if (channel && channel !== 'all') {
+                where += ` AND channel = $${idx}`; params.push(channel); idx++;
+            }
+
+            const { rows } = await this.query(`
+                SELECT
+                    COALESCE(channel, 'google') as channel,
+                    COALESCE(NULLIF(campaign, ''), '(sem campanha)') as campaign,
+                    COALESCE(NULLIF(ad_name, ''), NULLIF(keyword, ''), '(sem anúncio)') as ad_label,
+                    ad_id,
+                    campaign_id,
+                    COUNT(*) as leads,
+                    SUM(CASE WHEN converted THEN 1 ELSE 0 END) as sales,
+                    ROUND(SUM(CASE WHEN converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as conversion_rate,
+                    SUM(sale_amount) as revenue,
+                    MAX(created_at) as last_lead_at
+                FROM keyword_conversions
+                ${where}
+                GROUP BY channel, campaign, ad_label, ad_id, campaign_id
+                ORDER BY revenue DESC NULLS LAST, leads DESC
+            `, params);
+            return rows;
+        } catch (error) {
+            logger.error("Erro ao buscar sales by ad", { error: error.message });
+            return [];
+        }
+    }
+
+    async backfillMetaAds() {
+        if (!this.isAvailable()) return 0;
+        try {
+            const { rowCount } = await this.query(`
+                INSERT INTO keyword_conversions (
+                    client_id, channel, campaign, ad_name, ad_id, campaign_id, ctwa_clid,
+                    utm_source, utm_medium, utm_content,
+                    landing_page, device_type, location_state,
+                    lead_phone, lead_name, lead_status, product, created_at
+                )
+                SELECT
+                    w.client_id,
+                    'meta',
+                    COALESCE(w.payload->'ad'->>'campaign_name', w.payload->'ad'->>'campaignName', w.payload->>'utm_campaign'),
+                    COALESCE(w.payload->'ad'->>'ad_name', w.payload->'ad'->>'adName'),
+                    COALESCE(w.payload->'ad'->>'ad_id', w.payload->'ad'->>'adId'),
+                    COALESCE(w.payload->'ad'->>'campaign_id', w.payload->'ad'->>'campaignId'),
+                    w.payload->>'ctwa_clid',
+                    COALESCE(w.payload->>'utm_source', 'meta'),
+                    COALESCE(w.payload->>'utm_medium', 'paid'),
+                    w.payload->>'utm_content',
+                    w.payload->'visit'->>'name',
+                    w.payload->'visit'->'meta'->'http_user_agent'->'device'->>'type',
+                    w.payload->'location'->>'state',
+                    w.payload->>'phone',
+                    COALESCE(w.payload->>'chatName', w.payload->>'name', ''),
+                    'Lead Gerado',
+                    '',
+                    w.created_at
+                FROM webhook_events w
+                WHERE w.client_id IS NOT NULL
+                  AND (
+                        (w.payload->>'ctwa_clid' IS NOT NULL AND length(w.payload->>'ctwa_clid') > 4)
+                     OR (w.payload->'ad'->>'ad_name' IS NOT NULL AND length(w.payload->'ad'->>'ad_name') > 0)
+                     OR (w.payload->'ad'->>'adName' IS NOT NULL AND length(w.payload->'ad'->>'adName') > 0)
+                     OR (w.payload->'ad'->>'campaign_name' IS NOT NULL AND length(w.payload->'ad'->>'campaign_name') > 0)
+                  )
+                  AND COALESCE(LOWER(w.payload->'ad'->>'ad_name'), '') NOT LIKE '%google%'
+                  AND COALESCE(LOWER(w.payload->'ad'->>'ad_name'), '') NOT LIKE '%pmax%'
+                  AND COALESCE(LOWER(w.payload->'ad'->>'campaign_name'), '') NOT LIKE '%google%'
+                  AND COALESCE(LOWER(w.payload->'ad'->>'campaign_name'), '') NOT LIKE '%pmax%'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM keyword_conversions kc
+                      WHERE kc.lead_phone = w.payload->>'phone'
+                        AND kc.created_at = w.created_at
+                  )
+            `);
+            logger.info(`Backfill Meta Ads: ${rowCount} registros migrados`);
+            return rowCount;
+        } catch (error) {
+            logger.error("Erro ao executar backfill de Meta Ads", { error: error.message });
+            return 0;
         }
     }
 
