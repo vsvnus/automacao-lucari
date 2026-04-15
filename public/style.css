@@ -5523,6 +5523,82 @@ kbd {
     animation: sk-shimmer 1.6s infinite linear;
 }
 
+/* Client groups (top-level expandable) */
+.client-group {
+    border-bottom: 1px solid var(--border-subtle);
+}
+.client-group:last-child { border-bottom: none; }
+.client-group-header {
+    position: relative;
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto auto auto 110px;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+    background: var(--bg-elevated);
+    transition: background var(--transition-fast);
+}
+.client-group-header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, var(--density-color, transparent) var(--density, 0%), transparent 0);
+    opacity: 0.14;
+    pointer-events: none;
+    z-index: 0;
+    transition: opacity var(--transition-fast);
+}
+.client-group-header > * { position: relative; z-index: 1; }
+.client-group-header:hover { background: var(--bg-surface); }
+.client-group-header:hover::before { opacity: 0.24; }
+.client-group-chevron {
+    color: var(--text-tertiary);
+    transition: transform var(--transition-normal);
+    display: inline-flex;
+}
+.client-group.open .client-group-chevron { transform: rotate(90deg); }
+.client-group-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: -0.01em;
+}
+.client-group-metric {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.client-group-metric strong {
+    color: var(--text-primary);
+    font-weight: 600;
+    margin-right: 4px;
+}
+.client-group-revenue {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    letter-spacing: -0.01em;
+}
+.client-group-body {
+    display: none;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-subtle);
+}
+.client-group.open .client-group-body { display: block; }
+.client-group-body .campaign-group {
+    padding-left: 20px;
+}
+.client-group-body .campaign-group:last-child { border-bottom: none; }
+
 /* Campaign groups (expandable) */
 .campaign-groups { display: flex; flex-direction: column; }
 .campaign-group {
@@ -5687,6 +5763,12 @@ kbd {
     .hero-dual { grid-template-columns: 1fr; }
     .hero-channel-revenue { font-size: 26px; }
     .ad-card-grid { grid-template-columns: 1fr; }
+    .client-group-header {
+        grid-template-columns: 20px minmax(0, 1fr) auto;
+        gap: 10px;
+        padding: 14px 16px;
+    }
+    .client-group-header .client-group-metric:not(.primary) { display: none; }
     .campaign-group-header {
         grid-template-columns: 20px minmax(0, 1fr) auto;
         gap: 10px;

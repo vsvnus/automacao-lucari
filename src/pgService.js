@@ -1603,28 +1603,31 @@ class PgService {
             let where = "WHERE 1=1";
             const params = [];
             let idx = 1;
-            if (clientId) { where += ` AND client_id = $${idx}`; params.push(clientId); idx++; }
-            if (startDate) { where += ` AND created_at >= $${idx}`; params.push(startDate); idx++; }
-            if (endDate) { where += ` AND created_at <= $${idx}`; params.push(endDate); idx++; }
+            if (clientId) { where += ` AND kc.client_id = $${idx}`; params.push(clientId); idx++; }
+            if (startDate) { where += ` AND kc.created_at >= $${idx}`; params.push(startDate); idx++; }
+            if (endDate) { where += ` AND kc.created_at <= $${idx}`; params.push(endDate); idx++; }
             if (channel && channel !== 'all') {
-                where += ` AND channel = $${idx}`; params.push(channel); idx++;
+                where += ` AND kc.channel = $${idx}`; params.push(channel); idx++;
             }
 
             const { rows } = await this.query(`
                 SELECT
-                    COALESCE(channel, 'google') as channel,
-                    COALESCE(NULLIF(campaign, ''), '(sem campanha)') as campaign,
-                    COALESCE(NULLIF(ad_name, ''), NULLIF(keyword, ''), '(sem anúncio)') as ad_label,
-                    ad_id,
-                    campaign_id,
+                    kc.client_id,
+                    COALESCE(c.name, '(sem cliente)') as client_name,
+                    COALESCE(kc.channel, 'google') as channel,
+                    COALESCE(NULLIF(kc.campaign, ''), '(sem campanha)') as campaign,
+                    COALESCE(NULLIF(kc.ad_name, ''), NULLIF(kc.keyword, ''), '(sem anúncio)') as ad_label,
+                    kc.ad_id,
+                    kc.campaign_id,
                     COUNT(*) as leads,
-                    SUM(CASE WHEN converted THEN 1 ELSE 0 END) as sales,
-                    ROUND(SUM(CASE WHEN converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as conversion_rate,
-                    SUM(sale_amount) as revenue,
-                    MAX(created_at) as last_lead_at
-                FROM keyword_conversions
+                    SUM(CASE WHEN kc.converted THEN 1 ELSE 0 END) as sales,
+                    ROUND(SUM(CASE WHEN kc.converted THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*),0) * 100, 1) as conversion_rate,
+                    SUM(kc.sale_amount) as revenue,
+                    MAX(kc.created_at) as last_lead_at
+                FROM keyword_conversions kc
+                LEFT JOIN clients c ON c.id = kc.client_id
                 ${where}
-                GROUP BY channel, campaign, ad_label, ad_id, campaign_id
+                GROUP BY kc.client_id, c.name, kc.channel, kc.campaign, ad_label, kc.ad_id, kc.campaign_id
                 ORDER BY revenue DESC NULLS LAST, leads DESC
             `, params);
             return rows;

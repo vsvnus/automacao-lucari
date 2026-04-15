@@ -4287,30 +4287,85 @@ async function loadSalesByAd() {
         const top5 = [...data].sort((a, b) => parseFloat(b.revenue || 0) - parseFloat(a.revenue || 0)).slice(0, 5);
         topGrid.innerHTML = top5.map((row, i) => renderAdCard(row, i + 1, totalRevenue)).join('');
 
-        // Group by campaign
-        const groupsMap = new Map();
+        // Build campaign groups (campaign per client+channel)
+        const campaignsMap = new Map();
         data.forEach(row => {
-            const key = (row.channel || 'google') + '|' + (row.campaign || '(sem campanha)');
-            if (!groupsMap.has(key)) {
-                groupsMap.set(key, { channel: row.channel || 'google', campaign: row.campaign || '(sem campanha)', leads: 0, sales: 0, revenue: 0, ads: [] });
+            const channel = row.channel || 'google';
+            const clientId = row.client_id || 'no-client';
+            const clientName = row.client_name || '(sem cliente)';
+            const campaign = row.campaign || '(sem campanha)';
+            const key = clientId + '|' + channel + '|' + campaign;
+            if (!campaignsMap.has(key)) {
+                campaignsMap.set(key, {
+                    clientId, clientName, channel, campaign,
+                    leads: 0, sales: 0, revenue: 0, ads: []
+                });
             }
-            const g = groupsMap.get(key);
+            const g = campaignsMap.get(key);
             g.leads += parseInt(row.leads || 0, 10);
             g.sales += parseInt(row.sales || 0, 10);
             g.revenue += parseFloat(row.revenue || 0);
             g.ads.push(row);
         });
-        const groups = [...groupsMap.values()].sort((a, b) => b.revenue - a.revenue);
+        const campaignGroups = [...campaignsMap.values()].sort((a, b) => b.revenue - a.revenue);
 
-        groupsEl.innerHTML = groups.map(g => renderCampaignGroup(g, totalRevenue)).join('');
-        groupsEl.querySelectorAll('.campaign-group-header').forEach(h => {
+        const filteredByClient = !!kwState.clientId;
+        if (filteredByClient) {
+            // Pula nível Cliente — vai direto pra campanha
+            groupsEl.innerHTML = campaignGroups.map(g => renderCampaignGroup(g, totalRevenue)).join('');
+        } else {
+            // Agrupa também por cliente
+            const clientsMap = new Map();
+            campaignGroups.forEach(cg => {
+                if (!clientsMap.has(cg.clientId)) {
+                    clientsMap.set(cg.clientId, {
+                        clientId: cg.clientId,
+                        clientName: cg.clientName,
+                        leads: 0, sales: 0, revenue: 0,
+                        campaigns: []
+                    });
+                }
+                const c = clientsMap.get(cg.clientId);
+                c.leads += cg.leads;
+                c.sales += cg.sales;
+                c.revenue += cg.revenue;
+                c.campaigns.push(cg);
+            });
+            const clientGroups = [...clientsMap.values()].sort((a, b) => b.revenue - a.revenue);
+            groupsEl.innerHTML = clientGroups.map(c => renderClientGroup(c, totalRevenue)).join('');
+        }
+
+        groupsEl.querySelectorAll('.client-group-header').forEach(h => {
             h.addEventListener('click', () => h.parentElement.classList.toggle('open'));
+        });
+        groupsEl.querySelectorAll('.campaign-group-header').forEach(h => {
+            h.addEventListener('click', (e) => {
+                e.stopPropagation();
+                h.parentElement.classList.toggle('open');
+            });
         });
     } catch (e) {
         console.error('loadSalesByAd failed', e);
         topGrid.innerHTML = '';
         groupsEl.innerHTML = renderErrorAds();
     }
+}
+
+function renderClientGroup(c, totalRevenue) {
+    const pct = totalRevenue > 0 ? (c.revenue / totalRevenue * 100) : 0;
+    const chevron = '<svg class="client-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+    const campaignsHtml = c.campaigns.map(cg => renderCampaignGroup(cg, totalRevenue)).join('');
+    return '<div class="client-group">' +
+        '<div class="client-group-header" style="--density:' + pct.toFixed(1) + '%;--density-color:var(--accent-primary)">' +
+          chevron +
+          '<span class="client-group-title">' + escapeHtml(c.clientName) + '</span>' +
+          '<span class="client-group-metric primary"><strong>' + c.campaigns.length + '</strong>campanhas</span>' +
+          '<span class="client-group-metric"><strong>' + c.leads + '</strong>leads</span>' +
+          '<span class="client-group-metric"><strong>' + c.sales + '</strong>vendas</span>' +
+          '<span class="client-group-revenue">' + formatBRL(c.revenue) + '</span>' +
+        '</div>' +
+        '<div class="client-group-body">' + campaignsHtml + '</div>' +
+      '</div>';
 }
 
 function renderAdCard(row, rank, totalRevenue) {
