@@ -1239,7 +1239,8 @@ class SheetsService {
 
     /**
      * Lê o padrão de fórmulas DIA de linhas existentes na planilha.
-     * Retorna os offsets (ex: [1, 2, 4, 5]) e se usa IF wrapper.
+     * Retorna o padrão MAJORITÁRIO entre as linhas com fórmula (em vez de pegar a primeira).
+     * Suporta offset 0 (fórmula sem "+N", ex: =IF(D3="";"";D3)).
      * Cache por spreadsheetId:sheetName.
      */
     async getDiaFormulaOffsets(spreadsheetId, sheetName, colMap) {
@@ -1263,6 +1264,8 @@ class SheetsService {
             });
             const rows = response.data.values || [];
 
+            const samples = []; // { offsets, hasIfWrapper } por linha válida
+
             for (let i = 0; i < rows.length; i++) {
                 const row = rows[i];
                 const firstDiaIdx = colMap[diaFields[0]].index;
@@ -1270,32 +1273,51 @@ class SheetsService {
 
                 if (!cellFormula.startsWith('=')) continue;
 
-                const offsets = [];
                 const hasIfWrapper = cellFormula.toUpperCase().includes('IF(');
+                const offsets = [];
+                let valid = true;
 
                 for (const field of diaFields) {
                     const idx = colMap[field].index;
                     const formula = (row[idx] || '').toString();
-                    const match = formula.match(/[A-Z]\d+\+(\d+)/i);
-                    if (match) offsets.push(parseInt(match[1]));
+                    if (!formula.startsWith('=')) { valid = false; break; }
+                    // Pega o ÚLTIMO match de "letra+dígitos" opcionalmente seguido de "+N".
+                    // Em "=IF(D3=...;D3+1)" → "D3+1" (offset 1); em "=IF(D3=...;D3)" → "D3" (offset 0).
+                    const matches = [...formula.matchAll(/[A-Z]+\d+(?:\+(\d+))?/gi)];
+                    if (matches.length === 0) { valid = false; break; }
+                    const last = matches[matches.length - 1];
+                    offsets.push(last[1] !== undefined ? parseInt(last[1], 10) : 0);
                 }
 
-                if (offsets.length > 0) {
-                    const result = { dataCol, offsets, hasIfWrapper, diaFields };
-                    this.spreadsheetCache.set(cacheKey, result);
-                    logger.info(`Padrão DIA detectado para "${sheetName}": offsets=[${offsets}], wrapper=${hasIfWrapper}`);
-                    return result;
+                if (valid && offsets.length === diaFields.length) {
+                    samples.push({ offsets, hasIfWrapper });
                 }
+            }
+
+            if (samples.length > 0) {
+                // Padrão majoritário entre todas as amostras
+                const counts = new Map();
+                for (const s of samples) {
+                    const key = s.offsets.join(',');
+                    counts.set(key, (counts.get(key) || 0) + 1);
+                }
+                const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+                const winnerOffsets = sorted[0][0].split(',').map(Number);
+                const hasIfWrapper = samples.filter(s => s.hasIfWrapper).length > samples.length / 2;
+                const result = { dataCol, offsets: winnerOffsets, hasIfWrapper, diaFields };
+                this.spreadsheetCache.set(cacheKey, result);
+                logger.info(`Padrão DIA detectado para "${sheetName}": offsets=[${winnerOffsets}], suporte=${sorted[0][1]}/${samples.length}, wrapper=${hasIfWrapper}`);
+                return result;
             }
         } catch (error) {
             logger.warn(`Erro ao ler padrão DIA de "${sheetName}"`, { error: error.message });
         }
 
-        // Padrão default se nenhuma fórmula encontrada
-        const defaultOffsets = diaFields.length >= 5 ? [1, 2, 4, 5] : [1, 2, 4, 5];
-        const result = { dataCol, offsets: defaultOffsets.slice(0, diaFields.length), hasIfWrapper: true, diaFields };
+        // Default: progressão simples começando em 0 (DIA 1 = mesma data, DIA 2 = +1, etc)
+        const defaultOffsets = Array.from({ length: diaFields.length }, (_, i) => i);
+        const result = { dataCol, offsets: defaultOffsets, hasIfWrapper: true, diaFields };
         this.spreadsheetCache.set(cacheKey, result);
-        logger.info(`Usando padrão DIA default para "${sheetName}": offsets=[${result.offsets}]`);
+        logger.info(`Usando padrão DIA default para "${sheetName}": offsets=[${defaultOffsets}]`);
         return result;
     }
 
@@ -1317,11 +1339,12 @@ class SheetsService {
                 const offset = offsets[i];
                 const letter = colMap[field].letter;
 
+                const offsetExpr = offset === 0 ? `${dataCol}${row}` : `${dataCol}${row}+${offset}`;
                 let formula;
                 if (hasIfWrapper) {
-                    formula = `=IF(${dataCol}${row}="";"";${dataCol}${row}+${offset})`;
+                    formula = `=IF(${dataCol}${row}="";"";${offsetExpr})`;
                 } else {
-                    formula = `=${dataCol}${row}+${offset}`;
+                    formula = `=${offsetExpr}`;
                 }
 
                 updates.push({
