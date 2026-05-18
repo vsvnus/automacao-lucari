@@ -2189,8 +2189,15 @@ class PgService {
     // ============================================================
 
     /**
-     * Retorna telefones com processing_result='success' para um cliente e aba.
+     * Retorna telefones já contabilizados na planilha de um cliente/aba.
+     * Considera tanto leads inseridos com sucesso ('success') quanto leads
+     * já reconciliados em runs anteriores ('reconciled').
      * Usado pelo reconciliationWorker para comparar com Sheets.
+     *
+     * Incluir 'reconciled' é essencial: sem isso, toda linha do Sheets sem
+     * registro 'success' (ex.: leads herdados do mês anterior na duplicação
+     * da aba) é re-reconciliada a cada run — gerando um loop infinito que
+     * polui leads_log (~200 registros lixo por cliente/dia).
      */
     async getSuccessLeadPhonesByClient(clientId, sheetName) {
         if (!this.isAvailable()) return [];
@@ -2202,7 +2209,7 @@ class PgService {
             const { rows } = await this.query(
                 `SELECT DISTINCT phone, sheet_row FROM leads_log
                  WHERE client_id = $1 AND sheet_name = $2
-                   AND processing_result = 'success' AND event_type = 'new_lead'
+                   AND processing_result IN ('success', 'reconciled')
                  ORDER BY phone`,
                 [clientUuid, sheetName]
             );
