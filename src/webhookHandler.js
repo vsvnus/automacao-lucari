@@ -292,16 +292,31 @@ class WebhookHandler {
         }
         await trail.step("product_detected", "ok", product ? `Produto: ${product}` : "Produto não identificado", { product });
 
-        // keyword_extracted - save Google Ads keyword data
-        if (origin.channel === "Google Ads") {
+        // ad_tracking — grava dados de anúncio/campanha para Google Ads E Meta Ads
+        // Gate é por canal pago (Google ou Meta); orgânico já foi filtrado acima.
+        if (origin.channel === "Google Ads" || origin.channel === "Meta Ads") {
+            const channel = origin.channel === "Meta Ads" ? "meta" : "google";
+            const adObj = (payload.ad && typeof payload.ad === "object") ? payload.ad : {};
+            const visitParams = (payload.visit && payload.visit.params) || {};
+
             const keywordData = {
                 clientId: client._db_id || client.id,
-                keyword: payload.utm_term || (payload.visit && payload.visit.params && payload.visit.params.utm_term) || null,
-                campaign: payload.utm_campaign || (payload.visit && payload.visit.params && payload.visit.params.utm_campaign) || null,
-                utmSource: payload.utm_source || "google",
-                utmMedium: payload.utm_medium || "cpc",
+                channel,
+                // Google: keyword = utm_term; Meta: sem keyword (null)
+                keyword: channel === "google"
+                    ? (payload.utm_term || visitParams.utm_term || null)
+                    : null,
+                // Campaign name — para Meta vem em payload.ad.campaign_name; Google usa utm_campaign
+                campaign: adObj.campaign_name || adObj.campaignName
+                    || payload.utm_campaign || visitParams.utm_campaign || null,
+                adName: adObj.ad_name || adObj.adName || null,
+                adId: adObj.ad_id || adObj.adId || null,
+                campaignId: adObj.campaign_id || adObj.campaignId || null,
+                ctwaClid: payload.ctwa_clid || null,
+                utmSource: payload.utm_source || (channel === "google" ? "google" : "meta"),
+                utmMedium: payload.utm_medium || (channel === "google" ? "cpc" : "paid"),
                 utmContent: payload.utm_content || null,
-                gclid: (payload.visit && payload.visit.params && payload.visit.params.gclid) || null,
+                gclid: visitParams.gclid || null,
                 landingPage: (payload.visit && payload.visit.name) || null,
                 deviceType: (payload.visit && payload.visit.meta && payload.visit.meta.http_user_agent && payload.visit.meta.http_user_agent.device && payload.visit.meta.http_user_agent.device.type) || null,
                 locationState: (payload.location && payload.location.state) || null,
@@ -310,10 +325,11 @@ class WebhookHandler {
                 leadStatus: extractStatusName(payload) || "Lead Gerado",
                 product: product,
             };
+            // saveKeywordConversion já faz try/catch interno — nunca lança (fail-safe)
             await pgService.saveKeywordConversion(keywordData);
-            await trail.step("keyword_extracted", "ok",
-                `Keyword: "${keywordData.keyword || "N/A"}" | Campaign: ${keywordData.campaign || "N/A"}`,
-                { keyword: keywordData.keyword, campaign: keywordData.campaign });
+            await trail.step("ad_tracking", "ok",
+                `${origin.channel} | Campanha: ${keywordData.campaign || "N/A"} | Anúncio: ${keywordData.adName || keywordData.keyword || "N/A"}`,
+                { channel, campaign: keywordData.campaign, adName: keywordData.adName, keyword: keywordData.keyword, adId: keywordData.adId });
         }
 
         // sheet_resolved

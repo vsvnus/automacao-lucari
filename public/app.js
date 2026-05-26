@@ -4163,6 +4163,7 @@ const kwState = {
     clientId: null,
     dateFrom: null,
     dateTo: null,
+    channel: 'all',
 };
 
 function getKwDateRange() {
@@ -4204,12 +4205,238 @@ async function loadKeywordsSection() {
     }
 
     await Promise.all([
-        loadKeywordsStats(),
-        loadKeywordsOverview(),
+        loadChannelSummary(),
         loadKeywordsTrend(),
         loadKeywordsBreakdown(),
-        loadKeywordsCampaigns(),
+        loadSalesByAd(),
     ]);
+}
+
+// Channel chip SVGs (inline, brand-accurate, no external dep)
+const CHIP_SVG_GOOGLE = '<svg width="12" height="12" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+const CHIP_SVG_META = '<svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>';
+
+function channelChip(channel) {
+    if (channel === 'meta') return '<span class="chip chip-meta">' + CHIP_SVG_META + 'Meta</span>';
+    if (channel === 'google') return '<span class="chip chip-google">' + CHIP_SVG_GOOGLE + 'Google</span>';
+    return '<span class="chip">' + escapeHtml(channel || '—') + '</span>';
+}
+
+function formatBRL(val) {
+    const n = parseFloat(val || 0);
+    return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+function formatBRLDetailed(val) {
+    const n = parseFloat(val || 0);
+    return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function loadChannelSummary() {
+    const gLeads = document.getElementById('hero-google-leads');
+    if (!gLeads) return;
+    const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    const setWidth = (id, pct) => { const el = document.getElementById(id); if (el) el.style.width = pct + '%'; };
+    try {
+        const data = await fetch('/api/sales/channel-summary?' + buildKwParams(), { credentials: 'same-origin' }).then(r => r.json());
+        const byChannel = { google: { leads: 0, sales: 0, revenue: 0 }, meta: { leads: 0, sales: 0, revenue: 0 } };
+        (data || []).forEach(row => {
+            const ch = row.channel || 'google';
+            if (byChannel[ch]) {
+                byChannel[ch].leads = parseInt(row.leads || 0, 10);
+                byChannel[ch].sales = parseInt(row.sales || 0, 10);
+                byChannel[ch].revenue = parseFloat(row.revenue || 0);
+            }
+        });
+        const totalRevenue = byChannel.google.revenue + byChannel.meta.revenue;
+        const pctGoogle = totalRevenue > 0 ? (byChannel.google.revenue / totalRevenue * 100) : 0;
+        const pctMeta = totalRevenue > 0 ? (byChannel.meta.revenue / totalRevenue * 100) : 0;
+
+        setText('hero-google-leads', byChannel.google.leads.toLocaleString('pt-BR'));
+        setText('hero-google-sales', byChannel.google.sales.toLocaleString('pt-BR'));
+        setText('hero-google-revenue', formatBRL(byChannel.google.revenue));
+        setText('hero-google-share', pctGoogle.toFixed(0) + '% da receita');
+        setWidth('hero-google-bar', pctGoogle.toFixed(1));
+
+        setText('hero-meta-leads', byChannel.meta.leads.toLocaleString('pt-BR'));
+        setText('hero-meta-sales', byChannel.meta.sales.toLocaleString('pt-BR'));
+        setText('hero-meta-revenue', formatBRL(byChannel.meta.revenue));
+        setText('hero-meta-share', pctMeta.toFixed(0) + '% da receita');
+        setWidth('hero-meta-bar', pctMeta.toFixed(1));
+    } catch (e) {
+        console.error('loadChannelSummary failed', e);
+    }
+}
+
+async function loadSalesByAd() {
+    const topGrid = document.getElementById('top-ads-grid');
+    const groupsEl = document.getElementById('campaign-groups');
+    if (!topGrid || !groupsEl) return;
+    try {
+        const params = new URLSearchParams(buildKwParams());
+        if (kwState.channel && kwState.channel !== 'all') params.set('channel', kwState.channel);
+        const data = await fetch('/api/sales/by-ad?' + params.toString(), { credentials: 'same-origin' }).then(r => r.json());
+        if (!Array.isArray(data) || data.length === 0) {
+            topGrid.innerHTML = '';
+            groupsEl.innerHTML = renderEmptyAds();
+            return;
+        }
+
+        const totalRevenue = data.reduce((s, r) => s + parseFloat(r.revenue || 0), 0);
+
+        // Top 5 ad cards
+        const top5 = [...data].sort((a, b) => parseFloat(b.revenue || 0) - parseFloat(a.revenue || 0)).slice(0, 5);
+        topGrid.innerHTML = top5.map((row, i) => renderAdCard(row, i + 1, totalRevenue)).join('');
+
+        // Build campaign groups (campaign per client+channel)
+        const campaignsMap = new Map();
+        data.forEach(row => {
+            const channel = row.channel || 'google';
+            const clientId = row.client_id || 'no-client';
+            const clientName = row.client_name || '(sem cliente)';
+            const campaign = row.campaign || '(sem campanha)';
+            const key = clientId + '|' + channel + '|' + campaign;
+            if (!campaignsMap.has(key)) {
+                campaignsMap.set(key, {
+                    clientId, clientName, channel, campaign,
+                    leads: 0, sales: 0, revenue: 0, ads: []
+                });
+            }
+            const g = campaignsMap.get(key);
+            g.leads += parseInt(row.leads || 0, 10);
+            g.sales += parseInt(row.sales || 0, 10);
+            g.revenue += parseFloat(row.revenue || 0);
+            g.ads.push(row);
+        });
+        const campaignGroups = [...campaignsMap.values()].sort((a, b) => b.revenue - a.revenue);
+
+        const filteredByClient = !!kwState.clientId;
+        if (filteredByClient) {
+            // Pula nível Cliente — vai direto pra campanha
+            groupsEl.innerHTML = campaignGroups.map(g => renderCampaignGroup(g, totalRevenue)).join('');
+        } else {
+            // Agrupa também por cliente
+            const clientsMap = new Map();
+            campaignGroups.forEach(cg => {
+                if (!clientsMap.has(cg.clientId)) {
+                    clientsMap.set(cg.clientId, {
+                        clientId: cg.clientId,
+                        clientName: cg.clientName,
+                        leads: 0, sales: 0, revenue: 0,
+                        campaigns: []
+                    });
+                }
+                const c = clientsMap.get(cg.clientId);
+                c.leads += cg.leads;
+                c.sales += cg.sales;
+                c.revenue += cg.revenue;
+                c.campaigns.push(cg);
+            });
+            const clientGroups = [...clientsMap.values()].sort((a, b) => b.revenue - a.revenue);
+            groupsEl.innerHTML = clientGroups.map(c => renderClientGroup(c, totalRevenue)).join('');
+        }
+
+        groupsEl.querySelectorAll('.client-group-header').forEach(h => {
+            h.addEventListener('click', () => h.parentElement.classList.toggle('open'));
+        });
+        groupsEl.querySelectorAll('.campaign-group-header').forEach(h => {
+            h.addEventListener('click', (e) => {
+                e.stopPropagation();
+                h.parentElement.classList.toggle('open');
+            });
+        });
+    } catch (e) {
+        console.error('loadSalesByAd failed', e);
+        topGrid.innerHTML = '';
+        groupsEl.innerHTML = renderErrorAds();
+    }
+}
+
+function renderClientGroup(c, totalRevenue) {
+    const pct = totalRevenue > 0 ? (c.revenue / totalRevenue * 100) : 0;
+    const chevron = '<svg class="client-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+    const campaignsHtml = c.campaigns.map(cg => renderCampaignGroup(cg, totalRevenue)).join('');
+    return '<div class="client-group">' +
+        '<div class="client-group-header" style="--density:' + pct.toFixed(1) + '%;--density-color:var(--accent-primary)">' +
+          chevron +
+          '<span class="client-group-title">' + escapeHtml(c.clientName) + '</span>' +
+          '<span class="client-group-metric primary"><strong>' + c.campaigns.length + '</strong>campanhas</span>' +
+          '<span class="client-group-metric"><strong>' + c.leads + '</strong>leads</span>' +
+          '<span class="client-group-metric"><strong>' + c.sales + '</strong>vendas</span>' +
+          '<span class="client-group-revenue">' + formatBRL(c.revenue) + '</span>' +
+        '</div>' +
+        '<div class="client-group-body">' + campaignsHtml + '</div>' +
+      '</div>';
+}
+
+function renderAdCard(row, rank, totalRevenue) {
+    const channel = row.channel || 'google';
+    const revenue = parseFloat(row.revenue || 0);
+    const pct = totalRevenue > 0 ? (revenue / totalRevenue * 100) : 0;
+    return '' +
+        '<div class="ad-card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
+            '<span class="ad-card-campaign">' + escapeHtml(row.campaign || '—') + '</span>' +
+            channelChip(channel) +
+          '</div>' +
+          '<div class="ad-card-rank">#' + rank + '</div>' +
+          '<div class="ad-card-name">' + escapeHtml(row.ad_label || '—') + '</div>' +
+          '<div class="ad-card-revenue">' + formatBRL(revenue) + '</div>' +
+          '<div class="ad-card-meta">' +
+            '<span>' + (row.leads || 0) + ' leads · ' + (row.sales || 0) + ' vendas</span>' +
+            '<span>' + pct.toFixed(1) + '%</span>' +
+          '</div>' +
+          '<div class="ad-card-bar"><div class="ad-card-bar-fill ' + channel + '" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+        '</div>';
+}
+
+function renderCampaignGroup(g, totalRevenue) {
+    const pct = totalRevenue > 0 ? (g.revenue / totalRevenue * 100) : 0;
+    const densityColor = g.channel === 'meta' ? 'var(--accent-meta)' : 'var(--accent-google)';
+    const adsSorted = [...g.ads].sort((a, b) => parseFloat(b.revenue || 0) - parseFloat(a.revenue || 0));
+    const chevron = '<svg class="campaign-group-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+
+    const adsHtml = adsSorted.map(a => {
+        const aRev = parseFloat(a.revenue || 0);
+        const aPct = totalRevenue > 0 ? (aRev / totalRevenue * 100) : 0;
+        return '<div class="campaign-ad-row" style="--density:' + aPct.toFixed(1) + '%;--density-color:' + densityColor + '">' +
+          '<span></span>' +
+          '<span class="campaign-ad-name">' + escapeHtml(a.ad_label || '—') + '</span>' +
+          '<span class="campaign-ad-metric primary"><strong>' + (a.leads || 0) + '</strong>leads</span>' +
+          '<span class="campaign-ad-metric"><strong>' + (a.sales || 0) + '</strong>vendas</span>' +
+          '<span class="campaign-ad-metric"><strong>' + (a.conversion_rate != null ? parseFloat(a.conversion_rate).toFixed(1) + '%' : '—') + '</strong></span>' +
+          '<span class="campaign-ad-revenue">' + formatBRL(aRev) + '</span>' +
+        '</div>';
+    }).join('');
+
+    return '<div class="campaign-group">' +
+        '<div class="campaign-group-header" style="--density:' + pct.toFixed(1) + '%;--density-color:' + densityColor + '">' +
+          chevron +
+          '<div style="min-width:0;display:flex;align-items:center;gap:10px">' +
+            channelChip(g.channel) +
+            '<span class="campaign-group-title">' + escapeHtml(g.campaign) + '</span>' +
+          '</div>' +
+          '<span class="campaign-group-metric primary"><strong>' + g.ads.length + '</strong>anúncios</span>' +
+          '<span class="campaign-group-metric"><strong>' + g.leads + '</strong>leads</span>' +
+          '<span class="campaign-group-metric"><strong>' + g.sales + '</strong>vendas</span>' +
+          '<span class="campaign-group-revenue">' + formatBRL(g.revenue) + '</span>' +
+        '</div>' +
+        '<div class="campaign-group-body">' + adsHtml + '</div>' +
+      '</div>';
+}
+
+function renderEmptyAds() {
+    return '<div class="empty-illustrated">' +
+      '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z" opacity="0.3"/><path d="M3 9h18M9 3v18"/></svg>' +
+      '<p>Nenhum anúncio encontrado no período.<br>Ajuste os filtros acima ou migre os dados da Meta para começar.</p>' +
+      '<button class="btn-text" onclick="document.getElementById(\'btn-meta-backfill\').click()">Migrar dados Meta →</button>' +
+    '</div>';
+}
+function renderErrorAds() {
+    return '<div class="empty-illustrated">' +
+      '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+      '<p>Falha ao carregar vendas por anúncio.</p>' +
+      '<button class="btn-text" onclick="loadSalesByAd()">Tentar novamente →</button>' +
+    '</div>';
 }
 
 async function loadKeywordsStats() {
@@ -4855,6 +5082,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Channel select (Google / Meta / All)
+    const kwChannelSelect = document.getElementById('kw-channel-select');
+    if (kwChannelSelect) {
+        kwChannelSelect.addEventListener('change', () => {
+            kwState.channel = kwChannelSelect.value || 'all';
+            loadSalesByAd();
+        });
+    }
+
     // Custom date apply
     const btnKwApply = document.getElementById('btn-kw-apply');
     if (btnKwApply) {
@@ -4875,22 +5111,44 @@ document.addEventListener('DOMContentLoaded', () => {
         btnReloadKw.addEventListener('click', () => loadKeywordsSection());
     }
 
-    // Backfill button
+    // Backfill button Google
     const btnBackfill = document.getElementById('btn-kw-backfill');
     if (btnBackfill) {
         btnBackfill.addEventListener('click', async () => {
-            if (!confirm('Migrar dados historicos de keywords do JSONB? Isso pode levar alguns segundos.')) return;
+            if (!confirm('Migrar dados historicos de keywords (Google Ads) do JSONB? Pode levar alguns segundos.')) return;
             btnBackfill.disabled = true;
+            const original = btnBackfill.textContent;
             btnBackfill.textContent = 'Migrando...';
             try {
                 const res = await fetch('/api/keywords/backfill', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
-                alert('Migrados: ' + (res.migrated || 0) + ' registros');
+                alert('Migrados (Google): ' + (res.migrated || 0) + ' registros');
                 loadKeywordsSection();
             } catch (e) {
                 alert('Erro ao migrar: ' + e.message);
             } finally {
                 btnBackfill.disabled = false;
-                btnBackfill.textContent = 'Migrar dados historicos';
+                btnBackfill.textContent = original;
+            }
+        });
+    }
+
+    // Backfill button Meta
+    const btnMetaBackfill = document.getElementById('btn-meta-backfill');
+    if (btnMetaBackfill) {
+        btnMetaBackfill.addEventListener('click', async () => {
+            if (!confirm('Migrar dados historicos de Meta Ads do JSONB? Isso processa payload.ad.* e ctwa_clid dos webhook_events. Pode levar alguns segundos.')) return;
+            btnMetaBackfill.disabled = true;
+            const original = btnMetaBackfill.textContent;
+            btnMetaBackfill.textContent = 'Migrando...';
+            try {
+                const res = await fetch('/api/sales/backfill-meta', { method: 'POST', credentials: 'same-origin' }).then(r => r.json());
+                alert('Migrados (Meta): ' + (res.migrated || 0) + ' registros');
+                loadKeywordsSection();
+            } catch (e) {
+                alert('Erro ao migrar: ' + e.message);
+            } finally {
+                btnMetaBackfill.disabled = false;
+                btnMetaBackfill.textContent = original;
             }
         });
     }

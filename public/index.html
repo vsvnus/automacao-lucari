@@ -1533,8 +1533,8 @@
         <section class="page-section" id="section-keywords">
             <div class="page-header">
                 <div>
-                    <h2 class="page-title">Palavras-Chave Google Ads</h2>
-                    <p class="page-subtitle">Performance de keywords nas campanhas Google</p>
+                    <h2 class="page-title">Vendas por Anúncio</h2>
+                    <p class="page-subtitle">Performance por campanha e anúncio — Google Ads + Meta Ads</p>
                 </div>
                 <div class="header-actions">
                     <button class="btn-icon" id="btn-reload-keywords" title="Recarregar">
@@ -1552,6 +1552,11 @@
                 <select class="keywords-client-select" id="kw-client-select">
                     <option value="">Todos os Clientes</option>
                 </select>
+                <select class="keywords-client-select" id="kw-channel-select" style="max-width:180px">
+                    <option value="all">Todos os canais</option>
+                    <option value="google">Google Ads</option>
+                    <option value="meta">Meta Ads</option>
+                </select>
                 <div class="period-pills">
                     <button class="period-pill kw-period active" data-kwperiod="7d">7 dias</button>
                     <button class="period-pill kw-period" data-kwperiod="30d">30 dias</button>
@@ -1566,77 +1571,68 @@
                 </div>
             </div>
 
-            <!-- Stats Cards -->
-            <div class="keywords-stats-grid">
-                <div class="kw-stat-card">
-                    <div class="kw-stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        </svg>
+            <!-- Hero Dual-Channel -->
+            <div class="hero-dual" id="hero-dual">
+                <div class="hero-channel-card hero-channel-google" data-channel="google">
+                    <div class="hero-channel-head">
+                        <span class="chip chip-google">
+                            <svg width="12" height="12" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                            Google Ads
+                        </span>
+                        <span class="hero-channel-share" id="hero-google-share">—</span>
                     </div>
-                    <div class="kw-stat-data">
-                        <span class="kw-stat-value" id="kw-stat-unique">0</span>
-                        <span class="kw-stat-label">Keywords Unicas</span>
+                    <div class="hero-channel-metrics">
+                        <div class="hero-metric">
+                            <span class="hero-metric-val" id="hero-google-leads">—</span>
+                            <span class="hero-metric-lbl">leads</span>
+                        </div>
+                        <div class="hero-metric">
+                            <span class="hero-metric-val" id="hero-google-sales">—</span>
+                            <span class="hero-metric-lbl">vendas</span>
+                        </div>
                     </div>
-                </div>
-                <div class="kw-stat-card">
-                    <div class="kw-stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="9" cy="7" r="4"></circle>
-                        </svg>
-                    </div>
-                    <div class="kw-stat-data">
-                        <span class="kw-stat-value" id="kw-stat-leads">0</span>
-                        <span class="kw-stat-label">Leads Google Ads</span>
-                    </div>
-                </div>
-                <div class="kw-stat-card">
-                    <div class="kw-stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                        </svg>
-                    </div>
-                    <div class="kw-stat-data">
-                        <span class="kw-stat-value" id="kw-stat-top">—</span>
-                        <span class="kw-stat-label">Top Keyword</span>
+                    <div class="hero-channel-revenue" id="hero-google-revenue">R$ 0</div>
+                    <div class="hero-channel-bar">
+                        <div class="hero-channel-bar-fill hero-channel-bar-google" id="hero-google-bar" style="width:0%"></div>
                     </div>
                 </div>
-                <div class="kw-stat-card">
-                    <div class="kw-stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-                        </svg>
+                <div class="hero-channel-card hero-channel-meta" data-channel="meta">
+                    <div class="hero-channel-head">
+                        <span class="chip chip-meta">
+                            <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                            Meta Ads
+                        </span>
+                        <span class="hero-channel-share" id="hero-meta-share">—</span>
                     </div>
-                    <div class="kw-stat-data">
-                        <span class="kw-stat-value" id="kw-stat-rate">0%</span>
-                        <span class="kw-stat-label">Taxa de Conversao</span>
+                    <div class="hero-channel-metrics">
+                        <div class="hero-metric">
+                            <span class="hero-metric-val" id="hero-meta-leads">—</span>
+                            <span class="hero-metric-lbl">leads</span>
+                        </div>
+                        <div class="hero-metric">
+                            <span class="hero-metric-val" id="hero-meta-sales">—</span>
+                            <span class="hero-metric-lbl">vendas</span>
+                        </div>
+                    </div>
+                    <div class="hero-channel-revenue" id="hero-meta-revenue">R$ 0</div>
+                    <div class="hero-channel-bar">
+                        <div class="hero-channel-bar-fill hero-channel-bar-meta" id="hero-meta-bar" style="width:0%"></div>
                     </div>
                 </div>
-                <div class="kw-stat-card">
-                    <div class="kw-stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                    </div>
-                    <div class="kw-stat-data">
-                        <span class="kw-stat-value" id="kw-stat-conversions">0</span>
-                        <span class="kw-stat-label">Total Conversoes</span>
-                    </div>
+            </div>
+
+            <!-- Top 5 Ads -->
+            <div class="top-ads-section" id="top-ads-section">
+                <div class="top-ads-head">
+                    <h3 class="top-ads-title">Top 5 Anúncios</h3>
+                    <span class="top-ads-hint">Por receita no período</span>
                 </div>
-                <div class="kw-stat-card">
-                    <div class="kw-stat-icon">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="1" x2="12" y2="23"></line>
-                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                        </svg>
-                    </div>
-                    <div class="kw-stat-data">
-                        <span class="kw-stat-value" id="kw-stat-value">R$ 0,00</span>
-                        <span class="kw-stat-label">Valor Total</span>
-                    </div>
+                <div class="ad-card-grid" id="top-ads-grid">
+                    <div class="ad-card-skeleton"></div>
+                    <div class="ad-card-skeleton"></div>
+                    <div class="ad-card-skeleton"></div>
+                    <div class="ad-card-skeleton"></div>
+                    <div class="ad-card-skeleton"></div>
                 </div>
             </div>
 
@@ -1669,10 +1665,13 @@
                 </div>
             </div>
 
-            <!-- Keywords Ranking Table -->
+            <!-- Vendas agrupadas por Campanha → Anúncio -->
             <div class="card" style="margin-bottom: 24px;">
                 <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
-                    <h3>Ranking de Keywords</h3>
+                    <div>
+                        <h3>Performance por Campanha</h3>
+                        <p style="margin:4px 0 0;font-size:12px;color:var(--text-tertiary)">Clique em uma campanha para ver os anúncios. Barra de fundo indica % da receita no período.</p>
+                    </div>
                     <button class="btn-text" onclick="exportKeywordsCsv()" style="font-size:12px;display:flex;align-items:center;gap:4px">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -1683,58 +1682,21 @@
                     </button>
                 </div>
                 <div class="card-body" style="padding: 0;">
-                    <div class="table-wrapper">
-                        <table class="keywords-table" id="kw-ranking-table">
-                            <thead>
-                                <tr>
-                                    <th class="kw-sortable">Keyword</th>
-                                    <th class="kw-sortable">Campanha</th>
-                                    <th class="kw-sortable">Leads</th>
-                                    <th class="kw-sortable">Conversoes</th>
-                                    <th class="kw-sortable">Taxa</th>
-                                    <th class="kw-sortable">Valor Total</th>
-                                    <th class="kw-sortable">Ultima Data</th>
-                                </tr>
-                            </thead>
-                            <tbody id="kw-ranking-body">
-                                <tr><td colspan="7" class="empty-state">Carregando...</td></tr>
-                            </tbody>
-                        </table>
+                    <div class="campaign-groups" id="campaign-groups">
+                        <div class="campaign-group-skeleton"></div>
+                        <div class="campaign-group-skeleton"></div>
+                        <div class="campaign-group-skeleton"></div>
                     </div>
                 </div>
             </div>
 
-
-
-            <!-- Campaigns Table -->
-            <div class="card" style="margin-bottom: 24px;">
-                <div class="card-header">
-                    <h3>Campanhas</h3>
-                </div>
-                <div class="card-body" style="padding: 0;">
-                    <div class="table-wrapper">
-                        <table class="keywords-table">
-                            <thead>
-                                <tr>
-                                    <th>Campanha</th>
-                                    <th>Keywords</th>
-                                    <th>Leads</th>
-                                    <th>Conversoes</th>
-                                    <th>Valor Total</th>
-                                </tr>
-                            </thead>
-                            <tbody id="kw-campaigns-body">
-                                <tr><td colspan="5" class="empty-state">Carregando...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Backfill Button -->
-            <div style="margin-top: 24px; text-align: right;">
+            <!-- Backfill Buttons -->
+            <div style="margin-top: 24px; display:flex; justify-content:flex-end; gap:12px;">
                 <button class="btn-text" id="btn-kw-backfill" style="font-size: 12px; color: var(--text-tertiary);">
-                    Migrar dados historicos
+                    Migrar dados Google
+                </button>
+                <button class="btn-text" id="btn-meta-backfill" style="font-size: 12px; color: var(--text-tertiary);">
+                    Migrar dados Meta
                 </button>
             </div>
         </section>
